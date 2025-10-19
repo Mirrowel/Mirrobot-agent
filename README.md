@@ -12,7 +12,13 @@ An AI-powered GitHub bot built with [OpenCode](https://opencode.ai) that automat
 
 ## How It Works
 
-This repository contains GitHub Actions workflows that trigger the Mirrobot agent to perform various tasks:
+This repository contains GitHub Actions workflows that trigger the Mirrobot agent to perform various tasks. Each workflow follows a similar pattern:
+
+1. **Event Trigger**: GitHub event (issue opened, PR opened, mention) triggers the workflow
+2. **Context Gathering**: The workflow collects comprehensive context including issue/PR content, comments, and cross-references
+3. **OpenCode Processing**: The context is sent to OpenCode for AI analysis using configured LLM models
+4. **Response Generation**: OpenCode generates appropriate responses based on the analysis
+5. **Comment Posting**: The workflow posts the generated response as comments on the issue/PR
 
 ### Core Workflows
 
@@ -45,6 +51,20 @@ This workflow handles issue analysis when issues are opened or manually triggere
 - Uses OpenCode to analyze the issue and suggest solutions
 - Posts an initial acknowledgment and a detailed analysis report
 
+**Example Analysis Output:**
+```
+### Issue Assessment
+Based on my analysis, this issue appears to be a documentation gap. The user is requesting clearer installation instructions.
+
+### Root Cause
+The current README.md lacks step-by-step setup guidance for new users.
+
+### Suggested Solution
+1. Add detailed installation section with prerequisites
+2. Include troubleshooting guidance for common setup issues
+3. Provide configuration examples for different environments
+```
+
 #### PR Review (`pr-review.yml`)
 This workflow performs code reviews on pull requests. It:
 - Gathers complete PR context including diffs, comments, and reviews
@@ -52,11 +72,32 @@ This workflow performs code reviews on pull requests. It:
 - Adapts its tone when reviewing its own code (self-reviews)
 - Posts line-specific comments and a comprehensive summary
 
+**Example Review Output:**
+```
+### Overall Assessment
+This PR adds comprehensive documentation addressing issue #1. The structure follows logical progression from overview to detailed instructions.
+
+### Architectural Feedback
+The centralized README approach provides a single source of truth for users.
+
+### Key Suggestions
+- Consolidate duplicated configuration sections
+- Add more technical specifics about workflow internals
+- Include rate limiting information for LLM services
+```
+
 #### Bot Reply (`bot-reply.yml`)
 This workflow enables interactive conversations with the bot. It:
 - Responds when mentioned in issue or PR comments
 - Maintains full context of the conversation thread
 - Can assist with a wide variety of tasks from code questions to workflow explanations
+
+**Example Response Pattern:**
+```
+@user I'll help analyze this issue. Let me gather the context and provide a detailed assessment.
+
+[Detailed analysis follows...]
+```
 
 #### OpenCode Integration (`opencode.yml`)
 This workflow provides direct access to OpenCode's capabilities. It:
@@ -103,14 +144,18 @@ To interact with the Mirrobot agent:
 
 ## Configuration
 
-The bot requires the following secrets to be configured in your repository:
+### Repository Secrets
+The bot requires the following secrets to be configured in your repository. These should be added to your repository's Settings → Secrets and variables → Actions:
 
-- `BOT_APP_ID`: GitHub App ID
-- `BOT_PRIVATE_KEY`: GitHub App private key
-- `PROXY_BASE_URL`: Base URL for the LLM proxy
-- `PROXY_API_KEY`: API key for the LLM proxy
-- `OPENCODE_MODEL`: Main model identifier
-- `OPENCODE_FAST_MODEL`: Fast model identifier
+- `BOT_APP_ID`: GitHub App ID (numeric identifier)
+- `BOT_PRIVATE_KEY`: GitHub App private key in PEM format
+- `PROXY_BASE_URL`: Base URL for your LLM proxy service
+- `PROXY_API_KEY`: API key for authenticating with your LLM proxy
+- `OPENCODE_MODEL`: Main model identifier (e.g., "gpt-4") 
+- `OPENCODE_FAST_MODEL`: Fast model identifier for quick responses (e.g., "gpt-3.5-turbo")
+
+### Workflow Configuration
+Each workflow is configured to run automatically based on GitHub events. No additional configuration is required beyond the secrets above. The workflows will automatically detect when they should run based on repository events.
 
 ## Troubleshooting
 
@@ -186,6 +231,15 @@ This bot requires the following GitHub permissions:
 - Monitor bot activity for unusual patterns
 - Restrict bot access to only necessary repositories
 - Review bot comments for accuracy and appropriateness
+- Implement rate limiting for LLM API calls to manage costs and quotas
+- Set up monitoring for API usage and response times
+
+### Rate Limiting and API Quotas
+The bot relies on external LLM services which may have usage limits:
+- **Rate Limits**: Most LLM APIs impose request limits per minute/hour
+- **Cost Management**: Monitor usage to avoid unexpected charges
+- **Fallback Strategies**: Configure fallback models for high-volume usage
+- **Error Handling**: The workflows include retry logic for temporary API failures
 
 ## API Documentation
 
