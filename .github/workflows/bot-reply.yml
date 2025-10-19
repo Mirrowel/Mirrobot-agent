@@ -247,12 +247,13 @@ jobs:
                     }
                   }
                 }
-              },
-              "model": "llm-proxy/main_model",
-              "small_model": "llm-proxy/fast_model",
-              "username": "mirrobot-agent",
-              "autoupdate": true
-            }'
+              }
+            },
+            "model": "llm-proxy/main_model",
+            "small_model": "llm-proxy/fast_model",
+            "username": "mirrobot-agent",
+            "autoupdate": true
+          }'
           echo "$CONFIG" > ~/.config/opencode/opencode.json
 
       - name: Check for Python requirements file
