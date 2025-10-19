@@ -138,7 +138,6 @@ jobs:
       - name: Inject Custom Config (For Proxy Support)
         run: |
           mkdir -p ~/.config/opencode
-          # Build and write opencode.json with secrets
           CONFIG='{
             "$schema": "https://opencode.ai/config.json",
             "provider": {
@@ -148,24 +147,36 @@ jobs:
                 "options": {
                   "baseURL": "${{ secrets.PROXY_BASE_URL }}",
                   "apiKey": "${{ secrets.PROXY_API_KEY }}",
+                  "timeout": 300000, // 5 minute timeout in ms
                   "headers": {
                     "User-Agent": "OpenCode/1.0",
                     "X-Custom-Header": "your-value"
                   }
                 },
                 "models": {
-                  "${{ secrets.OPENCODE_MODEL }}": {
+                  "main_model": {
+                    "id": "${{ secrets.OPENCODE_MODEL }}",
                     "name": "Custom Model",
+                    "limit": {
+                      "context": 262000,
+                      "output": 64192
+                    }
+                  },
+                  "fast_model": {
+                    "id": "${{ secrets.OPENCODE_FAST_MODEL }}",
+                    "name": "Fast Custom Model",
                     "limit": {
                       "context": 262000,
                       "output": 64192
                     }
                   }
                 }
-              }
-            },
-            "autoupdate": true
-          }'
+              },
+              "model": "llm-proxy/main_model",
+              "small_model": "llm-proxy/fast_model",
+              "username": "mirrobot-agent",
+              "autoupdate": true
+            }'
           echo "$CONFIG" > ~/.config/opencode/opencode.json
 
       - name: Set up Python
@@ -206,7 +217,7 @@ jobs:
         run: |
           # Use a heredoc (<<'END_OF_PROMPT') to pass the prompt safely via stdin.
           # The "-" tells the opencode command to read the prompt from stdin.
-          opencode run --share -m llm-proxy/${{ secrets.OPENCODE_MODEL }} - <<'END_OF_PROMPT'
+          opencode run --share - <<'END_OF_PROMPT'
           # [ROLE AND OBJECTIVE]
           You are an expert AI code reviewer. Your goal is to provide meticulous, constructive, and actionable feedback by posting it directly to the pull request as a series of commands.
 

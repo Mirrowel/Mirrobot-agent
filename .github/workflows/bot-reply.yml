@@ -223,24 +223,36 @@ jobs:
                 "options": {
                   "baseURL": "${{ secrets.PROXY_BASE_URL }}",
                   "apiKey": "${{ secrets.PROXY_API_KEY }}",
+                  "timeout": 300000, // 5 minute timeout in ms
                   "headers": {
                     "User-Agent": "OpenCode/1.0",
                     "X-Custom-Header": "your-value"
                   }
                 },
                 "models": {
-                  "${{ secrets.OPENCODE_MODEL }}": {
+                  "main_model": {
+                    "id": "${{ secrets.OPENCODE_MODEL }}",
                     "name": "Custom Model",
+                    "limit": {
+                      "context": 262000,
+                      "output": 64192
+                    }
+                  },
+                  "fast_model": {
+                    "id": "${{ secrets.OPENCODE_FAST_MODEL }}",
+                    "name": "Fast Custom Model",
                     "limit": {
                       "context": 262000,
                       "output": 64192
                     }
                   }
                 }
-              }
-            },
-            "autoupdate": true
-          }'
+              },
+              "model": "llm-proxy/main_model",
+              "small_model": "llm-proxy/fast_model",
+              "username": "mirrobot-agent",
+              "autoupdate": true
+            }'
           echo "$CONFIG" > ~/.config/opencode/opencode.json
 
       - name: Set up Python
@@ -278,7 +290,7 @@ jobs:
               "webfetch": "deny"
             }
         run: |
-            opencode run --share -m llm-proxy/${{ secrets.OPENCODE_MODEL }} - <<'END_OF_PROMPT'
+            opencode run --share - <<'END_OF_PROMPT'
             # [ROLE & OBJECTIVE]
 
             You are an expert AI software engineer, acting as a principal-level collaborator. You have been mentioned in a GitHub discussion to provide assistance. Your function is to analyze the user's request in the context of the entire thread, autonomously select the appropriate strategy, and execute the plan step by step. Use your available tools, such as bash for running commands like gh or git, to interact with the repository, post comments, or make changes as needed.
