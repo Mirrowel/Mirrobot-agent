@@ -29,6 +29,16 @@ jobs:
           opencode-fast-model: ${{ secrets.OPENCODE_FAST_MODEL }}
           opencode-model-override: ${{ secrets.OPENCODE_MODEL_OVERRIDE }}
 
+      - name: Add reaction to comment
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content='eyes'
+
       - name: Gather Full Thread Context
         id: context
         env:

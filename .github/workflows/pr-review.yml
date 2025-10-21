@@ -48,6 +48,16 @@ jobs:
           opencode-fast-model: ${{ secrets.OPENCODE_FAST_MODEL }}
           opencode-model-override: ${{ secrets.OPENCODE_MODEL_OVERRIDE }}
 
+      - name: Add reaction to PR
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/issues/${{ env.PR_NUMBER }}/reactions \
+            -f content='eyes'
+
       - name: Fetch and Format Full PR Context
         id: pr_meta
         env:

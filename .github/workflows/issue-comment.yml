@@ -35,6 +35,16 @@ jobs:
           opencode-fast-model: ${{ secrets.OPENCODE_FAST_MODEL }}
           opencode-model-override: ${{ secrets.OPENCODE_MODEL_OVERRIDE }}
 
+      - name: Add reaction to issue
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/issues/${{ env.ISSUE_NUMBER }}/reactions \
+            -f content='eyes'
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
