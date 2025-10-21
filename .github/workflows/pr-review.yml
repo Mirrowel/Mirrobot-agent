@@ -12,6 +12,7 @@ on:
 
 jobs:
   review-pr:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request_target' && github.event.pull_request.draft == false) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
