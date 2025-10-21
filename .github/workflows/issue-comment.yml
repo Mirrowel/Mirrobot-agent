@@ -34,6 +34,7 @@ jobs:
           opencode-model: ${{ secrets.OPENCODE_MODEL }}
           opencode-fast-model: ${{ secrets.OPENCODE_FAST_MODEL }}
           opencode-model-override: ${{ secrets.OPENCODE_MODEL_OVERRIDE }}
+          opencode-api-key-override: ${{ secrets.OPENCODE_API_KEY_OVERRIDE }}
 
       - name: Add reaction to issue
         env:
@@ -103,7 +104,7 @@ jobs:
 
       - name: Analyze issue and suggest resolution
         env:
-          OPENCODE_API_KEY: ${{ secrets.PROXY_API_KEY }}
+          OPENCODE_API_KEY: ${{ steps.setup.outputs.opencode-api-key }}
           GITHUB_TOKEN: ${{ steps.setup.outputs.token }}
           OPENCODE_PERMISSION: |
             {

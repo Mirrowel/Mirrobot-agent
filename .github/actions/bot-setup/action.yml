@@ -23,6 +23,9 @@ inputs:
   opencode-model-override:
     description: 'The model override for opencode.'
     required: false
+  opencode-api-key-override:
+    description: 'The OpenCode API key override.'
+    required: false
 
 outputs:
   token:
@@ -31,6 +34,9 @@ outputs:
   model-arg:
     description: "The model argument for opencode."
     value: ${{ steps.model_override.outputs.model_arg }}
+  opencode-api-key:
+    description: "The final OpenCode API key to use."
+    value: ${{ steps.determine-api-key.outputs.final-key }}
 
 runs:
   using: "composite"
@@ -150,4 +156,16 @@ runs:
         else
           echo "No model override found, using default."
           echo "model_arg=" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Determine API Key
+      id: determine-api-key
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.opencode-api-key-override }}" ]; then
+          echo "Using API key override."
+          echo "final-key=${{ inputs.opencode-api-key-override }}" >> $GITHUB_OUTPUT
+        else
+          echo "Using default proxy API key."
+          echo "final-key=${{ inputs.proxy-api-key }}" >> $GITHUB_OUTPUT
         fi
