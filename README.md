@@ -15,10 +15,23 @@ An AI-powered GitHub bot built with [OpenCode](https://opencode.ai) that automat
 This repository contains GitHub Actions workflows that trigger the Mirrobot agent to perform various tasks. Each workflow follows a similar pattern:
 
 1. **Event Trigger**: GitHub event (issue opened, PR opened, mention) triggers the workflow
-2. **Context Gathering**: The workflow collects comprehensive context including issue/PR content, comments, and cross-references
-3. **OpenCode Processing**: The context is sent to OpenCode for AI analysis using configured LLM models
-4. **Response Generation**: OpenCode generates appropriate responses based on the analysis
-5. **Comment Posting**: The workflow posts the generated response as comments on the issue/PR
+2. **Bot Setup**: A reusable composite action handles common setup tasks including token generation, git configuration, dependency installation, and model override handling
+3. **Context Gathering**: The workflow collects comprehensive context including issue/PR content, comments, and cross-references
+4. **OpenCode Processing**: The context is sent to OpenCode for AI analysis using configured LLM models
+5. **Response Generation**: OpenCode generates appropriate responses based on the analysis
+6. **Comment Posting**: The workflow posts the generated response as comments on the issue/PR
+
+### Reusable Bot Setup Action
+
+The `.github/actions/bot-setup/action.yml` is a composite action that centralizes all common setup tasks:
+
+- **Token Generation**: Creates GitHub App tokens for API access
+- **Git Configuration**: Sets up git user identity and authentication
+- **Proxy Configuration**: Configures OpenCode with LLM proxy settings
+- **Dependency Management**: Installs Python dependencies and OpenCode CLI
+- **Model Override**: Supports runtime model selection via secrets
+
+This action eliminates code duplication across workflows and ensures consistent setup behavior.
 
 ### Core Workflows
 
@@ -43,6 +56,11 @@ This repository contains GitHub Actions workflows that trigger the Mirrobot agen
    - Restricted to repository maintainers (owners, members, collaborators)
    - Provides direct access to OpenCode's capabilities
 
+5. **Auto Reviewer Assignment** (`add-reviewer.yml`):
+   - Automatically assigns the mirrobot-agent as a reviewer when PRs are opened
+   - Ensures the bot is included in the review process
+   - Helps trigger automated reviews for eligible PRs
+
 ### Workflow Details
 
 #### Issue Analysis (`issue-comment.yml`)
@@ -66,11 +84,24 @@ The current README.md lacks step-by-step setup guidance for new users.
 ```
 
 #### PR Review (`pr-review.yml`)
-This workflow performs code reviews on pull requests. It:
-- Gathers complete PR context including diffs, comments, and reviews
-- Conducts a thorough code review focusing on high-impact issues
+This workflow performs intelligent code reviews on pull requests with advanced features:
+
+**Core Functionality:**
+- Gathers complete PR context including diffs, comments, reviews, and cross-references
+- Conducts thorough code reviews focusing on high-impact issues
 - Adapts its tone when reviewing its own code (self-reviews)
-- Posts line-specific comments and a comprehensive summary
+- Posts line-specific comments and comprehensive summaries
+
+**Enhanced Features:**
+- **Concurrency Controls**: Prevents duplicate review runs using workflow-level concurrency
+- **Smart Triggers**: Handles draft PRs, requested reviewers, and ready-for-review events
+- **Incremental Reviews**: Generates focused diffs for follow-up reviews, only analyzing new changes
+- **Review State Tracking**: Tracks last reviewed SHA to avoid redundant analysis
+- **Model Override Support**: Can use different models via `OPENCODE_MODEL_OVERRIDE` secret
+
+**Review Types:**
+- **First Review**: Comprehensive analysis of the entire PR
+- **Follow-up Review**: Focused analysis of new commits since last review
 
 **Example Review Output:**
 ```
@@ -104,6 +135,12 @@ This workflow provides direct access to OpenCode's capabilities. It:
 - Allows maintainers to trigger custom OpenCode prompts
 - Provides flexibility for specialized tasks not covered by other workflows
 - Requires maintainer permissions for security
+
+#### Auto Reviewer Assignment (`add-reviewer.yml`)
+This workflow ensures the bot is included in PR reviews. It:
+- Automatically assigns mirrobot-agent as a reviewer when PRs are opened
+- Triggers the PR review workflow through the reviewer assignment mechanism
+- Works with the enhanced PR review workflow's smart triggering logic
 
 ## Usage
 
@@ -147,6 +184,7 @@ To interact with the Mirrobot agent:
 ### Repository Secrets
 The bot requires the following secrets to be configured in your repository. These should be added to your repository's Settings → Secrets and variables → Actions:
 
+**Required Secrets:**
 - `BOT_APP_ID`: GitHub App ID (numeric identifier)
 - `BOT_PRIVATE_KEY`: GitHub App private key in PEM format
 - `PROXY_BASE_URL`: Base URL for your LLM proxy service
@@ -154,8 +192,21 @@ The bot requires the following secrets to be configured in your repository. Thes
 - `OPENCODE_MODEL`: Main model identifier (e.g., "gpt-4") 
 - `OPENCODE_FAST_MODEL`: Fast model identifier for quick responses (e.g., "gpt-3.5-turbo")
 
+**Optional Secrets:**
+- `OPENCODE_MODEL_OVERRIDE`: Override model for specific runs (useful for testing different models)
+
 ### Workflow Configuration
 Each workflow is configured to run automatically based on GitHub events. No additional configuration is required beyond the secrets above. The workflows will automatically detect when they should run based on repository events.
+
+**PR Review Workflow Triggers:**
+- **Automatic**: PR opened, synchronized, or marked ready for review
+- **Manual**: Can be triggered manually for any PR number
+- **Conditional**: Only runs for non-draft PRs or when specifically requested as reviewer
+
+**Concurrency Management:**
+- PR reviews use concurrency groups to prevent duplicate runs
+- Multiple triggers for the same PR will cancel previous runs
+- Ensures only one active review per PR at any time
 
 ## Troubleshooting
 
@@ -197,12 +248,33 @@ When a new issue is opened, the bot automatically analyzes it and provides:
 - Assessment of issue severity and priority
 
 ### PR Review Example
-When a PR is opened, the bot performs a comprehensive review:
+When a PR is opened, the bot performs an intelligent review:
+
+**First Review:**
+- Comprehensive analysis of all changes
 - Line-specific comments for code improvements
-- Architectural feedback
-- Security considerations
+- Architectural feedback and security considerations
 - Performance optimizations
 - Special humorous tone when reviewing its own code
+
+**Follow-up Review:**
+- Focused analysis of only new commits since last review
+- Incremental diff generation to identify changed areas
+- Verification that previous feedback has been addressed
+- Status update on PR readiness
+
+**Review Output Example:**
+```
+### Overall Assessment
+This PR adds comprehensive documentation with logical structure.
+
+### Key Suggestions
+- Consolidate duplicated configuration sections
+- Add more technical specifics about workflow internals
+
+### Follow-up Review (for subsequent commits)
+The new commits address the previous feedback well. This PR is now ready for merge.
+```
 
 ### Self-Review Example
 The bot has unique capabilities for reviewing its own contributions:
@@ -240,6 +312,7 @@ The bot relies on external LLM services which may have usage limits:
 - **Cost Management**: Monitor usage to avoid unexpected charges
 - **Fallback Strategies**: Configure fallback models for high-volume usage
 - **Error Handling**: The workflows include retry logic for temporary API failures
+- **Model Override**: Use `OPENCODE_MODEL_OVERRIDE` secret to temporarily switch models for testing or cost optimization
 
 ## API Documentation
 
@@ -268,18 +341,61 @@ The bot follows specific response patterns:
 - The bot cannot modify code directly (only comment)
 - Self-reviews have special handling to avoid infinite loops
 
+## Bot Setup Action
+
+### Overview
+The reusable bot setup action (`.github/actions/bot-setup/action.yml`) is a composite action that centralizes all common setup tasks across workflows. This approach eliminates code duplication and ensures consistent behavior.
+
+### Features
+- **Token Management**: Automatic GitHub App token generation and configuration
+- **Git Configuration**: Sets up bot identity and authentication for git operations
+- **Proxy Setup**: Configures OpenCode with LLM proxy settings and custom headers
+- **Dependency Installation**: Handles Python dependencies and OpenCode CLI installation
+- **Model Override**: Supports runtime model selection via optional input
+- **Error Handling**: Graceful handling of missing dependencies and configuration issues
+
+### Usage in Workflows
+```yaml
+- name: Bot Setup
+  id: setup
+  uses: ./.github/actions/bot-setup
+  with:
+    bot-app-id: ${{ secrets.BOT_APP_ID }}
+    bot-private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+    proxy-base-url: ${{ secrets.PROXY_BASE_URL }}
+    proxy-api-key: ${{ secrets.PROXY_API_KEY }}
+    opencode-model: ${{ secrets.OPENCODE_MODEL }}
+    opencode-fast-model: ${{ secrets.OPENCODE_FAST_MODEL }}
+    opencode-model-override: ${{ secrets.OPENCODE_MODEL_OVERRIDE }}
+```
+
+### Outputs
+- `token`: Generated GitHub App token for API access
+- `model_arg`: Model argument string for OpenCode commands
+
+### Benefits
+- **Maintainability**: Single source of truth for setup logic
+- **Consistency**: Ensures all workflows use identical setup procedures
+- **Flexibility**: Supports model overrides and optional features
+- **Reliability**: Centralized error handling and validation
+
 ## Development Guide
 
 ### Project Structure
 ```
 .github/
+├── actions/
+│   └── bot-setup/
+│       └── action.yml       # Reusable bot setup action
 ├── workflows/
 │   ├── issue-comment.yml    # Issue analysis workflow
-│   ├── pr-review.yml        # PR review workflow
+│   ├── pr-review.yml        # Enhanced PR review workflow
 │   ├── bot-reply.yml        # Bot response workflow
-│   └── opencode.yml         # OpenCode integration
+│   ├── opencode.yml         # OpenCode integration
+│   └── add-reviewer.yml     # Auto reviewer assignment
 └── prompts/
-    └── bot-reply.md         # Core bot logic and prompts
+    ├── bot-reply.md         # Core bot logic and prompts
+    └── pr-review.md         # PR review specific prompts
 ```
 
 ### Contributing Guidelines
