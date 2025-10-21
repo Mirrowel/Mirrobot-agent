@@ -66,10 +66,9 @@ This repository contains GitHub Actions workflows that trigger the Mirrobot agen
 | Workflow                      | File                                                              | Trigger                                                                 | Description                                                                                                                              |
 | ----------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Issue Analysis**            | [`issue-comment.yml`](.github/workflows/issue-comment.yml)        | `issues: [opened]`, `workflow_dispatch`                                 | Analyzes new issues, provides an initial assessment, and can be manually triggered for existing issues.                                  |
-| **PR Review**                 | [`pr-review.yml`](.github/workflows/pr-review.yml)                | `pull_request_target: [opened, synchronize, ready_for_review]`          | Performs a comprehensive code review on new pull requests, providing line-specific comments and a summary.                             |
+| **PR Review**                 | [`pr-review.yml`](.github/workflows/pr-review.yml)                | `pull_request_target: [opened, synchronize, ready_for_review]`, `issue_comment`                                  | Performs code reviews. Always runs for new PRs and those marked "ready for review". Also runs on updates or via comment command for PRs with the `Agent Monitored` label. |
 | **Bot Reply**                 | [`bot-reply.yml`](.github/workflows/bot-reply.yml)                | `issue_comment: [created]` (if bot is mentioned)                        | Responds to requests and questions when the bot is mentioned in any issue or PR comment, maintaining full conversation context.         |
 | **OpenCode Integration**      | [`opencode.yml`](.github/workflows/opencode.yml)                  | `issue_comment: [created]` (if `/oc` or `/opencode` is used)            | Enables manual triggering of the agent with custom prompts, restricted to repository maintainers.                                        |
-| **Manual Reviewer Assignment** | [`add-reviewer.yml`](.github/workflows/add-reviewer.yml)          | `issue_comment: [created]` (if `/mirrobot-add` is used)                 | Manually assigns the bot as a reviewer to a PR to initiate a review.                                                                     |
 
 ### Workflow Details
 
@@ -98,7 +97,7 @@ This workflow performs intelligent code reviews on pull requests with advanced f
 
 **Enhanced Features:**
 - **Concurrency Controls**: Prevents duplicate review runs using workflow-level concurrency.
-- **Smart Triggers**: Handles draft PRs, requested reviewers, and ready-for-review events.
+- **Smart Triggers**: Automatically reviews new and "ready for review" PRs. Uses the `Agent Monitored` label to selectively review PR updates and respond to comment-based review requests.
 - **Incremental Reviews**: Generates focused diffs for follow-up reviews, only analyzing new changes.
 - **Review State Tracking**: Tracks the last reviewed SHA to avoid redundant analysis.
 - **Model Override Support**: Can use different models via the `OPENCODE_MODEL_OVERRIDE` secret.
@@ -121,7 +120,7 @@ To interact with the Mirrobot agent, use one of the following methods:
     -   For PRs: Use the "Run workflow" button on the "PR Review" action.
 
 -   **Use slash commands** in a comment:
-    -   `/mirrobot-add`: Manually assign the bot as a reviewer to a Pull Request.
+    -   `/mirrobot-review` or `/mirrobot_review`: Manually trigger a review for a PR with the `Agent Monitored` label.
     -   `/oc <prompt>` or `/opencode <prompt>`: Trigger a direct OpenCode prompt (maintainers only).
 
 ## Installation Guide
@@ -214,7 +213,7 @@ The bot responds to the following commands:
 - `@mirrobot-agent analyze this` - Request an issue analysis
 
 **Slash commands:**
-- `/mirrobot-add` - Manually assign the bot as a reviewer to a Pull Request.
+- `/mirrobot-review` or `/mirrobot_review` - Manually trigger a review for a PR with the `Agent Monitored` label.
 - `/oc <prompt>` or `/opencode <prompt>` - Trigger a direct OpenCode prompt (maintainers only).
 
 ### Response Patterns
@@ -245,8 +244,7 @@ The bot follows specific response patterns:
 │   ├── issue-comment.yml    # Issue analysis workflow
 │   ├── pr-review.yml        # Enhanced PR review workflow
 │   ├── bot-reply.yml        # Bot response workflow
-│   ├── opencode.yml         # OpenCode integration
-│   └── add-reviewer.yml     # Manual reviewer assignment
+│   └── opencode.yml         # OpenCode integration
 └── prompts/
     ├── bot-reply.md         # Core bot logic and prompts
     └── pr-review.md         # PR review specific prompts
