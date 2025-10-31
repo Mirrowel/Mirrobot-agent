@@ -26,7 +26,6 @@ jobs:
       (
         github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
-        contains(github.event.issue.labels.*.name, 'Agent Monitored') &&
         (contains(github.event.comment.body, '/mirrobot-review') || contains(github.event.comment.body, '/mirrobot_review'))
       )
     runs-on: ubuntu-latest
