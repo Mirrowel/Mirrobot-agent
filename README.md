@@ -129,7 +129,7 @@ To provide accurate and insightful reviews, the agent gathers extensive context 
 
 **Other Features:**
 - **Concurrency Controls**: Prevents duplicate review runs on the same PR.
-- - **Smart Triggers**: Automatically reviews new and "ready for review" PRs. For PRs with the `Agent Monitored` label, it also runs on updates. Or when triggered by a `/mirrobot-review` command.
+- **Smart Triggers**: Automatically reviews new and "ready for review" PRs. For PRs with the `Agent Monitored` label, it also runs on updates. Or when triggered by a `/mirrobot-review` command.
 - **Incremental Reviews**: For follow-up reviews, the agent generates a diff between the last reviewed commit and the current PR head. If the old commit is not found (e.g., after a rebase), it falls back to a full review.
 - **Review State Tracking**: Remembers the last reviewed commit SHA to avoid redundant analysis.
 
@@ -183,7 +183,7 @@ The bot requires the following secrets to be configured in your repository.
 | `BOT_PRIVATE_KEY`     | Your GitHub App private key in PEM format.                                |
 | `OPENCODE_API_KEY`    | The default API key to be used if none is provided in the config.       |
 | `OPENCODE_MODEL`      | The main model identifier (e.g., "opencode/big-pickle").                        |
-| `OPENCODE_FAST_MODEL` | The fast model for quick responses an lesser tasks (e.g., "openai/gpt-3.5-turbo").        |
+| `OPENCODE_FAST_MODEL` | The fast model for quick responses and lesser tasks (e.g., "openai/gpt-3.5-turbo").        |
 
 ### Optional Secrets
 
