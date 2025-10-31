@@ -232,6 +232,9 @@ jobs:
             fi
           fi
 
+      - name: Save secure prompt from base branch
+        run: cp .github/prompts/pr-review.md /tmp/pr-review.md
+
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
@@ -239,9 +242,6 @@ jobs:
           ref: ${{ steps.pr_meta.outputs.ref_name }}
           token: ${{ steps.setup.outputs.token }}
           fetch-depth: 0
-
-      - name: Fetch prompts from base branch (Security)
-        run: git checkout origin/${{ github.event.repository.default_branch }} -- .github/prompts .github/actions/bot-setup
 
       - name: Generate Incremental Diff
         if: steps.review_type.outputs.is_first_review == 'false' && steps.review_type.outputs.last_reviewed_sha != ''
@@ -287,4 +287,4 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_HEAD_SHA: ${{ env.PR_HEAD_SHA }}
         run: |
-          envsubst < .github/prompts/pr-review.md | opencode run --share -
+          envsubst < /tmp/pr-review.md | opencode run --share -
