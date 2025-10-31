@@ -66,9 +66,9 @@ This repository contains GitHub Actions workflows that trigger the Mirrobot agen
 | Workflow                      | File                                                              | Trigger                                                                 | Description                                                                                                                              |
 | ----------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Issue Analysis**            | [`issue-comment.yml`](.github/workflows/issue-comment.yml)        | `issues: [opened]`, `workflow_dispatch`                                 | Analyzes new issues, provides an initial assessment, and can be manually triggered for existing issues.                                  |
-| **PR Review**                 | [`pr-review.yml`](.github/workflows/pr-review.yml)                | `pull_request_target: [opened, synchronize, ready_for_review]`, `issue_comment`                                  | Performs code reviews. Always runs for new PRs and those marked "ready for review". Also runs on updates or via comment command for PRs with the `Agent Monitored` label. |
+| **PR Review**                 | [`pr-review.yml`](.github/workflows/pr-review.yml)                | `pull_request_target: [opened, synchronize, ready_for_review]`, `issue_comment`                                  | Performs code reviews. Always runs for new PRs and those marked "ready for review". Also runs on updates or via comment command for PRs. |
 | **Bot Reply**                 | [`bot-reply.yml`](.github/workflows/bot-reply.yml)                | `issue_comment: [created]` (if bot is mentioned)                        | Responds to requests and questions when the bot is mentioned in any issue or PR comment, maintaining full conversation context.         |
-| **OpenCode Integration**      | [`opencode.yml`](.github/workflows/opencode.yml)                  | `issue_comment: [created]` (if `/oc` or `/opencode` is used)            | Enables manual triggering of the agent with custom prompts, restricted to repository maintainers.                                        |
+| **OpenCode Integration(Legacy)**      | [`opencode.yml`](.github/workflows/opencode.yml)                  | `issue_comment: [created]` (if `/oc` or `/opencode` is used)            | Enables manual triggering of the agent with custom prompts, restricted to repository maintainers.                                        |
 
 ### Workflow Details
 
@@ -93,18 +93,45 @@ The current README.md lacks step-by-step setup guidance for new users.
 ```
 
 #### PR Review (`pr-review.yml`)
-This workflow performs intelligent code reviews on pull requests with advanced features:
+This workflow performs intelligent code reviews using a three-phase process to deliver high-quality, bundled feedback.
 
-**Enhanced Features:**
-- **Concurrency Controls**: Prevents duplicate review runs using workflow-level concurrency.
-- **Smart Triggers**: Automatically reviews new and "ready for review" PRs. Uses the `Agent Monitored` label to selectively review PR updates and respond to comment-based review requests.
-- **Incremental Reviews**: Generates focused diffs for follow-up reviews, only analyzing new changes.
-- **Review State Tracking**: Tracks the last reviewed SHA to avoid redundant analysis.
-- **Model Override Support**: Can use different models via the `OPENCODE_MODEL_OVERRIDE` secret.
+**Bundled Review Process**
+The agent submits a single, comprehensive review per PR instead of multiple individual comments. This keeps the PR timeline clean and easy to follow. The process consists of three phases:
 
-**Review Types:**
-- **First Review**: Comprehensive analysis of the entire PR.
-- **Follow-up Review**: Focused analysis of new commits since the last review.
+1.  **Collect**: The agent performs a full analysis of the PR diff, generating all potential findings internally.
+2.  **Curate**: It then filters the findings based on a **"HIGH-SIGNAL, LOW-NOISE"** philosophy, selecting only the most critical, high-impact, and valuable comments. Trivial style suggestions and duplicate points are discarded.
+3.  **Submit**: The curated line comments are bundled with a high-level summary and submitted as a single, formal GitHub Review. The review is submitted with the appropriate status (`APPROVE`, `REQUEST_CHANGES`, or `COMMENT`) based on the severity of the findings.
+
+**Example Review Summary:**
+```
+### Overall Assessment
+This PR introduces a new authentication flow that is well-structured and follows best practices. I've included a few minor suggestions for improving error handling.
+
+### Key Suggestions
+- **`src/auth.js:45`**: Consider adding a `try-catch` block here to handle potential token validation errors gracefully.
+- **`src/routes.js:112`**: This route should have an authorization middleware to protect it.
+```
+
+**Workflow Triggers and Conditions**
+The PR review workflow is triggered by the following events and conditions:
+- **Direct PR Events**: Runs automatically when a pull request is `opened` (and not a draft) or marked as `ready_for_review`.
+- **Manual Dispatch**: Can be triggered manually via the GitHub Actions UI using the `workflow_dispatch` event, requiring a PR number as input.
+- **Monitored Updates**: When a PR has the `Agent Monitored` label, the workflow runs on every `synchronize` event (i.e., when new commits are pushed).
+- **Comment Command**: A review can be manually requested on a PR by commenting `/mirrobot-review` or `/mirrobot_review`.
+
+**Rich Context Gathering**
+To provide accurate and insightful reviews, the agent gathers extensive context from the pull request, including:
+- **Full PR Metadata**: Title, body, author, branches, and statistics.
+- **Filtered Discussion**: Fetches all comments and reviews, but intelligently filters out outdated comments and dismissed or purely informational reviews to reduce noise.
+- **Linked Issues**: Retrieves the title and body of any issues linked for closure in the PR.
+- **Cross-References**: Finds mentions of the PR in other issues or pull requests.
+- **Complete Diff**: The full `diff` of the pull request is included in the context to power the code analysis.
+
+**Other Features:**
+- **Concurrency Controls**: Prevents duplicate review runs on the same PR.
+- **Smart Triggers**: Automatically reviews new and "ready for review" PRs. For PRs with the `Agent Monitored` label, it also runs on updates. Or when triggered by a `/mirrobot-review` command.
+- **Incremental Reviews**: For follow-up reviews, the agent generates a diff between the last reviewed commit and the current PR head. If the old commit is not found (e.g., after a rebase), it falls back to a full review.
+- **Review State Tracking**: Remembers the last reviewed commit SHA to avoid redundant analysis.
 
 ## Usage
 
@@ -120,8 +147,7 @@ To interact with the Mirrobot agent, use one of the following methods:
     -   For PRs: Use the "Run workflow" button on the "PR Review" action.
 
 -   **Use slash commands** in a comment:
-    -   `/mirrobot-review` or `/mirrobot_review`: Manually trigger a review for a PR with the `Agent Monitored` label.
-    -   `/oc <prompt>` or `/opencode <prompt>`: Trigger a direct OpenCode prompt (maintainers only).
+    -   `/mirrobot-review` or `/mirrobot_review`: Manually trigger a review for a PR.
 
 ## Installation Guide
 
@@ -151,21 +177,44 @@ The bot requires the following secrets to be configured in your repository.
 
 ### Required Secrets
 
-| Secret                 | Description                                                              |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `BOT_APP_ID`           | Your GitHub App ID.                                                      |
-| `BOT_PRIVATE_KEY`      | Your GitHub App private key in PEM format.                               |
-| `PROXY_BASE_URL`       | The base URL for your LLM proxy service.                                 |
-| `PROXY_API_KEY`        | The API key for authenticating with your LLM proxy.                      |
-| `OPENCODE_MODEL`       | The main model identifier (e.g., "gpt-4").                               |
-| `OPENCODE_FAST_MODEL`  | The fast model identifier for quick responses (e.g., "gpt-3.5-turbo").   |
+| Secret                | Description                                                               |
+| --------------------- | ------------------------------------------------------------------------- |
+| `BOT_APP_ID`          | Your GitHub App ID.                                                       |
+| `BOT_PRIVATE_KEY`     | Your GitHub App private key in PEM format.                                |
+| `OPENCODE_API_KEY`    | The default API key to be used if none is provided in the config.       |
+| `OPENCODE_MODEL`      | The main model identifier (e.g., "opencode/big-pickle").                        |
+| `OPENCODE_FAST_MODEL` | The fast model for quick responses and lesser tasks (e.g., "openai/gpt-3.5-turbo").        |
 
 ### Optional Secrets
 
-| Secret                      | Description                                                                 |
-| --------------------------- | --------------------------------------------------------------------------- |
-| `OPENCODE_MODEL_OVERRIDE`   | Overrides the default model for specific runs, useful for testing.          |
-| `OPENCODE_API_KEY_OVERRIDE` | Overrides the default API key for specific runs, useful for testing proxy setups. |
+| Secret                  | Description                                                                                                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CUSTOM_PROVIDERS_JSON` | A single-line JSON string to define custom LLM providers, such as proxied services or self-hosted models. This enables the agent to connect to any compatible LLM API. |
+
+**Example `CUSTOM_PROVIDERS_JSON`:**
+
+To use a custom provider, create a `custom_providers.json` file:
+```json
+{
+  "my-proxy": {
+    "label": "My Custom Proxy",
+    "options": {
+      "apiKey": "your-secret-proxy-key",
+      "baseURL": "https://my.proxy.com/v1"
+    },
+    "models": {
+      "llama3-70b": {
+        "label": "Llama 3 70B (via Proxy)"
+      }
+    }
+  }
+}
+```
+Then, use the `minify_json_secret.py` script to convert it into a single-line string for the GitHub secret:
+```bash
+python minify_json_secret.py custom_providers.json
+```
+The output can be pasted into the `CUSTOM_PROVIDERS_JSON` secret. You can then set `OPENCODE_MODEL` to `my-proxy/llama3-70b` in your secrets to use this model.
 
 ## Reusable Bot Setup Action
 
@@ -173,12 +222,10 @@ The reusable bot setup action (`.github/actions/bot-setup/action.yml`) is a comp
 
 ### Features
 
--   **Token Management**: Automatic GitHub App token generation and configuration.
--   **Git Configuration**: Sets up the bot's identity and authentication for git operations.
--   **Proxy Setup**: Configures OpenCode with LLM proxy settings and custom headers.
--   **Dependency Installation**: Handles Python dependencies and OpenCode CLI installation.
--   **Model Override**: Supports runtime model selection via optional input.
--   **Error Handling**: Graceful handling of missing dependencies and configuration issues.
+-   **Generates Dynamic Provider Configuration**: Creates the `opencode.json` file at runtime to enable integration with any standard or custom LLM provider.
+-   **Manages GitHub App Authentication**: Generates a GitHub App token for API access.
+-   **Configures Git Identity**: Sets up the bot's user name and email for git operations.
+-   **Installs Dependencies**: Installs Python dependencies and the OpenCode CLI.
 
 ### Usage in Workflows
 
@@ -189,17 +236,15 @@ The reusable bot setup action (`.github/actions/bot-setup/action.yml`) is a comp
   with:
     bot-app-id: ${{ secrets.BOT_APP_ID }}
     bot-private-key: ${{ secrets.BOT_PRIVATE_KEY }}
-    proxy-base-url: ${{ secrets.PROXY_BASE_URL }}
-    proxy-api-key: ${{ secrets.PROXY_API_KEY }}
+    opencode-api-key: ${{ secrets.OPENCODE_API_KEY }}
     opencode-model: ${{ secrets.OPENCODE_MODEL }}
     opencode-fast-model: ${{ secrets.OPENCODE_FAST_MODEL }}
-    opencode-model-override: ${{ secrets.OPENCODE_MODEL_OVERRIDE }}
+    custom-providers-json: ${{ secrets.CUSTOM_PROVIDERS_JSON }}
 ```
 
 ### Outputs
 
 -   `token`: The generated GitHub App token for API access.
--   `model_arg`: The model argument string for OpenCode commands.
 
 ## API Documentation
 
@@ -213,8 +258,7 @@ The bot responds to the following commands:
 - `@mirrobot-agent analyze this` - Request an issue analysis
 
 **Slash commands:**
-- `/mirrobot-review` or `/mirrobot_review` - Manually trigger a review for a PR with the `Agent Monitored` label.
-- `/oc <prompt>` or `/opencode <prompt>` - Trigger a direct OpenCode prompt (maintainers only).
+- `/mirrobot-review` or `/mirrobot_review` - Manually trigger a review for a PR.
 
 ### Response Patterns
 
