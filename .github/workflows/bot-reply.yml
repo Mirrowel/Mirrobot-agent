@@ -97,9 +97,11 @@ jobs:
             total_commits=$(echo "$pr_json" | jq -r '.commits | length')
             changed_files_count=$(echo "$pr_json" | jq -r '.files | length')
             title=$(echo "$pr_json" | jq -r .title)
-            body=$(echo "$pr_json" | jq -r .body)
+            body=$(echo "$pr_json" | jq -r '.body // "(No description provided)"')
             # Prepare changed files list
-            changed_files_list=$(echo "$pr_json" | jq -r '.files[] | "- \(.path) (MODIFIED) +\((.additions))/-((.deletions))"')
+            # Build changed files list with correct jq interpolations for additions and deletions
+            # Previous pattern had a missing backslash before the deletions interpolation, leaving a literal '((.deletions))'.
+            changed_files_list=$(echo "$pr_json" | jq -r '.files[] | "- \(.path) (MODIFIED) +\((.additions))/-\((.deletions))"')
             # Prepare general PR comments
             comments=$(echo "$pr_json" | jq -r 'if (.comments | length) > 0 then .comments[] | "- \(.author.login // "unknown") at \(.createdAt // "N/A"):\n\(.body // "")\n" else "No general comments." end')
             
@@ -134,7 +136,8 @@ jobs:
             fi
             
             # Build filtering summary
-            filter_summary="Context filtering applied: $excluded_reviews reviews and $excluded_comments review comments excluded from this context."
+            # Ensure numeric fallbacks so blanks never appear if variables are empty
+            filter_summary="Context filtering applied: ${excluded_reviews:-0} reviews and ${excluded_comments:-0} review comments excluded from this context."
 
             # Prepare linked issues robustly by fetching each one individually.
             linked_issues_content=""
@@ -166,8 +169,8 @@ jobs:
             echo "Title: $title" >> "$GITHUB_ENV"
             echo "Author: $author" >> "$GITHUB_ENV"
             echo "Created At: $created_at" >> "$GITHUB_ENV"
-            echo "Base Branch: $base_branch" >> "$GITHUB_ENV"
-            echo "Head Branch: $head_branch" >> "$GITHUB_ENV"
+            echo "Base Branch (target): $base_branch" >> "$GITHUB_ENV"
+            echo "Head Branch (source): $head_branch" >> "$GITHUB_ENV"
             echo "State: $state" >> "$GITHUB_ENV"
             echo "Additions: $additions" >> "$GITHUB_ENV"
             echo "Deletions: $deletions" >> "$GITHUB_ENV"
@@ -214,7 +217,7 @@ jobs:
             created_at=$(echo "$issue_data" | jq -r .createdAt)
             state=$(echo "$issue_data" | jq -r .state)
             title=$(echo "$issue_data" | jq -r .title)
-            body=$(echo "$issue_data" | jq -r .body)
+            body=$(echo "$issue_data" | jq -r '.body // "(No description provided)"')
             # Prepare comments
             comments=$(echo "$issue_data" | jq -r 'if (.comments | length) > 0 then .comments[] | "- \(.author.login // "unknown") at \(.createdAt // "N/A"):\n\(.body // "")\n" else "No comments have been posted yet." end')
 
@@ -255,14 +258,14 @@ jobs:
           repository: ${{ steps.context.outputs.repo_full_name }}
           ref: ${{ steps.context.outputs.ref_name }}
           token: ${{ steps.setup.outputs.token }}
-          fetch-depth: 0
+          fetch-depth: 0  # Full history needed for git operations and code analysis
 
       - name: Checkout repository (for issues)
         if: steps.context.outputs.IS_PR == 'false'
         uses: actions/checkout@v4
         with:
           token: ${{ steps.setup.outputs.token }}
-          fetch-depth: 0
+          fetch-depth: 0  # Full history needed for git operations and code analysis
 
       - name: Analyze comment and respond
         env:
@@ -278,9 +281,12 @@ jobs:
             {
               "bash": {
                 "gh*": "allow",
-                "git*": "allow"
+                "git*": "allow",
+                "jq*": "allow"
               },
               "webfetch": "deny"
             }
         run: |
-            envsubst < /tmp/bot-reply.md | opencode run --share -
+            # Only substitute the variables we intend; leave example $vars and secrets intact
+            VARS='$THREAD_CONTEXT $NEW_COMMENT_AUTHOR $NEW_COMMENT_BODY $THREAD_NUMBER $GITHUB_REPOSITORY $THREAD_AUTHOR $PR_HEAD_SHA'
+            envsubst "$VARS" < /tmp/bot-reply.md | opencode run --share -

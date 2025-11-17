@@ -10,7 +10,7 @@ inputs:
     required: true
   opencode-api-key:
     description: 'The default API key, used for providers that do not have one defined in the custom providers JSON.'
-    required: false
+    required: true
   opencode-model:
     description: 'The main model to use (e.g., openai/gpt-4o or a custom one from custom providers JSON).'
     required: true
@@ -139,9 +139,9 @@ runs:
 
         # --- FINALIZATION ---
         echo "$CONFIG" > ~/.config/opencode/opencode.json
-        echo "--- Generated OpenCode Configuration ---"
-        jq . ~/.config/opencode/opencode.json
-        echo "----------------------------------------"
+        # echo "--- Generated OpenCode Configuration ---"
+        # jq . ~/.config/opencode/opencode.json
+        # echo "----------------------------------------"
         echo "Successfully generated OpenCode configuration."
 
     - name: Check for Python requirements file
