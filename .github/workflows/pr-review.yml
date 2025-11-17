@@ -35,6 +35,8 @@ jobs:
 
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.prNumber }}
+      BOT_NAMES_JSON: '["mirrobot", "mirrobot-agent", "mirrobot-agent[bot]"]'
+      IGNORE_BOT_NAMES_JSON: '["ellipsis-dev"]'
 
     steps:
 
@@ -55,6 +57,8 @@ jobs:
       - name: Add reaction to PR
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
+          BOT_NAMES_JSON: ${{ env.BOT_NAMES_JSON }}
+          IGNORE_BOT_NAMES_JSON: ${{ env.IGNORE_BOT_NAMES_JSON }}
         run: |
           gh api \
             --method POST \
@@ -102,31 +106,31 @@ jobs:
           # ===== ENHANCED FILTERING WITH ERROR HANDLING =====
           
           # Count totals before filtering
-          total_reviews=$(echo "$pr_json" | jq '[.reviews[] | select(.author.login != "ellipsis-dev")] | length')
-          total_review_comments=$(echo "$review_comments_json" | jq '[.[] | select(.user.login != "ellipsis-dev")] | length')
+          total_reviews=$(echo "$pr_json" | jq --argjson ignored "$IGNORE_BOT_NAMES_JSON" '[.reviews[]? | select((.author.login as $login | $ignored | index($login)) | not)] | length')
+          total_review_comments=$(echo "$review_comments_json" | jq --argjson ignored "$IGNORE_BOT_NAMES_JSON" '[.[]? | select((.user.login as $login | $ignored | index($login)) | not)] | length')
           
           # Filter reviews: exclude COMMENTED (duplicates inline comments) and DISMISSED states
           # Fallback to unfiltered if jq fails
-          if reviews=$(echo "$pr_json" | jq -r 'if (.reviews | length) > 0 then (.reviews[] | select(.author.login != "ellipsis-dev" and .body != null and .state != "COMMENTED" and .state != "DISMISSED") | "- \(.author.login // "unknown") at \(.createdAt // "N/A"):\n - Review body: \(.body // "No summary comment.")\n - State: \(.state // "UNKNOWN")\n") else "No formal reviews." end' 2>/dev/null); then
+          if reviews=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (.reviews | length) > 0 then (.reviews[] | select((.author.login as $login | $ignored | index($login)) | not and .body != null and .state != "COMMENTED" and .state != "DISMISSED") | "- \(.author.login // \"unknown\") at \(.createdAt // \"N/A\"):\n - Review body: \(.body // \"No summary comment.\")\n - State: \(.state // \"UNKNOWN\")\n") else "No formal reviews." end' 2>/dev/null); then
             filtered_reviews=$(echo "$reviews" | grep -c "^- " || echo "0")
             excluded_reviews=$((total_reviews - filtered_reviews))
             echo "✓ Filtered reviews: $filtered_reviews included, $excluded_reviews excluded (COMMENTED/DISMISSED)"
           else
             echo "::warning::Review filtering failed, using unfiltered data"
-            reviews=$(echo "$pr_json" | jq -r 'if (.reviews | length) > 0 then (.reviews[] | select(.author.login != "ellipsis-dev" and .body != null) | "- \(.author.login // "unknown") at \(.createdAt // "N/A"):\n - Review body: \(.body // "No summary comment.")\n - State: \(.state // "UNKNOWN")\n") else "No formal reviews." end')
+            reviews=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (.reviews | length) > 0 then (.reviews[] | select((.author.login as $login | $ignored | index($login)) | not and .body != null) | "- \(.author.login // \"unknown\") at \(.createdAt // \"N/A\"):\n - Review body: \(.body // \"No summary comment.\")\n - State: \(.state // \"UNKNOWN\")\n") else "No formal reviews." end')
             excluded_reviews=0
             echo "FILTER_ERROR_REVIEWS=true" >> $GITHUB_ENV
           fi
           
           # Filter review comments: exclude outdated comments
           # Fallback to unfiltered if jq fails
-          if review_comments=$(echo "$review_comments_json" | jq -r 'if (length > 0) then (.[] | select(.user.login != "ellipsis-dev" and (.outdated == false or .outdated == null)) | .pull_request_review_id as $review_id | "- \(.user.login // "unknown") (Review ID: \($review_id // "N/A")) at \(.created_at // "N/A"):\n - Inline Comment: \(.path):\(.line // "N/A"):\n   \(.body // "")\n") else "No inline review comments." end' 2>/dev/null); then
+          if review_comments=$(echo "$review_comments_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (length > 0) then (.[] | select((.user.login as $login | $ignored | index($login)) | not and (.outdated == false or .outdated == null)) | .pull_request_review_id as $review_id | "- \(.user.login // \"unknown\") (Review ID: \($review_id // \"N/A\")) at \(.created_at // \"N/A\"):\n - Inline Comment: \(.path):\(.line // \"N/A\"):\n   \(.body // \"\")\n") else "No inline review comments." end' 2>/dev/null); then
             filtered_comments=$(echo "$review_comments" | grep -c "^- " || echo "0")
             excluded_comments=$((total_review_comments - filtered_comments))
             echo "✓ Filtered review comments: $filtered_comments included, $excluded_comments excluded (outdated)"
           else
             echo "::warning::Review comment filtering failed, using unfiltered data"
-            review_comments=$(echo "$review_comments_json" | jq -r 'if (length > 0) then (.[] | select(.user.login != "ellipsis-dev") | .pull_request_review_id as $review_id | "- \(.user.login // "unknown") (Review ID: \($review_id // "N/A")) at \(.created_at // "N/A"):\n - Inline Comment: \(.path):\(.line // "N/A"):\n   \(.body // "")\n") else "No inline review comments." end')
+            review_comments=$(echo "$review_comments_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (length > 0) then (.[] | select((.user.login as $login | $ignored | index($login)) | not and (.outdated == false or .outdated == null)) | .pull_request_review_id as $review_id | "- \(.user.login // \"unknown\") (Review ID: \($review_id // \"N/A\")) at \(.created_at // \"N/A\"):\n - Inline Comment: \(.path):\(.line // \"N/A\"):\n   \(.body // \"\")\n") else "No inline review comments." end')
             excluded_comments=0
             echo "FILTER_ERROR_COMMENTS=true" >> $GITHUB_ENV
           fi
@@ -208,15 +212,14 @@ jobs:
         id: review_type
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
+          BOT_NAMES_JSON: ${{ env.BOT_NAMES_JSON }}
         run: |
           # Search for a previous summary comment from the bot using a distinctive footer.
           # This is more robust as it finds all review summaries, not just those with the SHA marker.
           # This now fetches both comments and reviews to find the last summary.
           # It checks for different author names and uses a more robust contains check.
-          last_summary_comment=$(gh pr view ${{ env.PR_NUMBER }} --repo ${{ github.repository }} --json comments,reviews --jq '(.comments[], .reviews[]) | select(
-            (.author.login == "mirrobot-agent[bot]" or .author.login == "ellipsis-dev" or .author.login == "mirrobot-agent") and
-            (.body | contains("review was generated by an AI assistant"))
-          ) | .body' | tail -n 1)
+          pr_summary_payload=$(gh pr view ${{ env.PR_NUMBER }} --repo ${{ github.repository }} --json comments,reviews)
+          last_summary_comment=$(echo "$pr_summary_payload" | jq -r --argjson bots "$BOT_NAMES_JSON" '((.comments[]?, .reviews[]?) | select((.author.login as $login | $bots | index($login)) and (.body | contains("review was generated by an AI assistant"))) | .body)' | tail -n 1)
 
           if [ -z "$last_summary_comment" ]; then
             echo "This is the first review."
