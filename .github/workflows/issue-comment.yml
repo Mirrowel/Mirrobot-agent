@@ -48,6 +48,9 @@ jobs:
             /repos/${{ github.repository }}/issues/${{ env.ISSUE_NUMBER }}/reactions \
             -f content='eyes'
 
+      - name: Save secure prompt from base branch
+        run: cp .github/prompts/issue-comment.md /tmp/issue-comment.md
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -122,4 +125,4 @@ jobs:
         run: |
             # Only substitute the variables we intend; leave example $vars and secrets intact
             VARS='${ISSUE_CONTEXT} ${ISSUE_NUMBER} ${ISSUE_AUTHOR}'
-            envsubst "$VARS" < .github/prompts/issue-comment.md | opencode run --share -
+            envsubst "$VARS" < /tmp/issue-comment.md | opencode run --share -
