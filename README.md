@@ -1,279 +1,805 @@
 # Mirrobot Agent
 
-An AI-powered GitHub bot built with [OpenCode](https://opencode.ai) that automates issue analysis, pull request reviews, and documentation generation.
+> **Production-ready AI GitHub bot powered by [OpenCode](https://opencode.ai)**
+> Automate issue analysis, PR reviews, and intelligent collaboration — completely free for open-source projects.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Powered by OpenCode](https://img.shields.io/badge/Powered%20by-OpenCode-blue)](https://opencode.ai)
+[![GitHub Actions](https://img.shields.io/badge/Runs%20on-GitHub%20Actions-2088FF?logo=github-actions&logoColor=white)](https://github.com/features/actions)
+
+---
+
+## Why Mirrobot Agent?
+
+Mirrobot Agent delivers enterprise-grade AI automation for GitHub — **perfect for open-source projects and small-to-medium teams** — without the cost or complexity of paid alternatives.
+
+### ✨ Key Advantages
+
+| Feature | Mirrobot Agent | Paid Alternatives (Ellipsis, etc.) |
+|---------|----------------|-------------------------------------|
+| **Cost for Open Source** | **FREE** (GitHub Actions minutes free on public repos) | $10-50+/user/month |
+| **Infrastructure Required** | None — runs on GitHub Actions | SaaS only, or self-hosted servers |
+| **LLM Provider** | Any provider (OpenAI, Anthropic, self-hosted, proxies) | Locked to specific providers |
+| **Model Selection** | Full control (main + fast models, reasoning support) | Limited options |
+| **Customization** | Complete (edit prompts, workflows, behavior) | Limited customization |
+| **Privacy** | Your infrastructure, your data | Third-party processing |
+| **Setup Time** | ~10 minutes | Varies |
+| **BYOK (Bring Your Own Key)** | ✅ Full support | ⚠️ Limited or no support |
+
+### 🎯 Perfect For
+
+- **Open-Source Projects**: Leverage free GitHub Actions minutes on public repositories
+- **Small-to-Medium Teams**: Private repos get 2,000 free minutes/month — enough for most projects
+- **Cost-Conscious Teams**: Only pay for LLM API usage, no per-seat licensing
+- **Privacy-First Organizations**: Keep your code and data on your infrastructure
+- **Teams Wanting Control**: Full transparency and customization of AI behavior
+
+---
 
 ## Table of Contents
-- [Mirrobot Agent](#mirrobot-agent)
-  - [Table of Contents](#table-of-contents)
-  - [Features](#features)
-  - [How It Works](#how-it-works)
-  - [Core Workflows](#core-workflows)
-    - [Workflow Details](#workflow-details)
-      - [Issue Analysis (`issue-comment.yml`)](#issue-analysis-issue-commentyml)
-      - [PR Review (`pr-review.yml`)](#pr-review-pr-reviewyml)
-  - [Usage](#usage)
-  - [Installation Guide](#installation-guide)
-    - [Prerequisites](#prerequisites)
-    - [Step-by-Step Setup](#step-by-step-setup)
-  - [Configuration](#configuration)
-    - [Required Secrets](#required-secrets)
-    - [Optional Secrets](#optional-secrets)
-  - [Reusable Bot Setup Action](#reusable-bot-setup-action)
-    - [Features](#features-1)
-    - [Usage in Workflows](#usage-in-workflows)
-    - [Outputs](#outputs)
-  - [API Documentation](#api-documentation)
-    - [Command Reference](#command-reference)
-    - [Response Patterns](#response-patterns)
-    - [Limitations](#limitations)
-  - [Development Guide](#development-guide)
-    - [Project Structure](#project-structure)
-    - [Contributing Guidelines](#contributing-guidelines)
-    - [Testing](#testing)
-    - [Code Style](#code-style)
-  - [Troubleshooting](#troubleshooting)
-    - [Common Issues](#common-issues)
-    - [Debugging](#debugging)
-  - [Security Considerations](#security-considerations)
-    - [Permissions](#permissions)
-    - [Data Handling](#data-handling)
-    - [Best Practices](#best-practices)
-    - [Rate Limiting and API Quotas](#rate-limiting-and-api-quotas)
-  - [FAQ](#faq)
-  - [License](#license)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Quick Start](#quick-start)
+- [Core Workflows](#core-workflows)
+- [Configuration](#configuration)
+- [Advanced Features](#advanced-features)
+- [Usage Guide](#usage-guide)
+- [API Documentation](#api-documentation)
+- [Troubleshooting](#troubleshooting)
+- [Security](#security)
+- [Development Guide](#development-guide)
+- [FAQ](#faq)
+- [Credits](#credits)
+- [License](#license)
+
+---
 
 ## Features
 
--   **Automated Issue Analysis**: Automatically analyzes new issues, identifies root causes, and suggests solutions.
--   **Intelligent PR Reviews**: Provides detailed code reviews with actionable feedback.
--   **Documentation Generation**: Creates and maintains comprehensive project documentation.
--   **Context-Aware Responses**: Understands full conversation context for accurate assistance.
--   **Self-Review Capabilities**: Can review its own code and provide humorous self-assessments.
+### 🔍 Automated Issue Analysis
+Automatically triages and analyzes new issues with intelligent context gathering:
+- **Duplicate Detection**: Searches existing issues to identify duplicates
+- **Root Cause Analysis**: Explores codebase using git commands (grep, log, blame)
+- **Structured Reports**: Posts detailed analysis with validation status, root cause, and next steps
+- **Smart Labeling**: Suggests appropriate labels based on issue content
+
+**Example Output:**
+```markdown
+### Issue Assessment
+Based on my analysis, this appears to be a documentation gap. The user is requesting
+clearer installation instructions for Windows environments.
+
+### Root Cause
+The current README.md lacks platform-specific setup guidance, particularly for Windows users.
+
+### Suggested Solution
+1. Add dedicated Windows installation section with prerequisites
+2. Include troubleshooting guidance for common PATH issues
+3. Provide PowerShell script examples as alternative to bash
+
+### Recommended Labels
+`documentation`, `good first issue`
+```
+
+### 🧠 Intelligent PR Reviews
+Production-ready code reviews with a **HIGH-SIGNAL, LOW-NOISE** philosophy:
+
+- **Three-Phase Bundling**: Collect findings → Curate (filter noise) → Submit single bundled review
+- **Incremental Reviews**: Tracks last reviewed commit SHA, only reviews new changes
+- **Smart Context Filtering**: Excludes outdated comments, dismissed reviews, and duplicate information
+- **Formal GitHub Review States**: Uses APPROVE/REQUEST_CHANGES/COMMENT appropriately
+- **Curated Feedback**: Limits to 5-15 most valuable comments (no trivial noise)
+- **Self-Review Detection**: Humorous tone when reviewing its own code
+
+**Example Review:**
+```markdown
+### Overall Assessment
+This PR introduces a robust authentication flow with good error handling. I've identified
+a few areas for improvement around edge cases and security hardening.
+
+**Review Event**: REQUEST_CHANGES
+
+### Key Findings
+- **src/auth.js:45**: Add try-catch block for token validation to handle network failures gracefully
+- **src/routes.js:112**: This protected route is missing authorization middleware
+- **src/utils/token.js:28**: Consider adding token expiration validation before use
+```
+
+### 💬 Context-Aware Bot Replies
+Intelligent assistance when mentioned in any issue or PR comment:
+- **Full Conversation Context**: Understands complete discussion history
+- **Multi-Strategy Responses**: Automatically selects approach (Conversationalist, Investigator, Code Reviewer, Code Contributor, Repository Manager)
+- **Code-Aware**: Has access to full PR diff for accurate technical responses
+- **Proactive Investigation**: Can explore codebase using git commands
+
+### 🛡️ Production-Ready Reliability
+- **Three-Level Error Recovery**: Automatic recovery for predictable errors, graceful degradation
+- **Prompt Injection Protection**: Saves prompts from base branch before PR checkout
+- **Secret Safety**: Explicit prevention of token/credential exposure
+- **Robust Workflow Management**: Prevents modification of workflow files by AI
+
+---
 
 ## How It Works
 
-This repository contains GitHub Actions workflows that trigger the Mirrobot agent to perform various tasks. Each workflow follows a similar pattern:
+Mirrobot Agent is a **sophisticated GitHub Actions integration framework** built on OpenCode, providing production-ready workflows, prompt engineering, and context orchestration.
 
-1.  **Event Trigger**: A GitHub event (e.g., issue opened, PR opened, mention) triggers the workflow.
-2.  **Bot Setup**: A reusable composite action handles common setup tasks, including token generation, git configuration, dependency installation, and model override handling.
-3.  **Context Gathering**: The workflow collects comprehensive context, including issue/PR content, comments, and cross-references.
-4.  **OpenCode Processing**: The context is sent to OpenCode for AI analysis using configured LLM models.
-5.  **Response Generation**: OpenCode generates appropriate responses based on the analysis.
-6.  **Comment Posting**: The workflow posts the generated response as comments on the issue or PR.
+### Architecture
+
+```
+┌─────────────────┐
+│  GitHub Event   │  (Issue opened, PR opened, @mention, etc.)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│          Workflow Orchestration Layer               │
+│  • Event detection & routing                        │
+│  • Concurrency control                              │
+│  • Workflow-specific logic                          │
+└────────┬────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│          Context Assembly & Filtering               │
+│  • Gather PR/issue metadata                         │
+│  • Filter outdated/dismissed comments               │
+│  • Fetch linked issues & cross-references           │
+│  • Generate diffs (full or incremental)             │
+│  • Track review state (last reviewed SHA)           │
+└────────┬────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│          OpenCode (AI Engine)                       │
+│  • Processes context with engineered prompts        │
+│  • Performs analysis using configured LLM           │
+│  • Generates structured responses                   │
+└────────┬────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│          Response Delivery                          │
+│  • Format as GitHub comments/reviews                │
+│  • Post using GitHub API                            │
+│  • Update review state metadata                     │
+└─────────────────────────────────────────────────────┘
+```
+
+### What Mirrobot Agent Provides
+
+- **Workflow Framework**: Pre-built GitHub Actions workflows for common bot scenarios
+- **Prompt Engineering**: Production-tested prompts for reviews, analysis, and assistance
+- **Context Orchestration**: Sophisticated logic for gathering and filtering relevant information
+- **State Management**: Tracks review history, filters noise, handles incremental updates
+- **GitHub Integration**: Seamless API interactions, error handling, security protections
+- **Provider Flexibility**: Dynamic configuration system for any OpenAI-compatible LLM provider
+
+### What OpenCode Provides
+
+- **AI Engine**: Natural language understanding and generation
+- **Multi-Provider Support**: Integration with OpenAI, Anthropic, custom providers, and more
+- **Tool Execution**: Ability to run bash commands, explore codebases, generate structured outputs
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+1. **GitHub Repository** (public for free Actions minutes, or private with free tier)
+2. **GitHub App Credentials** ([Create a GitHub App](https://docs.github.com/en/apps/creating-github-apps))
+   - App ID
+   - Private Key (PEM format)
+   - Permissions: Contents (read), Issues (read/write), Pull Requests (read/write)
+3. **LLM API Access** (OpenAI, Anthropic, or any OpenAI-compatible provider)
+
+### Installation (10 Minutes)
+
+1. **Fork or Copy This Repository**
+   ```bash
+   gh repo fork Mirrowel/Mirrobot-agent
+   # or clone and copy .github/ directory to your repo
+   ```
+
+2. **Configure Repository Secrets**
+
+   Navigate to: `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
+
+   Add the following secrets:
+
+   | Secret | Description | Example |
+   |--------|-------------|---------|
+   | `BOT_APP_ID` | Your GitHub App ID | `123456` |
+   | `BOT_PRIVATE_KEY` | GitHub App private key (full PEM format) | `-----BEGIN RSA PRIVATE KEY-----\n...` |
+   | `OPENCODE_API_KEY` | Your LLM provider API key | `sk-...` |
+   | `OPENCODE_MODEL` | Main model identifier | `openai/gpt-4o` or `anthropic/claude-sonnet-4` |
+   | `OPENCODE_FAST_MODEL` | Fast model for quick tasks | `openai/gpt-4o-mini` |
+
+3. **Enable Workflows**
+
+   Navigate to: `Actions` tab → Enable workflows if prompted
+
+4. **Test It**
+
+   - Open a new issue → Bot automatically analyzes it
+   - Open a PR → Bot automatically reviews it
+   - Comment `@mirrobot-agent help` → Bot responds
+
+🎉 **Done!** Your bot is now active.
+
+---
 
 ## Core Workflows
 
-| Workflow                      | File                                                              | Trigger                                                                 | Description                                                                                                                              |
-| ----------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Issue Analysis**            | [`issue-comment.yml`](.github/workflows/issue-comment.yml)        | `issues: [opened]`, `workflow_dispatch`                                 | Analyzes new issues, provides an initial assessment, and can be manually triggered for existing issues.                                  |
-| **PR Review**                 | [`pr-review.yml`](.github/workflows/pr-review.yml)                | `pull_request_target: [opened, synchronize, ready_for_review]`, `issue_comment`                                  | Performs code reviews. Always runs for new PRs and those marked "ready for review". Also runs on updates or via comment command for PRs. |
-| **Bot Reply**                 | [`bot-reply.yml`](.github/workflows/bot-reply.yml)                | `issue_comment: [created]` (if bot is mentioned)                        | Responds to requests and questions when the bot is mentioned in any issue or PR comment, maintaining full conversation context.         |
-| **OpenCode Integration(Legacy)**      | [`opencode.yml`](.github/workflows/opencode.yml)                  | `issue_comment: [created]` (if `/oc` or `/opencode` is used)            | Enables manual triggering of the agent with custom prompts, restricted to repository maintainers.                                        |
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| **Issue Analysis** | `issues: [opened]`, manual dispatch | Analyzes new issues, detects duplicates, identifies root causes |
+| **PR Review** | `pull_request_target: [opened, ready_for_review]`, `/mirrobot-review` command | Comprehensive bundled code reviews with incremental diff support |
+| **Bot Reply** | `issue_comment: [created]` (when @mentioned) | Context-aware assistance in issues and PRs |
+| **OpenCode (Legacy)** | `/oc` or `/opencode` command | Manual agent triggering (maintainers only) |
 
 ### Workflow Details
 
 #### Issue Analysis (`issue-comment.yml`)
-This workflow handles issue analysis when issues are opened or manually triggered. It:
-- Collects comprehensive issue context including comments and cross-references.
-- Uses OpenCode to analyze the issue and suggest solutions.
-- Posts an initial acknowledgment and a detailed analysis report.
 
-**Example Analysis Output:**
-```
-### Issue Assessment
-Based on my analysis, this issue appears to be a documentation gap. The user is requesting clearer installation instructions.
+**Triggers:**
+- Automatically when an issue is opened
+- Manually via workflow dispatch
 
-### Root Cause
-The current README.md lacks step-by-step setup guidance for new users.
+**Process:**
+1. Fetches issue metadata, comments, and cross-references
+2. Searches repository for potential duplicates
+3. Explores codebase using git commands (grep, log, blame)
+4. Posts acknowledgment, then detailed analysis report
+5. Suggests labels and next steps
 
-### Suggested Solution
-1. Add detailed installation section with prerequisites
-2. Include troubleshooting guidance for common setup issues
-3. Provide configuration examples for different environments
-```
+**Smart Features:**
+- Timeline API integration for cross-references
+- Git-based codebase exploration
+- Structured markdown output
 
 #### PR Review (`pr-review.yml`)
-This workflow performs intelligent code reviews using a three-phase process to deliver high-quality, bundled feedback.
 
-**Bundled Review Process**
-The agent submits a single, comprehensive review per PR instead of multiple individual comments. This keeps the PR timeline clean and easy to follow. The process consists of three phases:
+**Triggers:**
+- New PR opened (non-draft)
+- PR marked "ready for review"
+- PR updated (if labeled `Agent Monitored`)
+- Comment command: `/mirrobot-review` or `/mirrobot_review`
+- Manual dispatch with PR number
 
-1.  **Collect**: The agent performs a full analysis of the PR diff, generating all potential findings internally.
-2.  **Curate**: It then filters the findings based on a **"HIGH-SIGNAL, LOW-NOISE"** philosophy, selecting only the most critical, high-impact, and valuable comments. Trivial style suggestions and duplicate points are discarded.
-3.  **Submit**: The curated line comments are bundled with a high-level summary and submitted as a single, formal GitHub Review. The review is submitted with the appropriate status (`APPROVE`, `REQUEST_CHANGES`, or `COMMENT`) based on the severity of the findings.
+**Process:**
+1. **Context Gathering**: Fetches full PR metadata, filters discussions, retrieves linked issues
+2. **Diff Generation**: Creates incremental diff (current HEAD vs last reviewed SHA) or full diff
+3. **OpenCode Analysis**: Processes with three-phase prompt (Collect → Curate → Submit)
+4. **Review Submission**: Posts single bundled GitHub Review with appropriate state
+5. **State Tracking**: Saves reviewed SHA for next incremental review
 
-**Example Review Summary:**
+**Advanced Features:**
+- **Incremental Reviews**: Only analyzes changes since last review
+- **Smart Filtering**: Excludes outdated comments, dismissed reviews, purely informational reviews
+- **Bundled Output**: Single GitHub Review (not scattered comments)
+- **Concurrency Control**: Prevents duplicate reviews on same PR
+- **Diff Truncation**: Limits to 500KB to avoid context overflow
+- **Self-Review Detection**: Changes tone when reviewing own code
+
+**Example Triggers:**
+```yaml
+# Always runs
+- PR opened (not draft)
+- PR marked ready_for_review
+
+# Conditionally runs
+- PR synchronized (if has "Agent Monitored" label)
+
+# Manual triggers
+- Comment: /mirrobot-review
+- Workflow dispatch with PR number
 ```
-### Overall Assessment
-This PR introduces a new authentication flow that is well-structured and follows best practices. I've included a few minor suggestions for improving error handling.
 
-### Key Suggestions
-- **`src/auth.js:45`**: Consider adding a `try-catch` block here to handle potential token validation errors gracefully.
-- **`src/routes.js:112`**: This route should have an authorization middleware to protect it.
-```
+#### Bot Reply (`bot-reply.yml`)
 
-**Workflow Triggers and Conditions**
-The PR review workflow is triggered by the following events and conditions:
-- **Direct PR Events**: Runs automatically when a pull request is `opened` (and not a draft) or marked as `ready_for_review`.
-- **Manual Dispatch**: Can be triggered manually via the GitHub Actions UI using the `workflow_dispatch` event, requiring a PR number as input.
-- **Monitored Updates**: When a PR has the `Agent Monitored` label, the workflow runs on every `synchronize` event (i.e., when new commits are pushed).
-- **Comment Command**: A review can be manually requested on a PR by commenting `/mirrobot-review` or `/mirrobot_review`.
+**Triggers:**
+- Any comment mentioning `@mirrobot-agent` in issues or PRs
 
-**Rich Context Gathering**
-To provide accurate and insightful reviews, the agent gathers extensive context from the pull request, including:
-- **Full PR Metadata**: Title, body, author, branches, and statistics.
-- **Filtered Discussion**: Fetches all comments and reviews, but intelligently filters out outdated comments and dismissed or purely informational reviews to reduce noise.
-- **Linked Issues**: Retrieves the title and body of any issues linked for closure in the PR.
-- **Cross-References**: Finds mentions of the PR in other issues or pull requests.
-- **Complete Diff**: The full `diff` of the pull request is included in the context to power the code analysis.
+**Process:**
+1. Detects mention in comment
+2. Gathers full conversation context
+3. For PRs: checks out code, includes diff
+4. OpenCode selects strategy (Conversationalist, Investigator, Code Reviewer, etc.)
+5. Posts detailed response
 
-**Other Features:**
-- **Concurrency Controls**: Prevents duplicate review runs on the same PR.
-- **Smart Triggers**: Automatically reviews new and "ready for review" PRs. For PRs with the `Agent Monitored` label, it also runs on updates. Or when triggered by a `/mirrobot-review` command.
-- **Incremental Reviews**: For follow-up reviews, the agent generates a diff between the last reviewed commit and the current PR head. If the old commit is not found (e.g., after a rebase), it falls back to a full review.
-- **Review State Tracking**: Remembers the last reviewed commit SHA to avoid redundant analysis.
+**Multi-Strategy System:**
+- **Conversationalist**: Answers questions, provides guidance
+- **Investigator**: Explores codebase, searches for information
+- **Code Reviewer**: Analyzes code quality, suggests improvements
+- **Code Contributor**: Proposes code changes
+- **Repository Manager**: Handles labels, issues, project management
 
-## Usage
-
-To interact with the Mirrobot agent, use one of the following methods:
-
--   **Mention the bot** in any issue or PR comment:
-    ```
-    @mirrobot-agent <your request>
-    ```
-
--   **Trigger manual analysis**:
-    -   For issues: Use the "Run workflow" button on the "Issue Analysis" action.
-    -   For PRs: Use the "Run workflow" button on the "PR Review" action.
-
--   **Use slash commands** in a comment:
-    -   `/mirrobot-review` or `/mirrobot_review`: Manually trigger a review for a PR.
-
-## Installation Guide
-
-### Prerequisites
-
--   A GitHub repository where you want to deploy the bot.
--   GitHub App credentials (App ID and Private Key).
--   Access to an LLM proxy service.
-
-### Step-by-Step Setup
-
-1.  **Fork or Clone this Repository**:
-    -   Fork this repository to your GitHub account.
-    -   Clone the forked repository to your local machine.
-
-2.  **Configure Repository Secrets**:
-    -   Navigate to your repository's `Settings` → `Secrets and variables` → `Actions`.
-    -   Add the secrets listed in the [Configuration](#configuration) section below.
-
-3.  **Activate Workflows**:
-    -   The workflows are automatically activated when you push the code to your repository.
-    -   Ensure all workflows have the necessary permissions in `Settings` → `Actions` → `General`.
+---
 
 ## Configuration
 
-The bot requires the following secrets to be configured in your repository.
-
 ### Required Secrets
 
-| Secret                | Description                                                               |
-| --------------------- | ------------------------------------------------------------------------- |
-| `BOT_APP_ID`          | Your GitHub App ID.                                                       |
-| `BOT_PRIVATE_KEY`     | Your GitHub App private key in PEM format.                                |
-| `OPENCODE_API_KEY`    | The default API key to be used if none is provided in the config.       |
-| `OPENCODE_MODEL`      | The main model identifier (e.g., "opencode/big-pickle").                        |
-| `OPENCODE_FAST_MODEL` | The fast model for quick responses and lesser tasks (e.g., "openai/gpt-3.5-turbo").        |
+| Secret | Description | Where to Get It |
+|--------|-------------|-----------------|
+| `BOT_APP_ID` | GitHub App ID | GitHub App settings page |
+| `BOT_PRIVATE_KEY` | GitHub App private key | Generated when creating GitHub App (PEM format) |
+| `OPENCODE_API_KEY` | LLM provider API key | Your LLM provider (OpenAI, Anthropic, etc.) |
+| `OPENCODE_MODEL` | Main model identifier | e.g., `openai/gpt-4o`, `anthropic/claude-sonnet-4` |
+| `OPENCODE_FAST_MODEL` | Fast model for quick responses | e.g., `openai/gpt-4o-mini` |
 
 ### Optional Secrets
 
-| Secret                  | Description                                                                                                                                                          |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CUSTOM_PROVIDERS_JSON` | A single-line JSON string to define custom LLM providers, such as proxied services or self-hosted models. This enables the agent to connect to any compatible LLM API. |
+| Secret | Description |
+|--------|-------------|
+| `CUSTOM_PROVIDERS_JSON` | Single-line JSON defining custom LLM providers (see below) |
 
-**Example `CUSTOM_PROVIDERS_JSON`:**
+### Using Custom Providers
 
-To use a custom provider, create a `custom_providers.json` file:
+Mirrobot Agent supports **any OpenAI-compatible LLM provider** through custom provider definitions. This enables:
+- Self-hosted models (Ollama, vLLM, etc.)
+- LLM proxy services
+- Regional providers
+- Multiple providers with different models
+
+#### Setup Process
+
+1. **Create `custom_providers.json`**
+
 ```json
 {
   "my-proxy": {
-    "label": "My Custom Proxy",
+    "npm": "@ai-sdk/openai-compatible",
+    "name": "My Custom LLM Proxy",
     "options": {
-      "apiKey": "your-secret-proxy-key",
-      "baseURL": "https://my.proxy.com/v1"
+      "apiKey": "your-secret-api-key",
+      "baseURL": "https://api.my-proxy.com/v1",
+      "timeout": 300000
     },
     "models": {
-      "llama3-70b": {
-        "label": "Llama 3 70B (via Proxy)"
+      "llama-3-70b": {
+        "id": "llama-3-70b-instruct",
+        "name": "Llama 3 70B Instruct",
+        "limit": {
+          "context": 128000,
+          "output": 4096
+        }
+      },
+      "deepseek-r1": {
+        "id": "deepseek-r1-distill-llama-70b",
+        "name": "DeepSeek R1 (Reasoning Model)",
+        "reasoning": true,
+        "limit": {
+          "context": 64000,
+          "output": 8192
+        }
+      }
+    }
+  },
+  "ollama-local": {
+    "npm": "@ai-sdk/openai-compatible",
+    "name": "Local Ollama",
+    "options": {
+      "apiKey": "ollama",
+      "baseURL": "http://localhost:11434/v1"
+    },
+    "models": {
+      "qwen-coder": {
+        "id": "qwen2.5-coder:32b",
+        "name": "Qwen 2.5 Coder 32B"
       }
     }
   }
 }
 ```
-Then, use the `minify_json_secret.py` script to convert it into a single-line string for the GitHub secret:
+
+2. **Minify to Single Line**
+
+Use the provided script:
 ```bash
 python minify_json_secret.py custom_providers.json
 ```
-The output can be pasted into the `CUSTOM_PROVIDERS_JSON` secret. You can then set `OPENCODE_MODEL` to `my-proxy/llama3-70b` in your secrets to use this model.
 
-## Reusable Bot Setup Action
+Copy the output.
 
-The reusable bot setup action (`.github/actions/bot-setup/action.yml`) is a composite action that centralizes all common setup tasks across workflows. This approach eliminates code duplication and ensures consistent behavior.
+3. **Add as GitHub Secret**
 
-### Features
+Create secret `CUSTOM_PROVIDERS_JSON` with the minified JSON string.
 
--   **Generates Dynamic Provider Configuration**: Creates the `opencode.json` file at runtime to enable integration with any standard or custom LLM provider.
--   **Manages GitHub App Authentication**: Generates a GitHub App token for API access.
--   **Configures Git Identity**: Sets up the bot's user name and email for git operations.
--   **Installs Dependencies**: Installs Python dependencies and the OpenCode CLI.
+4. **Configure Model Secrets**
 
-### Usage in Workflows
-
-```yaml
-- name: Bot Setup
-  id: setup
-  uses: ./.github/actions/bot-setup
-  with:
-    bot-app-id: ${{ secrets.BOT_APP_ID }}
-    bot-private-key: ${{ secrets.BOT_PRIVATE_KEY }}
-    opencode-api-key: ${{ secrets.OPENCODE_API_KEY }}
-    opencode-model: ${{ secrets.OPENCODE_MODEL }}
-    opencode-fast-model: ${{ secrets.OPENCODE_FAST_MODEL }}
-    custom-providers-json: ${{ secrets.CUSTOM_PROVIDERS_JSON }}
+Set your model identifiers:
+```
+OPENCODE_MODEL=my-proxy/llama-3-70b
+OPENCODE_FAST_MODEL=my-proxy/deepseek-r1
 ```
 
-### Outputs
+#### Reasoning Model Support
 
--   `token`: The generated GitHub App token for API access.
+Mirrobot Agent supports reasoning models (DeepSeek R1, GPT-o1, etc.) that use extended thinking:
+
+```json
+{
+  "my-provider": {
+    "models": {
+      "reasoning-model": {
+        "id": "deepseek-r1",
+        "name": "DeepSeek R1",
+        "reasoning": true,  // Enables reasoning support
+        "limit": {
+          "context": 64000,
+          "output": 8192
+        }
+      }
+    }
+  }
+}
+```
+
+The bot-setup action can automatically add `reasoning_effort: "high"` for extended thinking (toggle in `.github/actions/bot-setup/action.yml`).
+
+---
+
+## Advanced Features
+
+### Incremental PR Reviews
+
+Mirrobot Agent tracks the last reviewed commit SHA and only reviews new changes on subsequent runs.
+
+**How It Works:**
+1. First review: Analyzes full PR diff
+2. Saves reviewed SHA in review comment metadata (hidden)
+3. Subsequent reviews: Generates diff between last SHA and current HEAD
+4. Fallback: If SHA not found (after rebase), falls back to full review
+
+**Benefits:**
+- Faster reviews on large PRs
+- Reduces redundant feedback
+- Lower LLM API costs
+- Better user experience (only see feedback on new changes)
+
+### Context Filtering
+
+**Problem**: Raw PR discussions include noise (outdated comments, dismissed reviews, purely informational reviews)
+
+**Solution**: Mirrobot Agent intelligently filters:
+- ❌ Outdated inline comments (resolved in later commits)
+- ❌ Dismissed reviews (no longer relevant)
+- ❌ "COMMENTED" review events (duplicates inline comment data)
+- ✅ Active inline comments
+- ✅ Approved/Changes Requested reviews
+- ✅ Linked issue content
+- ✅ Cross-references
+
+**Result**: Cleaner context → More focused AI analysis → Better reviews
+
+### Bundled Reviews
+
+**Traditional Approach**: Many bots post individual comments as they analyze
+
+**Mirrobot Agent Approach**: Three-phase bundling
+1. **Collect**: AI analyzes full diff, generates all potential findings internally
+2. **Curate**: Filters findings using HIGH-SIGNAL, LOW-NOISE philosophy (5-15 comments max)
+3. **Submit**: Posts single GitHub Review with bundled line comments + summary
+
+**Benefits:**
+- Clean PR timeline (one review vs dozens of comments)
+- Single notification for author
+- Easier to digest feedback
+- Professional presentation
+
+### Multi-Strategy Bot Replies
+
+When mentioned in a comment, the bot automatically selects the appropriate strategy:
+
+| Strategy | When Used | Capabilities |
+|----------|-----------|--------------|
+| **Conversationalist** | General questions, discussions | Answer questions, provide guidance |
+| **Investigator** | "Find...", "Search...", "Where is..." | Git grep, log, blame, file exploration |
+| **Code Reviewer** | "Review this", "Check this code" | Analyzes code quality, suggests improvements |
+| **Code Contributor** | "Fix this", "Implement..." | Proposes code changes (commented, not committed) |
+| **Repository Manager** | "Label this", "Close this" | Manages issues, labels, project management |
+
+**Example:**
+```
+@mirrobot-agent Where is the authentication logic implemented?
+
+→ Investigator strategy: Searches codebase using git grep, analyzes results, provides file locations
+```
+
+### Self-Review Detection
+
+When reviewing its own PRs, Mirrobot Agent:
+- Detects PR author matches bot identity
+- Switches to humorous, self-deprecating tone
+- Omits "Questions for the Author" section
+- Still provides valuable technical feedback
+
+**Example:**
+```markdown
+### Self-Review Alert 🤖
+Well, well, well... reviewing my own code. This feels like grading my own homework.
+
+### Analysis
+Despite my algorithmic bias toward my own brilliance, I must admit there are
+a few areas that could use improvement...
+```
+
+---
+
+## Usage Guide
+
+### Triggering the Bot
+
+#### 1. Automatic Triggers
+
+- **New Issue Opened** → Automatic analysis
+- **New PR Opened** (non-draft) → Automatic review
+- **PR Marked Ready for Review** → Automatic review
+- **PR Updated** (if labeled `Agent Monitored`) → Automatic incremental review
+
+#### 2. Mention Triggers
+
+Comment in any issue or PR:
+```
+@mirrobot-agent <your request>
+```
+
+**Examples:**
+```
+@mirrobot-agent Can you explain how the authentication flow works?
+@mirrobot-agent Find all occurrences of the deprecated API usage
+@mirrobot-agent Review this latest commit
+@mirrobot-agent What tests should I add for this feature?
+```
+
+#### 3. Slash Commands
+
+In PR comments:
+```
+/mirrobot-review
+```
+or
+```
+/mirrobot_review
+```
+
+#### 4. Manual Workflow Dispatch
+
+Navigate to: `Actions` → Select workflow → `Run workflow`
+
+- **Issue Analysis**: Requires issue number
+- **PR Review**: Requires PR number
+
+---
 
 ## API Documentation
 
-### Command Reference
+### Bot Commands Reference
 
-The bot responds to the following commands:
-
-**Mention-based triggers:**
-- `@mirrobot-agent <request>` - General assistance
-- `@mirrobot-agent review this` - Request a PR review
-- `@mirrobot-agent analyze this` - Request an issue analysis
-
-**Slash commands:**
-- `/mirrobot-review` or `/mirrobot_review` - Manually trigger a review for a PR.
+| Command | Context | Description |
+|---------|---------|-------------|
+| `@mirrobot-agent <request>` | Issues, PRs | General assistance, triggers appropriate strategy |
+| `@mirrobot-agent review this` | PRs | Requests code review |
+| `@mirrobot-agent analyze this` | Issues | Requests issue analysis |
+| `@mirrobot-agent find <query>` | Any | Searches codebase using git grep |
+| `/mirrobot-review` | PRs | Manually triggers PR review workflow |
+| `/oc <prompt>` | Any (maintainers only) | Custom OpenCode prompt |
 
 ### Response Patterns
 
-The bot follows specific response patterns:
-1.  **Acknowledgement**: An initial response indicating it's working on the request.
-2.  **Analysis**: A detailed breakdown of the issue or PR.
-3.  **Recommendations**: Actionable suggestions for next steps.
-4.  **Summary**: A concise overview of its findings.
+**Issue Analysis:**
+```markdown
+### Issue Assessment
+<High-level summary>
+
+### Root Cause
+<Technical analysis>
+
+### Suggested Solution
+<Numbered action items>
+
+### Recommended Labels
+<Comma-separated labels>
+```
+
+**PR Review:**
+```markdown
+### Overall Assessment
+<Summary of PR quality>
+
+**Review Event**: APPROVE | REQUEST_CHANGES | COMMENT
+
+### Key Findings
+<Bulleted list of 5-15 most important comments>
+
+### Questions for the Author
+<Clarifying questions about design decisions>
+```
+
+**Bot Reply:**
+```markdown
+<Acknowledgment of request>
+
+<Detailed analysis or investigation results>
+
+<Actionable recommendations or answers>
+```
 
 ### Limitations
 
--   Response time depends on LLM service availability.
--   Complex analysis may take several minutes.
--   The bot cannot modify code directly (it can only post comments).
--   Self-reviews have special handling to avoid infinite loops.
+- **Response Time**: Depends on LLM API latency (typically 10-60 seconds)
+- **Complex PRs**: Very large diffs may be truncated (500KB limit)
+- **No Direct Code Changes**: Bot posts comments/suggestions only (doesn't commit)
+- **API Rate Limits**: Subject to GitHub API and LLM provider limits
+- **Self-Review**: May fail to post comments due to GitHub API restrictions (rare)
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### Workflow Not Triggering
+
+**Symptoms**: Bot doesn't respond to new issues/PRs
+
+**Solutions:**
+1. Check workflows are enabled: `Settings` → `Actions` → `General` → "Allow all actions"
+2. Verify workflow files exist in `.github/workflows/`
+3. Check workflow run history in `Actions` tab for errors
+4. Ensure GitHub App is installed on the repository
+
+#### Authentication Errors
+
+**Symptoms**: Workflow fails with "Bad credentials" or "Resource not accessible"
+
+**Solutions:**
+1. Verify `BOT_APP_ID` and `BOT_PRIVATE_KEY` secrets are correct
+2. Check GitHub App permissions (Contents: read, Issues: read/write, PRs: read/write)
+3. Ensure GitHub App is installed on the repository (not just organization)
+4. Verify private key format includes full PEM headers/footers
+
+#### LLM API Connection Issues
+
+**Symptoms**: "Failed to connect to OpenCode" or "Model not found"
+
+**Solutions:**
+1. Verify `OPENCODE_API_KEY` is correct and active
+2. Check `OPENCODE_MODEL` format matches provider requirements
+3. For custom providers: Validate `CUSTOM_PROVIDERS_JSON` syntax using `test-config.py`
+4. Test provider connectivity outside GitHub Actions
+5. Check LLM provider status page for outages
+
+#### Bot Mentions Not Working
+
+**Symptoms**: @mentions don't trigger bot-reply workflow
+
+**Solutions:**
+1. Verify exact mention format: `@mirrobot-agent` (check your bot name in GitHub App settings)
+2. Check `bot-reply.yml` workflow is enabled
+3. Review workflow run logs in `Actions` tab
+4. Ensure bot has comment permissions
+
+#### Reviews Not Posting
+
+**Symptoms**: Workflow runs successfully but no review appears
+
+**Solutions:**
+1. Check workflow logs for API errors
+2. Verify PR is not from a fork (use `pull_request_target` trigger)
+3. Ensure bot has PR write permissions
+4. Check for self-review scenario (bot reviewing its own PR may fail silently)
+
+### Debugging Workflow Issues
+
+1. **Enable Debug Logging**
+
+   Repository Settings → Secrets → Add:
+   ```
+   ACTIONS_STEP_DEBUG = true
+   ACTIONS_RUNNER_DEBUG = true
+   ```
+
+2. **Check Workflow Logs**
+
+   Navigate to: `Actions` → Failed workflow run → Expand steps
+
+3. **Test with Simple Cases**
+
+   - Create minimal test issue/PR
+   - Use workflow dispatch with known-good inputs
+   - Verify secrets one at a time
+
+4. **Validate Configuration**
+
+   Run configuration test:
+   ```bash
+   python test-config.py
+   ```
+
+---
+
+## Security
+
+### Security Features
+
+1. **Prompt Injection Protection**
+   - Prompts saved from base branch before PR checkout
+   - Prevents malicious PR from modifying bot behavior
+   - Isolates untrusted code from prompt engineering
+
+2. **Secret Exposure Prevention**
+   - Explicit forbidden command list (env, printenv, etc.)
+   - No echoing of tokens or credentials in logs
+   - Placeholder substitution in error messages
+
+3. **Workflow Modification Protection**
+   - GitHub App permissions: No workflow write access
+   - Automatic detection of workflow file changes
+   - Three-level error recovery prevents accidental commits
+
+4. **Minimal Permissions**
+   - Job-level: `contents: read`, `issues: write`, `pull-requests: write`
+   - No `checks: write`, no `workflows: write`
+   - GitHub App tokens are short-lived (per-workflow)
+
+5. **Token Scoping**
+   - Generated fresh per workflow run
+   - Repository-scoped only
+   - Automatic expiration
+
+### Best Practices
+
+1. **Rotate Credentials Regularly**
+   - Rotate `BOT_PRIVATE_KEY` every 6-12 months
+   - Rotate LLM API keys on breach notification
+
+2. **Monitor Bot Activity**
+   - Review workflow run history weekly
+   - Check for unusual patterns (many failures, unexpected triggers)
+   - Monitor LLM API usage for anomalies
+
+3. **Restrict Repository Access**
+   - Install GitHub App only on necessary repositories
+   - Use repository-level secrets (not organization-level)
+   - Review collaborator permissions regularly
+
+4. **Review Bot Comments**
+   - Periodically audit bot feedback quality
+   - Check for hallucinations or inappropriate suggestions
+   - Validate against security best practices
+
+5. **Data Privacy**
+   - Understand your LLM provider's data retention policy
+   - For sensitive codebases, use self-hosted models
+   - Consider geographic data residency requirements
+
+### GitHub Permissions Required
+
+**GitHub App Permissions:**
+- **Repository permissions:**
+  - Contents: **Read-only**
+  - Issues: **Read and write**
+  - Pull requests: **Read and write**
+  - Metadata: **Read-only** (automatically granted)
+- **Subscribe to events:**
+  - Issues
+  - Issue comment
+  - Pull request
+  - Pull request review
+  - Pull request review comment
+
+### Data Handling
+
+- **Processed Data**: Issue/PR content, comments, diffs sent to configured LLM provider
+- **No Persistent Storage**: All data is ephemeral (workflow execution only)
+- **GitHub API as Source of Truth**: No separate database or storage layer
+- **Privacy**: Use self-hosted models or trusted providers for sensitive projects
+
+---
 
 ## Development Guide
 
@@ -283,100 +809,251 @@ The bot follows specific response patterns:
 .github/
 ├── actions/
 │   └── bot-setup/
-│       └── action.yml       # Reusable bot setup action
+│       └── action.yml           # Reusable bot setup composite action
 ├── workflows/
-│   ├── issue-comment.yml    # Issue analysis workflow
-│   ├── pr-review.yml        # Enhanced PR review workflow
-│   ├── bot-reply.yml        # Bot response workflow
-│   └── opencode.yml         # OpenCode integration
+│   ├── issue-comment.yml        # Issue analysis workflow
+│   ├── pr-review.yml            # PR review workflow
+│   ├── bot-reply.yml            # Bot mention response workflow
+│   └── opencode.yml             # Legacy OpenCode integration
 └── prompts/
-    ├── bot-reply.md         # Core bot logic and prompts
-    └── pr-review.md         # PR review specific prompts
+    ├── issue-comment.md         # Issue analysis prompt template
+    ├── pr-review.md             # PR review prompt template (24KB, sophisticated)
+    └── bot-reply.md             # Bot reply prompt template (33KB, multi-strategy)
+
+custom_providers.json            # Example custom provider configuration
+minify_json_secret.py            # Script to minify JSON for GitHub secrets
+test-config.py                   # Configuration testing utility
+README.md                        # This file
+LICENSE                          # MIT License
 ```
 
-### Contributing Guidelines
+### Modifying Prompts
 
-We welcome contributions! Please follow these guidelines:
+All AI behavior is controlled by markdown prompts in `.github/prompts/`:
 
-1.  **Fork the Repository** and clone it locally.
-2.  **Create a Feature Branch** (`git checkout -b feature/amazing-feature`).
-3.  **Make Your Changes**, following existing code style and patterns.
-4.  **Commit Your Changes** with descriptive commit messages.
-5.  **Push to Your Fork** (`git push origin feature/amazing-feature`).
-6.  **Open a Pull Request** with a clear description of your changes.
+1. **Edit Prompt Files**
+   ```bash
+   # Example: Modify PR review behavior
+   vim .github/prompts/pr-review.md
+   ```
 
-### Testing
-- Test workflows in a personal repository first.
-- Verify all secret configurations work correctly.
-- Test both issue analysis and PR review functionality.
+2. **Test Changes**
+   - Create test PR
+   - Manually trigger `pr-review` workflow
+   - Review bot output
 
-### Code Style
-- Follow standard GitHub Actions workflow syntax.
-- Use descriptive variable and secret names.
-- Include comments for complex logic.
-- Maintain consistent formatting.
+3. **Iterate**
+   - Adjust prompt wording, structure, examples
+   - Test with various PR types (small, large, bug fix, feature)
+   - Validate against edge cases
 
-## Troubleshooting
+**Prompt Engineering Tips:**
+- Use clear section headers (###) for structured output
+- Provide explicit examples of desired output format
+- Set behavioral constraints (e.g., "Limit to 5-15 comments")
+- Include error handling instructions
+- Test with reasoning models (may require different phrasing)
 
-### Common Issues
+### Modifying Workflows
 
--   **Workflow Not Triggering**: Check that workflows are enabled in your repository settings and that the bot has the necessary permissions.
--   **Authentication Errors**: Verify your GitHub App credentials and that the app is installed on the target repository.
--   **LLM Proxy Connection Issues**: Verify the proxy URL and API key and ensure your LLM service is operational.
--   **Self-Review Failures**: The bot may fail to post comments if reviewing its own code due to API limitations. A human maintainer should manually review the PR if this occurs.
+Workflow files are in `.github/workflows/`:
 
-### Debugging
+**Common Modifications:**
 
-To debug workflow issues:
-1. Check the GitHub Actions logs for detailed error messages.
-2. Verify all required secrets are properly configured.
-3. Test with simple issues/PRs first to isolate problems.
+1. **Change Triggers**
+   ```yaml
+   # Example: Add label trigger for issue analysis
+   on:
+     issues:
+       types: [opened, labeled]
+   ```
 
-## Security Considerations
+2. **Add Concurrency Controls**
+   ```yaml
+   concurrency:
+     group: pr-review-${{ github.event.pull_request.number }}
+     cancel-in-progress: true
+   ```
 
-### Permissions
+3. **Modify Model Selection**
+   ```yaml
+   # Use different model for specific workflow
+   - name: Bot Setup
+     uses: ./.github/actions/bot-setup
+     with:
+       opencode-model: ${{ secrets.OPENCODE_REASONING_MODEL }}
+   ```
 
-This bot requires the following GitHub permissions:
--   **Contents**: `Read & Write`
--   **Issues**: `Read & Write`
--   **Pull Requests**: `Read & Write`
--   **Metadata**: `Read-only`
+4. **Add Custom Context**
+   ```yaml
+   # Example: Include repository README in context
+   - name: Fetch README
+     run: |
+       README_CONTENT=$(cat README.md)
+       echo "README<<EOF" >> $GITHUB_ENV
+       echo "$README_CONTENT" >> $GITHUB_ENV
+       echo "EOF" >> $GITHUB_ENV
+   ```
 
-### Data Handling
+### Testing Configuration
 
--   The bot processes issue/PR content through external LLM services.
--   No sensitive data is stored permanently.
--   Users should avoid posting secrets or sensitive information in issues/PRs.
+Use the provided test utility:
 
-### Best Practices
-- Regularly rotate API keys and credentials.
-- Monitor bot activity for unusual patterns.
-- Restrict bot access to only necessary repositories.
-- Review bot comments for accuracy and appropriateness.
-- Implement rate limiting for LLM API calls to manage costs and quotas.
-- Set up monitoring for API usage and response times.
+```bash
+# Test your custom provider configuration
+python test-config.py
+```
 
-### Rate Limiting and API Quotas
-The bot relies on external LLM services which may have usage limits:
-- **Rate Limits**: Most LLM APIs impose request limits per minute/hour.
-- **Cost Management**: Monitor usage to avoid unexpected charges.
-- **Fallback Strategies**: Configure fallback models for high-volume usage.
-- **Error Handling**: The workflows include retry logic for temporary API failures.
+**Test Scenarios:**
+1. Standard provider (e.g., `openai/gpt-4o`)
+2. Custom provider with model in JSON
+3. Custom provider without model (should fail)
+4. Mixed (custom main, standard fast)
+
+**Output:**
+- Generated `opencode.json` config files
+- Pass/fail status for each scenario
+- Detailed logs
+
+### Contributing
+
+We welcome contributions! Here's how:
+
+1. **Fork the Repository**
+   ```bash
+   gh repo fork Mirrowel/Mirrobot-agent
+   ```
+
+2. **Create Feature Branch**
+   ```bash
+   git checkout -b feature/amazing-feature
+   ```
+
+3. **Make Changes**
+   - Follow existing code style
+   - Test in your own repository first
+   - Update documentation as needed
+
+4. **Commit with Clear Messages**
+   ```bash
+   git commit -m "feat: add support for custom review severity thresholds"
+   ```
+
+5. **Push and Open PR**
+   ```bash
+   git push origin feature/amazing-feature
+   gh pr create --title "Add custom review severity thresholds"
+   ```
+
+**Contribution Ideas:**
+- Additional workflow templates (e.g., dependency review, security scanning)
+- Prompt improvements for specific use cases
+- Provider-specific optimizations
+- Documentation enhancements
+- Bug fixes and error handling improvements
+
+---
 
 ## FAQ
 
-**Q: Why isn't the bot responding to my mentions?**
-**A:** Check that the workflow is enabled, the bot has the necessary permissions, and your mention uses the correct format (`@mirrobot-agent`).
+**Q: Is Mirrobot Agent really free?**
+**A:** Yes! For **open-source (public) repositories**, GitHub Actions minutes are completely free, so you only pay for LLM API usage. For private repositories, GitHub provides 2,000 free minutes/month, which is typically sufficient for small-to-medium teams.
+
+**Q: What LLM providers are supported?**
+**A:** Any OpenAI-compatible provider, including:
+- OpenAI (GPT-4, GPT-4o, GPT-4o-mini)
+- Anthropic (Claude Sonnet, Opus, Haiku)
+- Self-hosted models (Ollama, vLLM, LM Studio)
+- LLM proxies and aggregators
+- Regional providers (DeepSeek, Qwen, GLM, etc.)
 
 **Q: Can I customize the bot's behavior?**
-**A:** Yes! You can modify the prompt templates in `.github/prompts/` to change how the bot responds.
+**A:** Absolutely! All prompts are in `.github/prompts/` and fully editable. You can modify tone, analysis depth, review criteria, output format, and more.
 
-**Q: What happens if the bot makes a mistake?**
-**A:** The bot is designed to be helpful but not perfect. If it provides incorrect information, you can correct it in a follow-up comment or open an issue to report the problem.
+**Q: How much does it cost to run?**
+**A:** Typical costs (assuming 50 PRs/month, 20 issues/month):
+- GitHub Actions: **$0** (public repos) or **~$0** (within free tier for private repos)
+- LLM API: **$5-20/month** depending on provider and model
+- **Total**: **$5-20/month** vs **$500-2,500/month** for paid alternatives (10-50 users)
+
+**Q: Is my code/data secure?**
+**A:** Yes. The bot runs on GitHub's infrastructure using your own GitHub App. Code/data is only sent to your configured LLM provider. For maximum security, use self-hosted models or providers with strong privacy guarantees.
+
+**Q: Can the bot commit code?**
+**A:** No, by design. The bot posts comments and suggestions only. This prevents accidental or malicious code changes. (You can modify workflows to enable this, but it's not recommended.)
+
+**Q: What if the bot makes a mistake?**
+**A:** The bot is an AI assistant, not infallible. Always review its suggestions critically. You can:
+- Correct it in a follow-up comment
+- Modify prompts to improve future responses
+- Report issues to help improve the project
 
 **Q: Can I use this for private repositories?**
-**A:** Yes, the bot works with both public and private repositories, but you'll need to ensure proper GitHub App configuration for private repos.
+**A:** Yes! GitHub provides 2,000 free Actions minutes/month for private repos (on free plan). For more minutes, you can upgrade your GitHub plan or self-host runners.
+
+**Q: How do I change the bot's name/identity?**
+**A:** The bot name comes from your GitHub App. Change it in your GitHub App settings. Update workflow files to use the new name in mentions.
+
+**Q: Does it work with GitHub Enterprise?**
+**A:** Yes, with GitHub Enterprise Server 3.0+ or GitHub Enterprise Cloud. Ensure your instance supports GitHub Actions and GitHub Apps.
+
+**Q: Can I run multiple bots with different personalities?**
+**A:** Yes! Create multiple GitHub Apps with different credentials, configure separate workflows, and use different prompt templates.
+
+**Q: What models work best?**
+**A:** Recommendations:
+- **Main model**: GPT-4o, Claude Sonnet 4, or DeepSeek R1 (for reasoning)
+- **Fast model**: GPT-4o-mini, Claude Haiku 4
+- **Budget**: Qwen3-Coder, Llama 3.1 70B (via custom providers)
+
+---
+
+## Credits
+
+### Built On
+
+- **[OpenCode](https://opencode.ai)**: The AI engine powering Mirrobot Agent
+- **[GitHub Actions](https://github.com/features/actions)**: Execution platform
+- **[GitHub Apps](https://docs.github.com/en/apps)**: Authentication and API access
+
+### What Mirrobot Agent Adds
+
+- **Workflow Orchestration**: Pre-built workflows for issue analysis, PR reviews, and bot replies
+- **Prompt Engineering**: Production-tested prompts for high-quality AI responses
+- **Context Management**: Sophisticated filtering and state tracking
+- **GitHub Integration**: Seamless API interactions, error handling, security protections
+- **Provider Flexibility**: Dynamic configuration for any LLM provider
+
+### Acknowledgments
+
+- OpenCode team for the excellent AI agent platform
+- GitHub for free Actions minutes on open-source projects
+- The open-source community for inspiration and feedback
+
+---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+### Summary
+
+✅ **Free to use** for any purpose (commercial or personal)
+✅ **Modify** and customize as needed
+✅ **Distribute** original or modified versions
+✅ **No warranty** provided (use at your own risk)
+
+---
+
+## Support & Community
+
+- **Issues**: [GitHub Issues](https://github.com/Mirrowel/Mirrobot-agent/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Mirrowel/Mirrobot-agent/discussions)
+- **Documentation**: This README + OpenCode docs
+- **Contributing**: See [Development Guide](#development-guide)
+
+---
+
+**Made with ❤️ for the open-source community**
+
+Deploy your AI GitHub bot in 10 minutes — zero infrastructure, complete control, completely free.
