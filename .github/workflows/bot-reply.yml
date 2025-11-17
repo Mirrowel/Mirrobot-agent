@@ -117,25 +117,25 @@ jobs:
             
             # Prepare reviews: exclude COMMENTED (duplicates inline comments) and DISMISSED states
             # Fallback to unfiltered if jq fails
-            if reviews=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (.reviews | length) > 0 then (.reviews[] | select((.author.login as $login | $ignored | index($login)) | not and .body != null and .state != "COMMENTED" and .state != "DISMISSED") | "- \(.author.login // \"unknown\") at \(.createdAt // \"N/A\"):\n - Review body: \(.body // \"No summary comment.\")\n - State: \(.state // \"UNKNOWN\")\n\") else "No formal reviews." end' 2>/dev/null); then
+            if reviews=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.reviews // []) | length) > 0) then ((.reviews[]? | select((.author.login as $login | $ignored | index($login)) | not and .body != null and .state != "COMMENTED" and .state != "DISMISSED")) | "- \(.author.login // \"unknown\") at \(.createdAt // \"N/A\"):\n - Review body: \(.body // \"No summary comment.\")\n - State: \(.state // \"UNKNOWN\")\n") else "No formal reviews." end' 2>/dev/null); then
                 filtered_reviews=$(echo "$reviews" | grep -c "^- " || echo "0")
                 excluded_reviews=$((total_reviews - filtered_reviews))
             else
-                echo "::warning::Review filtering failed, using unfiltered data"
-                reviews=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (.reviews | length) > 0 then (.reviews[] | select((.author.login as $login | $ignored | index($login)) | not and .body != null) | "- \(.author.login // \"unknown\") at \(.createdAt // \"N/A\"):\n - Review body: \(.body // \"No summary comment.\")\n - State: \(.state // \"UNKNOWN\")\n") else "No formal reviews." end')
-                excluded_reviews=0
+              echo "::warning::Review filtering failed, using unfiltered data"
+              reviews=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.reviews // []) | length) > 0) then ((.reviews[]? | select((.author.login as $login | $ignored | index($login)) | not and .body != null)) | "- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n - Review body: " + (.body // "No summary comment.") + "\n - State: " + (.state // "UNKNOWN") + "\n") else "No formal reviews." end')
+              excluded_reviews=0
             fi
 
             # Prepare review comments: exclude outdated comments
             # Fallback to unfiltered if jq fails
-            if review_comments=$(echo "$review_comments_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (length > 0) then (.[] | select((.user.login as $login | $ignored | index($login)) | not and (.outdated == false or .outdated == null)) | .pull_request_review_id as $review_id | "- \(.user.login // "unknown") (Review ID: \($review_id // "N/A")) at \(.created_at // "N/A"):\n - Inline Comment: \(.path):\(.line // "N/A"):\n   \(.body // "")\n") else "No inline review comments." end' 2>/dev/null); then
+            if review_comments=$(echo "$review_comments_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if ((. | type) == "array" and (length > 0)) then (.[]? | select((.user.login as $login | $ignored | index($login)) | not and (.outdated == false or .outdated == null)) | .pull_request_review_id as $review_id | "- \(.user.login // "unknown") (Review ID: \($review_id // "N/A")) at \(.created_at // "N/A"):\n - Inline Comment: \(.path):\(.line // "N/A"):\n   \(.body // "")\n") else "No inline review comments." end' 2>/dev/null); then
               filtered_comments=$(echo "$review_comments" | grep -c "^- " || echo "0")
               excluded_comments=$((total_review_comments - filtered_comments))
               echo "✓ Filtered review comments: $filtered_comments included, $excluded_comments excluded (outdated)"
             else
-                echo "::warning::Review comment filtering failed, using unfiltered data"
-                review_comments=$(echo "$review_comments_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (length > 0) then (.[] | select((.user.login as $login | $ignored | index($login)) | not and (.outdated == false or .outdated == null)) | .pull_request_review_id as $review_id | "- \(.user.login // \"unknown\") (Review ID: \($review_id // \"N/A\")) at \(.created_at // \"N/A\"):\n - Inline Comment: \(.path):\(.line // \"N/A\"):\n   \(.body // \"\")\n") else "No inline review comments." end')
-                excluded_comments=0
+              echo "::warning::Review comment filtering failed, using unfiltered data"
+              review_comments=$(echo "$review_comments_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if ((. | type) == "array" and (length > 0)) then (.[]? | select((.user.login as $login | $ignored | index($login)) | not and (.outdated == false or .outdated == null)) | .pull_request_review_id as $review_id | "- " + (.user.login // "unknown") + " (Review ID: " + ($review_id // "N/A") + ") at " + (.created_at // "N/A") + ":\n - Inline Comment: " + .path + ":" + (.line // "N/A") + ":\n   " + (.body // "") + "\n") else "No inline review comments." end')
+              excluded_comments=0
             fi
 
             # Build filtering summary
