@@ -68,7 +68,47 @@ jobs:
           # Fetch and Format Context based on type
           if [[ "$IS_PR" == "true" ]]; then
             # Fetch PR data
-            pr_json=$(gh pr view ${{ env.THREAD_NUMBER }} --repo ${{ github.repository }} --json author,title,body,createdAt,state,headRefName,baseRefName,headRefOid,additions,deletions,commits,files,comments,reviews,closingIssuesReferences,reviewThreads)
+            pr_json=$(gh pr view ${{ env.THREAD_NUMBER }} --repo ${{ github.repository }} --json author,title,body,createdAt,state,headRefName,baseRefName,headRefOid,additions,deletions,commits,files,comments,reviews,closingIssuesReferences)
+
+            repo_owner="${GITHUB_REPOSITORY%/*}"
+            repo_name="${GITHUB_REPOSITORY#*/}"
+            # Pull newest review threads/comments (GitHub caps connections at 100 nodes)
+            review_threads_query='query($owner: String!, $name: String!, $number: Int!) {
+              repository(owner: $owner, name: $name) {
+                pullRequest(number: $number) {
+                  reviewThreads(last: 100) {
+                    nodes {
+                      isResolved
+                      path
+                      line
+                      originalLine
+                      diffSide
+                      comments(last: 100) {
+                        nodes {
+                          author { login }
+                          body
+                          createdAt
+                          path
+                          line
+                          originalLine
+                          diffSide
+                          isMinimized
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }'
+
+            if review_threads_response=$(gh api graphql -f owner="$repo_owner" -f name="$repo_name" -F number=${{ env.THREAD_NUMBER }} -f query="$review_threads_query" 2>/dev/null); then
+              review_threads=$(echo "$review_threads_response" | jq '.data.repository.pullRequest.reviewThreads // {"nodes": []}')
+            else
+              echo "::warning::Failed to fetch review threads via GraphQL; inline comment context may be incomplete."
+              review_threads='{"nodes": []}'
+            fi
+
+            pr_json=$(printf '%s\n' "$pr_json" | jq --argjson threads "$review_threads" '. + {reviewThreads: $threads}')
 
             # Debug: Output pr_json for inspection
             echo "$pr_json" > pr_json.txt
@@ -104,13 +144,17 @@ jobs:
             # Previous pattern had a missing backslash before the deletions interpolation, leaving a literal '((.deletions))'.
             changed_files_list=$(echo "$pr_json" | jq -r '.files[] | "- \(.path) (MODIFIED) +\((.additions))/-\((.deletions))"')
             # Prepare general PR comments (exclude ignored bots)
-            comments=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login as $login | $ignored | index($login)) | not and ((.isMinimized // false) | not))) | "- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n") else "No general comments." end')
+            comments=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.comments // []) | length) > 0) then ((.comments | sort_by((.createdAt // "1980-01-01T00:00:00Z")) | reverse)[]? | select((.author.login as $login | $ignored | index($login)) | not and ((.isMinimized // false) | not)) | "- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n") else "No general comments." end')
             
             # ===== ENHANCED FILTERING WITH ERROR HANDLING =====
             
             # Count totals before filtering
             total_reviews=$(echo "$pr_json" | jq --argjson ignored "$IGNORE_BOT_NAMES_JSON" '[((.reviews | (if (type == "object" and has("nodes")) then .nodes else . end) // [])[]? | select((.author.login as $login | $ignored | index($login)) | not and ((.isMinimized // false) | not)))] | length')
-            total_review_comments=$(echo "$pr_json" | jq --argjson ignored "$IGNORE_BOT_NAMES_JSON" '[((.reviewThreads | (if (type == "object" and has("nodes")) then .nodes else . end) // [])[]? as $thread | ((($thread.comments | (if (type == "object" and has("nodes")) then .nodes else . end) // [])[]?) as $comment | $comment | select((($comment.author.login as $login | $ignored | index($login)) | not)))] | length')
+            total_review_comments=$(echo "$pr_json" | jq --argjson ignored "$IGNORE_BOT_NAMES_JSON" '[((.reviewThreads | (if (type == "object" and has("nodes")) then .nodes else . end) // [])[]? as $thread
+              | select((($thread.isResolved // false) | not))
+              | ((($thread.comments | (if (type == "object" and has("nodes")) then .nodes else . end) // [])[]?) as $comment
+              | $comment
+              | select((($comment.author.login as $login | $ignored | index($login)) | not) and ((.isMinimized // false) | not))) ] | length')
             echo "Debug: total reviews before filtering = $total_reviews"
             echo "Debug: total review comments before filtering = $total_review_comments"
             
@@ -143,13 +187,25 @@ jobs:
             review_comment_filter_err=$(mktemp 2>/dev/null || echo "/tmp/review_comment_filter_err.log")
             if review_comments=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'def norm_threads: (.reviewThreads | (if (type == "object" and has("nodes")) then .nodes else . end) // []);
               def norm_comments($thread): (($thread.comments | (if (type == "object" and has("nodes")) then .nodes else . end) // []);
-              if ((norm_threads | length) > 0) then
-                norm_threads[]? as $thread
-                | select((($thread.isResolved // false) | not))
-                | norm_comments($thread)[]? as $comment
-                | $comment
-                | select((($comment.author.login as $login | $ignored | index($login)) | not) and ((.isMinimized // false) | not) and ((.isResolved // false) | not))
-                | "- " + ($comment.author.login // "unknown") + " at " + ($comment.createdAt // "N/A") + ":\n - Inline Comment: " + ((($thread.path // $comment.path // "Unknown file") | tostring)) + ":" + ((($thread.line // $comment.line // "N/A") | tostring)) + ":\n   " + (($comment.body // "") | tostring) + "\n"
+              def active_comments:
+                [ norm_threads[]? as $thread
+                  | select((($thread.isResolved // false) | not))
+                  | norm_comments($thread)[]? as $comment
+                  | select((($comment.author.login as $login | $ignored | index($login)) | not) and ((.isMinimized // false) | not))
+                  | {
+                      author: ($comment.author.login // "unknown"),
+                      createdAt: ($comment.createdAt // "1980-01-01T00:00:00Z"),
+                      path: ((($thread.path // $comment.path // "Unknown file") | tostring)),
+                      line: ((($thread.line // $comment.line // "N/A") | tostring)),
+                      body: (($comment.body // "") | tostring)
+                    }
+                ];
+              if ((active_comments | length) > 0) then
+                active_comments
+                | sort_by(.createdAt)
+                | reverse
+                | .[]
+                | "- " + (.author) + " at " + (.createdAt // "N/A") + ":\n - Inline Comment: " + (.path) + ":" + (.line) + ":\n   " + (.body) + "\n"
               else "No inline review comments." end' 2>"$review_comment_filter_err"); then
               filtered_comments=$(echo "$review_comments" | grep -c "^- " || echo "0")
               excluded_comments=$((total_review_comments - filtered_comments))
@@ -167,14 +223,26 @@ jobs:
               else
                 echo "::warning::jq returned no stderr for review comment filter"
               fi
-              review_comments=$(echo "$pr_json" | jq -r 'def norm_threads: (.reviewThreads | (if (type == "object" and has("nodes")) then .nodes else . end) // []);
+              review_comments=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'def norm_threads: (.reviewThreads | (if (type == "object" and has("nodes")) then .nodes else . end) // []);
                 def norm_comments($thread): (($thread.comments | (if (type == "object" and has("nodes")) then .nodes else . end) // []);
-                if ((norm_threads | length) > 0) then
-                  norm_threads[]? as $thread
+                [ norm_threads[]? as $thread
+                  | select((($thread.isResolved // false) | not))
                   | norm_comments($thread)[]? as $comment
-                  | $comment
-                  | "- " + ($comment.author.login // "unknown") + " at " + ($comment.createdAt // "N/A") + ":\n - Inline Comment: " + ((($thread.path // $comment.path // "Unknown file") | tostring)) + ":" + ((($thread.line // $comment.line // "N/A") | tostring)) + ":\n   " + (($comment.body // "") | tostring) + "\n"
-                else "No inline review comments." end')
+                  | select((($comment.author.login as $login | $ignored | index($login)) | not) and ((.isMinimized // false) | not))
+                  | {
+                      author: ($comment.author.login // "unknown"),
+                      createdAt: ($comment.createdAt // "1980-01-01T00:00:00Z"),
+                      path: ((($thread.path // $comment.path // "Unknown file") | tostring)),
+                      line: ((($thread.line // $comment.line // "N/A") | tostring)),
+                      body: (($comment.body // "") | tostring)
+                    }
+                ]
+                | if (length > 0) then
+                    sort_by(.createdAt)
+                    | reverse
+                    | .[]
+                    | "- " + (.author) + " at " + (.createdAt // "N/A") + ":\n - Inline Comment: " + (.path) + ":" + (.line) + ":\n   " + (.body) + "\n"
+                  else "No inline review comments." end')
               excluded_comments=0
             fi
             rm -f "$review_comment_filter_err" || true
