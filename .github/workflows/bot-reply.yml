@@ -107,7 +107,7 @@ jobs:
             # Previous pattern had a missing backslash before the deletions interpolation, leaving a literal '((.deletions))'.
             changed_files_list=$(echo "$pr_json" | jq -r '.files[] | "- \(.path) (MODIFIED) +\((.additions))/-\((.deletions))"')
             # Prepare general PR comments (exclude ignored bots)
-            comments=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login as $login | $ignored | index($login)) | not)) | "- \(.author.login // \"unknown\") at \(.createdAt // \"N/A\"):\n\(.body // \"\")\n") else "No general comments." end')
+            comments=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login as $login | $ignored | index($login)) | not)) | "- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n") else "No general comments." end')
             
             # ===== ENHANCED FILTERING WITH ERROR HANDLING =====
             
@@ -222,7 +222,7 @@ jobs:
             title=$(echo "$issue_data" | jq -r .title)
             body=$(echo "$issue_data" | jq -r '.body // "(No description provided)"')
             # Prepare comments (exclude ignored bots)
-            comments=$(echo "$issue_data" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login as $login | $ignored | index($login)) | not)) | "- \(.author.login // \"unknown\") at \(.createdAt // \"N/A\"):\n\(.body // \"\")\n") else "No comments have been posted yet." end')
+            comments=$(echo "$issue_data" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login as $login | $ignored | index($login)) | not)) | "- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n") else "No comments have been posted yet." end')
 
             # Prepare cross-references
             references=$(echo "$timeline_data" | jq -r '.[] | select(.event == "cross-referenced") | .source.issue | "- Mentioned in \(.html_url | if contains("/pull/") then "PR" else "Issue" end): #\(.number) - \(.title)"')

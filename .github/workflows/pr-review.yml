@@ -101,7 +101,7 @@ jobs:
           # Build changed files list with correct jq interpolations for additions and deletions
           # Previous pattern had a missing backslash before the deletions interpolation, leaving a literal '((.deletions))'.
           changed_files_list=$(echo "$pr_json" | jq -r '.files[] | "- \(.path) (MODIFIED) +\((.additions))/-\((.deletions))"')
-          comments=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login as $login | $ignored | index($login)) | not)) | "- \(.author.login // \"unknown\") at \(.createdAt // \"N/A\"):\n\(.body // \"\")\n") else "No general comments." end')
+          comments=$(echo "$pr_json" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login as $login | $ignored | index($login)) | not)) | "- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n") else "No general comments." end')
           
           # ===== ENHANCED FILTERING WITH ERROR HANDLING =====
           
