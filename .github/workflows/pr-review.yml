@@ -721,8 +721,8 @@ jobs:
             # Construct new body
             new_body="${clean_body}
 
-${EXPECTED_SIGNATURE}
-${EXPECTED_MARKER}"
+            ${EXPECTED_SIGNATURE}
+            ${EXPECTED_MARKER}"
 
             # Update review
             if gh api --method PUT "/repos/${{ github.repository }}/pulls/${{ env.PR_NUMBER }}/reviews/$review_id" -f body="$new_body"; then
