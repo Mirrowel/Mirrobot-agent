@@ -236,6 +236,8 @@ Mirrobot Agent is a **sophisticated GitHub Actions integration framework** built
 |----------|---------|-------------|
 | **Issue Analysis** | `issues: [opened]`, manual dispatch | Analyzes new issues, detects duplicates, identifies root causes |
 | **PR Review** | `pull_request_target: [opened, ready_for_review]`, `/mirrobot-review` command | Comprehensive bundled code reviews with incremental diff support |
+| **Compliance Check** | PR labeled `ready-for-merge`, `/mirrobot-check` command | AI-powered merge readiness verification with file group consistency checks |
+| **Status Check Init** | `pull_request: [opened, synchronize, reopened]` | Initializes pending compliance status check on PRs |
 | **Bot Reply** | `issue_comment: [created]` (when @mentioned) | Context-aware assistance in issues and PRs |
 | **OpenCode (Legacy)** | `/oc` or `/opencode` command | Manual agent triggering (maintainers only) |
 
@@ -296,6 +298,173 @@ Mirrobot Agent is a **sophisticated GitHub Actions integration framework** built
 - Comment: /mirrobot-review
 - Workflow dispatch with PR number
 ```
+
+#### Compliance Check (`compliance-check.yml`)
+
+**Purpose:**  
+AI-powered compliance agent that verifies PRs are ready for merge by checking file group consistency, documentation updates, and enforcing project-specific merge requirements.
+
+**Triggers:**
+- PR labeled with `ready-for-merge`
+- PR marked ready for review
+- Comment command: `/mirrobot-check` or `/mirrobot_check`
+- Manual workflow dispatch with PR number
+
+**Security Model:**
+The compliance check workflow implements a robust security model to prevent prompt injection attacks:
+- Uses `pull_request_target` trigger to run workflow from the **base branch** (trusted code)
+- Saves prompt file from base branch **BEFORE** checking out PR code
+- Prevents malicious PRs from modifying workflow behavior or injecting code into AI prompts
+- Isolates untrusted PR code from trusted prompt engineering
+
+**Process (6 Phases):**
+
+1. **Secure Setup**
+   - Checkout base branch to access trusted prompt file
+   - Initialize bot credentials and OpenCode API access
+   - Establish minimal permissions (contents: read, pull-requests: write, statuses: write)
+
+2. **Gather PR Context**
+   - Fetch PR metadata: title, author, files changed, labels, reviewers
+   - Retrieve previous compliance check results for historical tracking
+   - Extract changed files as both space-separated list and JSON array
+
+3. **Security Checkpoint**
+   - **CRITICAL**: Save trusted prompt from base branch to `/tmp/` 
+   - Checkout PR head for diff generation (now safe, prompt is secured)
+   - Generate unified diff of all PR changes (with 500KB truncation limit)
+
+4. **Prepare AI Context**
+   - Format file groups configuration into human-readable format
+   - Generate report template with placeholders for AI analysis
+   - Prepare environment variables for prompt assembly
+
+5. **AI Analysis**
+   - Assemble compliance prompt using trusted template from `/tmp/`
+   - Execute OpenCode with controlled bash permissions (gh, git, jq, cat only)
+   - AI conducts multiple-turn analysis (5-20+ turns expected)
+   - Posts findings as PR comment with compliance status
+
+6. **Post-Processing** (Optional)
+   - Prepend reviewer mentions if `ENABLE_REVIEWER_MENTIONS` is enabled
+   - Verify posted comment contains required footers:
+     - Compliance signature: `_Compliance verification by AI agent`
+     - Tracking marker: `<!-- compliance-check-id: PR_NUMBER-SHA -->`
+
+**File Groups Configuration:**
+
+The workflow uses a configurable `FILE_GROUPS_JSON` environment variable to define related file groups:
+
+```json
+[
+  {
+    "name": "Workflow Configuration",
+    "description": "When code changes affect build process, verify build.yml is updated...",
+    "files": [".github/workflows/*.yml"]
+  },
+  {
+    "name": "Documentation",
+    "description": "Ensure README reflects code changes...",
+    "files": ["README.md", "docs/**/*.md", "CHANGELOG.md"]
+  },
+  {
+    "name": "Dependencies",
+    "description": "When manifests change, lockfiles MUST be regenerated...",
+    "files": ["package.json", "package-lock.json", "Cargo.toml", "Cargo.lock"]
+  }
+]
+```
+
+**AI Behavior:**
+- **Multiple-Turn Analysis**: AI iterates through file groups and issues (one per turn)
+- **Detailed Issue Descriptions**: Creates comprehensive findings for future reference
+- **Structured Output**: Posts compliance report with status, summary, file group analysis, and next steps
+- **Status Checks**: Updates GitHub status check API with compliance results
+
+**Concurrency Control:**
+- Prevents concurrent runs for the same PR
+- Uses group: `${{ github.workflow }}-${{ github.event.pull_request.number }}`
+- Does not cancel in-progress runs (waits for completion)
+
+**Customization:**
+- **Toggle Features**: Set `ENABLE_REVIEWER_MENTIONS` to `true`/`false`
+- **File Groups**: Modify `FILE_GROUPS_JSON` to match project structure
+- **Bash Permissions**: Adjust `OPENCODE_PERMISSION` to control allowed commands
+
+**Example Output:**
+```markdown
+## 🔍 Compliance Check Results
+
+### Status: ⚠️ ISSUES FOUND
+
+**PR**: #123 - Add new authentication feature
+**Author**: @developer
+**Commit**: abc123def
+**Checked**: 2025-11-21 04:30:00 UTC
+
+---
+
+### 📊 Summary
+This PR introduces authentication changes but is missing required documentation updates and workflow configuration changes.
+
+---
+
+### 📁 File Groups Analyzed
+
+**Workflow Configuration**: ⚠️ WARNING
+- Build pipeline changes detected in src/auth.js
+- .github/workflows/build.yml not updated with new auth flow
+
+**Documentation**: ❌ MISSING
+- New authentication feature added
+- README.md section on authentication not updated
+- CHANGELOG.md missing entry for this feature
+
+**Dependencies**: ✅ PASSED
+- No dependency changes in this PR
+
+---
+
+### 🎯 Overall Assessment
+This PR requires documentation updates before merge.
+
+### 📝 Next Steps
+1. Update README.md authentication section
+2. Add build.yml configuration for auth service
+3. Document changes in CHANGELOG.md
+```
+
+#### Status Check Init (`status-check-init.yml`)
+
+**Purpose:**  
+Initializes a pending compliance status check on pull requests to indicate that compliance verification is required before merge.
+
+**Triggers:**
+- PR opened
+- PR synchronized (new commits pushed)
+- PR reopened
+
+**Process:**
+1. Sets GitHub status check to **pending** state
+2. Uses status context: `compliance-check`
+3. Displays message: "Awaiting compliance verification - run /mirrobot-check when ready to merge"
+
+**Integration with Compliance Check:**
+- This workflow initializes the status as **pending**
+- The `compliance-check.yml` workflow updates the status to **success** or **failure**
+- Together, they enforce merge requirements via branch protection rules
+
+**Branch Protection Setup:**
+To require compliance checks before merge, configure branch protection:
+1. Repository Settings → Branches → Branch protection rules
+2. Check "Require status checks to pass before merging"
+3. Select `compliance-check` status
+4. PRs will be blocked from merge until compliance check passes
+
+**Permissions:**
+- Minimal: `statuses: write` only
+- Does not require repository contents access
+- Runs quickly (< 5 seconds)
 
 #### Bot Reply (`bot-reply.yml`)
 
@@ -537,8 +706,9 @@ a few areas that could use improvement...
 
 - **New Issue Opened** → Automatic analysis
 - **New PR Opened** (non-draft) → Automatic review
-- **PR Marked Ready for Review** → Automatic review
+- **PR Marked Ready for Review** → Automatic review + Compliance check (if labeled `ready-for-merge`)
 - **PR Updated** (if labeled `Agent Monitored`) → Automatic incremental review
+- **PR Opened/Synchronized/Reopened** → Pending compliance status initialized
 
 #### 2. Mention Triggers
 
@@ -566,6 +736,15 @@ or
 /mirrobot_review
 ```
 
+For compliance checks:
+```
+/mirrobot-check
+```
+or
+```
+/mirrobot_check
+```
+
 #### 4. Manual Workflow Dispatch
 
 Navigate to: `Actions` → Select workflow → `Run workflow`
@@ -586,6 +765,7 @@ Navigate to: `Actions` → Select workflow → `Run workflow`
 | `@mirrobot-agent analyze this` | Issues | Requests issue analysis |
 | `@mirrobot-agent find <query>` | Any | Searches codebase using git grep |
 | `/mirrobot-review` | PRs | Manually triggers PR review workflow |
+| `/mirrobot-check` | PRs | Manually triggers compliance check workflow |
 | `/oc <prompt>` | Any (maintainers only) | Custom OpenCode prompt |
 
 ### Response Patterns
@@ -617,6 +797,40 @@ Navigate to: `Actions` → Select workflow → `Run workflow`
 
 ### Questions for the Author
 <Clarifying questions about design decisions>
+```
+
+**Compliance Check:**
+```markdown
+## 🔍 Compliance Check Results
+
+### Status: ✅ PASSED | ⚠️ ISSUES FOUND | ❌ FAILED
+
+**PR**: #<number> - <title>
+**Author**: @<author>
+**Commit**: <sha>
+**Checked**: <timestamp>
+
+---
+
+### 📊 Summary
+<Brief overview of compliance state>
+
+---
+
+### 📁 File Groups Analyzed
+<Analysis for each affected file group>
+
+---
+
+### 🎯 Overall Assessment
+<Holistic compliance state with reasoning>
+
+### 📝 Next Steps
+<Actionable guidance for achieving compliance>
+
+---
+_Compliance verification by AI agent • Re-run with `/mirrobot-check`_
+<!-- compliance-check-id: <PR_NUMBER>-<SHA> -->
 ```
 
 **Bot Reply:**
@@ -813,11 +1027,14 @@ Navigate to: `Actions` → Select workflow → `Run workflow`
 ├── workflows/
 │   ├── issue-comment.yml        # Issue analysis workflow
 │   ├── pr-review.yml            # PR review workflow
+│   ├── compliance-check.yml     # Compliance verification workflow (NEW)
+│   ├── status-check-init.yml    # Status check initialization workflow (NEW)
 │   ├── bot-reply.yml            # Bot mention response workflow
 │   └── opencode.yml             # Legacy OpenCode integration
 └── prompts/
     ├── issue-comment.md         # Issue analysis prompt template
     ├── pr-review.md             # PR review prompt template (24KB, sophisticated)
+    ├── compliance-check.md      # Compliance check prompt template (NEW)
     └── bot-reply.md             # Bot reply prompt template (33KB, multi-strategy)
 
 custom_providers.json            # Example custom provider configuration

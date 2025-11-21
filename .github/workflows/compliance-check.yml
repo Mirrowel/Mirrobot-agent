@@ -6,10 +6,16 @@
 #          enforcing project-specific merge requirements.
 #
 # Triggers:
+#   - AUTOMATICALLY after PR Review completes (for events that trigger both)
 #   - PR labeled with 'ready-for-merge'
 #   - PR marked ready for review
 #   - Comment with '/mirrobot-check' or '/mirrobot_check'
 #   - Manual workflow dispatch
+#
+# Workflow Dependency:
+#   - When triggered by ready_for_review, waits for PR Review to complete
+#   - When triggered independently (labels, comments), runs immediately
+#   - Ensures sequential execution only when both workflows trigger together
 #
 # Security Model:
 #   - Uses pull_request_target to run from base branch (trusted code)
@@ -26,14 +32,22 @@ name: Compliance Check
 
 # Prevent concurrent runs for the same PR
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr_number }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr_number || github.event.workflow_run.pull_requests[0].number }}
   cancel-in-progress: false
 
 on:
+  # AUTOMATIC: Run after PR Review workflow completes
+  # This handles cases where both workflows would trigger together
+  # (e.g., ready_for_review, opened, synchronize)
+  workflow_run:
+    workflows: ["PR Review"]
+    types: [completed]
+  
   # SECURITY: Use pull_request_target (not pull_request) to run workflow from base branch
   # This prevents malicious PRs from modifying the workflow or prompt files
+  # Note: ready_for_review removed - handled by workflow_run to ensure sequential execution
   pull_request_target:
-    types: [labeled, ready_for_review]
+    types: [labeled]
   issue_comment:
     types: [created]
   workflow_dispatch:
@@ -49,6 +63,7 @@ jobs:
     # 1. Manual trigger via workflow_dispatch
     # 2. PR marked ready for review or labeled 'ready-for-merge'
     # 3. Comment contains '/mirrobot-check' or '/mirrobot_check'
+    # Note: ready_for_review will wait for PR Review to complete (see step below)
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request_target' && 
@@ -62,20 +77,37 @@ jobs:
     
     # Minimal permissions following principle of least privilege
     permissions:
-      contents: read
-      pull-requests: write
-      statuses: write
-      issues: write
+      contents: read          # Read repository files
+      pull-requests: write    # Post comments and reviews
+      statuses: write         # Update commit status checks
+      issues: write           # Post issue comments
 
     env:
-      PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
+      # -----------------------------------------------------------------------
+      # BASIC CONFIGURATION
+      # -----------------------------------------------------------------------
+      PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.event.workflow_run.pull_requests[0].number }}
       BOT_NAMES_JSON: '[\"mirrobot\", \"mirrobot-agent\", \"mirrobot-agent[bot]\"]'
       
-      # Toggle Features
-      ENABLE_REVIEWER_MENTIONS: 'false'  # Set to 'false' to disable prepending reviewer mentions
+      # -----------------------------------------------------------------------
+      # FEATURE TOGGLES
+      # -----------------------------------------------------------------------
+      # ENABLE_REVIEWER_MENTIONS: Prepend @mentions to compliance report
+      # Set to 'true' to notify reviewers, 'false' to disable
+      ENABLE_REVIEWER_MENTIONS: 'false'
       
-      # File Groups Configuration
-      # Define file groups with descriptions for compliance checking
+      # -----------------------------------------------------------------------
+      # FILE GROUPS CONFIGURATION
+      # -----------------------------------------------------------------------
+      # Define file groups that the AI should check for consistency.
+      # Each group has:
+      #   - name: Display name for the group
+      #   - description: What to verify when files in this group change
+      #   - files: List of file patterns (supports globs like docs/**/*.md)
+      #
+      # To add a new group, append to the JSON array below.
+      # The AI will check if changes to one file in a group require updates
+      # to other files in the same group (e.g., code + tests, manifest + lockfile)
       FILE_GROUPS_JSON: |
         [
           {
@@ -134,6 +166,55 @@ jobs:
           opencode-model: ${{ secrets.OPENCODE_MODEL }}
           opencode-fast-model: ${{ secrets.OPENCODE_FAST_MODEL }}
           custom-providers-json: ${{ secrets.CUSTOM_PROVIDERS_JSON }}
+
+            # ======================================================================
+      # CONDITIONAL WAIT: Wait for PR Review to Complete
+      # ======================================================================
+      # Only wait when triggered by ready_for_review event
+      # This ensures sequential execution: PR Review → Compliance Check
+      # For other triggers (labels, comments), skip and proceed immediately
+      - name: Wait for PR Review Workflow (if triggered by ready_for_review)
+        if: github.event.action == 'ready_for_review'
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+        run: |
+          echo "Triggered by ready_for_review - waiting for PR Review to complete..."
+          
+          # Wait up to 30 minutes (180 checks * 10 seconds)
+          MAX_ATTEMPTS=180
+          ATTEMPT=0
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            # Get latest PR Review workflow run for this PR
+            REVIEW_STATUS=$(gh run list \
+              --repo ${{ github.repository }} \
+              --workflow "PR Review" \
+              --json status,conclusion,headSha \
+              --jq "[.[] | select(.headSha == \"${{ github.event.pull_request.head.sha }}\")][0] | {status, conclusion}")
+            
+            STATUS=$(echo "$REVIEW_STATUS" | jq -r '.status // "not_found"')
+            CONCLUSION=$(echo "$REVIEW_STATUS" | jq -r '.conclusion // ""')
+            
+            echo "Attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS: PR Review status=$STATUS, conclusion=$CONCLUSION"
+            
+            if [ "$STATUS" == "completed" ]; then
+              echo "✅ PR Review completed with conclusion: $CONCLUSION"
+              break
+            elif [ "$STATUS" == "not_found" ]; then
+              echo "⚠️  No PR Review workflow run found yet, waiting..."
+            else
+              echo "⏳ PR Review still running ($STATUS), waiting..."
+            fi
+            
+            sleep 10
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+          
+          if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+            echo "::warning::Timed out waiting for PR Review workflow (waited 30 minutes)"
+            echo "Proceeding with compliance check anyway..."
+          fi
+
 
       # ======================================================================
       # PHASE 2: GATHER PR CONTEXT
