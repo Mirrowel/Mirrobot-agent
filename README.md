@@ -236,7 +236,7 @@ Mirrobot Agent is a **sophisticated GitHub Actions integration framework** built
 |----------|---------|-------------|
 | **Issue Analysis** | `issues: [opened]`, manual dispatch | Analyzes new issues, detects duplicates, identifies root causes |
 | **PR Review** | `pull_request_target: [opened, ready_for_review]`, `/mirrobot-review` command | Comprehensive bundled code reviews with incremental diff support |
-| **Compliance Check** | PR labeled `ready-for-merge`, `/mirrobot-check` command | AI-powered merge readiness verification with file group consistency checks |
+| **Compliance Check** | PR labeled `ready-for-merge`, `ready_for_review` (waits for PR Review first), `/mirrobot-check` command | AI-powered merge readiness verification with file group consistency checks |
 | **Status Check Init** | `pull_request: [opened, synchronize, reopened]` | Initializes pending compliance status check on PRs |
 | **Bot Reply** | `issue_comment: [created]` (when @mentioned) | Context-aware assistance in issues and PRs |
 | **OpenCode (Legacy)** | `/oc` or `/opencode` command | Manual agent triggering (maintainers only) |
@@ -305,10 +305,16 @@ Mirrobot Agent is a **sophisticated GitHub Actions integration framework** built
 AI-powered compliance agent that verifies PRs are ready for merge by checking file group consistency, documentation updates, and enforcing project-specific merge requirements.
 
 **Triggers:**
-- PR labeled with `ready-for-merge`
-- PR marked ready for review
-- Comment command: `/mirrobot-check` or `/mirrobot_check`
-- Manual workflow dispatch with PR number
+- PR labeled with `ready-for-merge` (runs immediately)
+- PR marked ready for review (waits for PR Review to complete first)
+- Comment command: `/mirrobot-check` or `/mirrobot_check` (runs immediately)
+- Manual workflow dispatch with PR number (runs immediately)
+
+**Workflow Dependency:**
+- When triggered by `ready_for_review`, automatically waits for PR Review workflow to complete before starting compliance check
+- When triggered independently (labels, comments, manual), runs immediately without waiting
+- Ensures sequential execution (PR Review → Compliance Check) only when both workflows trigger together
+- Prevents race conditions and ensures compliance check has access to fresh review context
 
 **Security Model:**
 The compliance check workflow implements a robust security model to prevent prompt injection attacks:
@@ -706,7 +712,7 @@ a few areas that could use improvement...
 
 - **New Issue Opened** → Automatic analysis
 - **New PR Opened** (non-draft) → Automatic review
-- **PR Marked Ready for Review** → Automatic review + Compliance check (if labeled `ready-for-merge`)
+- **PR Marked Ready for Review** → Automatic review, then Compliance check (sequential: review completes first, then compliance runs)
 - **PR Updated** (if labeled `Agent Monitored`) → Automatic incremental review
 - **PR Opened/Synchronized/Reopened** → Pending compliance status initialized
 
