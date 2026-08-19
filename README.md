@@ -109,18 +109,48 @@ Both work identically downstream; presence of the account token selects account 
 
 ### 3. Add secrets
 
-`Settings → Secrets and variables → Actions`:
+`Settings → Secrets and variables → Actions` — the minimal set is **three entries**:
 
-| Secret | Required | What |
+| Secret | What |
+|---|---|
+| `OPENCODE_MODEL` | Main model, `provider/model` format, e.g. `anthropic/claude-sonnet-4` |
+| `OPENCODE_CONFIG_JSON` | Your complete OpenCode config (see below) — **including the LLM API key**, so no separate key secret is needed |
+| + identity | Whatever your step 2 choice needs: `BOT_APP_ID` + `BOT_PRIVATE_KEY`, or `ACCOUNT_GH_TOKEN` |
+
+#### What `OPENCODE_CONFIG_JSON` actually is
+
+It's a **complete [OpenCode config](https://opencode.ai/docs/config)**, minified to one line — not just permissions. Anything opencode's config supports can live in it: provider definitions (with models and API keys), `small_model`, custom agents, MCP servers, instructions, and the agent's `permission` profile. The committed [permissions.example.json](.github/actions/bot-setup/permissions.example.json) is the recommended `permission` block — embed it as the `"permission"` key inside your config:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "username": "mirrobot-agent",
+  "autoupdate": true,
+  "small_model": "openai/gpt-4o-mini",
+  "provider": {
+    "anthropic": {
+      "options": { "apiKey": "sk-ant-..." }
+    }
+  },
+  "permission": { "...": "paste permissions.example.json here" }
+}
+```
+
+Minify whichever JSON you build — the example or your own full config:
+
+```bash
+python minify_json_secret.py .github/actions/bot-setup/permissions.example.json
+python minify_json_secret.py my-full-config.json
+```
+
+**How the layers combine** (bot-setup applies these in order): your config is the base → the `OPENCODE_MODEL` secret always sets the main `model` → optional secrets apply only when set, otherwise your config's values stand:
+
+| Optional secret | Overrides config's | Skip it when... |
 |---|---|---|
-| `OPENCODE_API_KEY` | ✅ | Your LLM provider key |
-| `OPENCODE_MODEL` | ✅ | Main model, e.g. `anthropic/claude-sonnet-4` |
-| `OPENCODE_CONFIG_JSON` | strongly recommended | Agent config incl. permission profile — build it from [the example](.github/actions/bot-setup/permissions.example.json): `python minify_json_secret.py .github/actions/bot-setup/permissions.example.json` |
-| `BOT_APP_ID` + `BOT_PRIVATE_KEY` | Option A | App credentials |
-| `ACCOUNT_GH_TOKEN` | Option B | The bot account's classic PAT |
-| `OPENCODE_FAST_MODEL` | optional | Cheap model for subtasks |
+| `OPENCODE_API_KEY` | `provider.<main>.options.apiKey` | the key is already in your config (as above) |
+| `OPENCODE_FAST_MODEL` | `small_model` | `small_model` is already in your config |
 
-Optionally add the **variable** `TRUSTED_AGENT_USERS` (comma-separated usernames) so the agent knows who its people are, beyond collaborators.
+Optionally add the **variable** (not secret) `TRUSTED_AGENT_USERS` (comma-separated usernames) so the agent knows who its people are, beyond collaborators.
 
 ### 4. Gate merges (recommended)
 
@@ -162,7 +192,7 @@ Mention the agent and it picks its own approach, loading the matching instructio
 
 **Identity is dual-mode and automatic** — `ACCOUNT_GH_TOKEN` present → account mode (validated via `/user`, scope-gated: a `workflow` scope is a hard fail, missing `public_repo` is a hard fail); absent → App mode. Identity comparisons are case-insensitive; renaming the account breaks nothing. In account mode the agent can also act in *other* public repositories when a verified lead justifies it (report a bug it confirmed, open a fix PR where welcomed) — a request alone never qualifies.
 
-**Behavior lives in `OPENCODE_CONFIG_JSON`** — including the permission profile: deny-by-default bash with explicit allows, env-dump and credential-access denies, repo-injected skills denied (approve individual skills by name if you want them). Workflows never touch this config; you own it.
+**Behavior lives in `OPENCODE_CONFIG_JSON`** ([see secrets](#3-add-secrets)) — a complete OpenCode config: permission profile (deny-by-default bash with explicit allows, env-dump and credential-access denies, repo-injected skills denied — approve individual skills by name if you want them), plus optionally providers, `small_model`, agents, and MCP servers. Workflows never touch this config; you own it.
 
 **`FILE_GROUPS_JSON`** in `compliance-check.yml` defines which files must stay consistent with each other (e.g. README ↔ workflows) — edit it to match your project.
 
