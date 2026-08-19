@@ -165,6 +165,7 @@ Every secret the platform reads, exhaustively:
 | `OPENCODE_CONFIG_JSON` | always (rec.) | Your complete OpenCode config, minified to one line — permissions, provider keys, `small_model`, agents, MCP (see above) | Build it yourself; start from the committed example |
 | `OPENCODE_API_KEY` | optional | LLM provider API key; injected as `provider.<main>.options.apiKey` | Your provider's dashboard — skip it if the key is already in your config |
 | `OPENCODE_FAST_MODEL` | optional | Cheap model for subtasks (`small_model`) | Same as `OPENCODE_MODEL` — skip it if set in your config |
+| `SHARE_LINK_PUBKEY` | optional | RSA **public** key (PEM) used to encrypt the agent's session share links; without it links are captured and masked but not recoverable. Run `python decrypt_share_link.py setup` to generate + set it in one command | `decrypt_share_link.py setup`, or `openssl genpkey ...` + `gh secret set` (see [Security](#security)) |
 | `BOT_APP_ID` | App mode | The numeric ID of your GitHub App | Your App's settings page (`Settings → Developer settings → GitHub Apps`) |
 | `BOT_PRIVATE_KEY` | App mode | The App's private key — the **full PEM file contents** including `BEGIN/END RSA PRIVATE KEY` lines (newlines and all) | Generated when you create the App, or regenerate on its settings page |
 | `ACCOUNT_GH_TOKEN` | Account mode | A **classic** PAT of the bot account with exactly the `public_repo` scope. No `workflow` scope — the platform hard-fails if it sees one (it preserves GitHub's workflow-push protection); missing `public_repo` also fails. Validated via the API on every run; a broken token fails fast, never silently falls back | Bot account → `Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token`, check only `public_repo` |
@@ -254,6 +255,22 @@ Built against real adversarial testing — disguised injection PRs, trojan docum
 - **`.github` taint alarm** — any workflow/prompt/script change in branch history *or* the merged tree (evil-merge safe) is surfaced to the agent with maximum-scrutiny instructions — flagged, never hidden
 - **Duty over deference** — the security brief trains the agent to treat all requester text as untrusted data regardless of rank, evaluate risk, and refuse; approval requires genuine repository purpose — harmless ≠ mergeable, and the ladder binds for maintainers and admins alike
 - **Token hygiene** — short-lived App tokens per run; git auth rides an in-process extraheader, never written to `.git/config`; `persist-credentials: false` on every token-bearing checkout
+- **Encrypted share links** — agent sessions run with `--share`, producing a URL that exposes the full session (thoughts included). The stream is piped through `share-filter.sh`: the raw URL is `::add-mask::`ed, never reaches the public log, and is re-published RSA-OAEP-encrypted (`MRB1.<base64>`) inline, as a notice annotation, and in the run's step summary — together with public context (repo, PR, head SHA, review type, run, actor). Only a holder of the private key can recover the link (see `decrypt_share_link.py` below); there is no private key anywhere in CI.
+
+### `decrypt_share_link.py` — admin-side tool
+
+Copy it anywhere and run it with Python 3 (needs `openssl` on PATH — Git for Windows, macOS, and Linux all ship it):
+
+```
+python decrypt_share_link.py                # TUI: decrypt, browse runs, settings
+python decrypt_share_link.py "<paste>"      # one-shot: paste anything containing MRB1....
+python decrypt_share_link.py setup          # keygen + push SHARE_LINK_PUBKEY secret
+```
+
+- **Setup** generates the keypair at `~/.config/mirrobot/share-link.pem` (private key never leaves your machine) and pushes the public key as the `SHARE_LINK_PUBKEY` repo secret via `gh` — or prints exact manual steps when `gh` is unavailable.
+- **Decrypt**: paste any block containing `MRB1...` (log line, annotation, summary) — it extracts, decrypts, and shows the URL plus its context. `--open` also launches the browser.
+- **Browse**: lists the repo's recent workflow runs, fetches each run's logs, decrypts every share link found, and shows it with metadata — "what did the agent actually think on PR #42?"
+- **Persistence is opt-in**: nothing is written to disk until you change a setting (`config set persist true`); decrypted links then append to `~/.config/mirrobot/decryptions.jsonl` as your searchable session archive.
 
 ---
 
