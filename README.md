@@ -115,7 +115,7 @@ Both work identically downstream; presence of the account token selects account 
 |---|---|
 | `OPENCODE_MODEL` | Main model, `provider/model` format, e.g. `anthropic/claude-sonnet-4` |
 | `OPENCODE_CONFIG_JSON` | Your complete OpenCode config (see below) — **including the LLM API key**, so no separate key secret is needed |
-| + identity | Whatever your step 2 choice needs: `BOT_APP_ID` + `BOT_PRIVATE_KEY`, or `ACCOUNT_GH_TOKEN` |
+| + identity | One mode pair from the [complete reference below](#complete-secrets-reference): `BOT_APP_ID` + `BOT_PRIVATE_KEY` (App mode), or `ACCOUNT_GH_TOKEN` (account mode) |
 
 #### What `OPENCODE_CONFIG_JSON` actually is
 
@@ -151,6 +151,33 @@ python minify_json_secret.py my-full-config.json
 | `OPENCODE_FAST_MODEL` | `small_model` | `small_model` is already in your config |
 
 Optionally add the **variable** (not secret) `TRUSTED_AGENT_USERS` (comma-separated usernames) so the agent knows who its people are, beyond collaborators.
+
+#### Complete secrets reference
+
+Every secret the platform reads, exhaustively:
+
+| Secret | Mode | What it is | Where to get it |
+|---|---|---|---|
+| `OPENCODE_MODEL` | always | Main model in `provider/model` format (e.g. `anthropic/claude-sonnet-4`). Workflows pass it to every agent session; it always wins over a `model` key in your config | Your provider's model list |
+| `OPENCODE_CONFIG_JSON` | always (rec.) | Your complete OpenCode config, minified to one line — permissions, provider keys, `small_model`, agents, MCP (see above) | Build it yourself; start from the committed example |
+| `OPENCODE_API_KEY` | optional | LLM provider API key; injected as `provider.<main>.options.apiKey` | Your provider's dashboard — skip it if the key is already in your config |
+| `OPENCODE_FAST_MODEL` | optional | Cheap model for subtasks (`small_model`) | Same as `OPENCODE_MODEL` — skip it if set in your config |
+| `BOT_APP_ID` | App mode | The numeric ID of your GitHub App | Your App's settings page (`Settings → Developer settings → GitHub Apps`) |
+| `BOT_PRIVATE_KEY` | App mode | The App's private key — the **full PEM file contents** including `BEGIN/END RSA PRIVATE KEY` lines (newlines and all) | Generated when you create the App, or regenerate on its settings page |
+| `ACCOUNT_GH_TOKEN` | Account mode | A **classic** PAT of the bot account with exactly the `public_repo` scope. No `workflow` scope — the platform hard-fails if it sees one (it preserves GitHub's workflow-push protection); missing `public_repo` also fails. Validated via the API on every run; a broken token fails fast, never silently falls back | Bot account → `Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token`, check only `public_repo` |
+
+**Which identity do the two mode secrets select?** Exactly one pair, ever: `ACCOUNT_GH_TOKEN` present → account mode (recommended); otherwise `BOT_APP_ID` + `BOT_PRIVATE_KEY` → App mode. Neither → the workflow fails with a clear error.
+
+**App-mode permission requirements** (App settings → Permissions): Contents **read-only**, Issues **read & write**, Pull requests **read & write** (Metadata is granted automatically). The App must be installed on the repository.
+
+#### Variables reference
+
+Set under `Settings → Secrets and variables → Actions → Variables` (not secrets — these are non-sensitive tuning):
+
+| Variable | Default | What it tunes |
+|---|---|---|
+| `TRUSTED_AGENT_USERS` | *(empty)* | Comma-separated usernames the agent treats as trusted people (on top of collaborators) — informs its judgment, never its authorization |
+| `PREVIOUS_BOT_REVIEWS_COUNT` | `1` | How many of the agent's own latest PR reviews are elevated (unfiltered) into its review context
 
 ### 4. Gate merges (recommended)
 
