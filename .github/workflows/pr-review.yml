@@ -75,6 +75,12 @@ jobs:
       # resolved/outdated filter) into the dedicated context block. Repo
       # variable overrides; default 1 (latest only).
       PREVIOUS_BOT_REVIEWS_COUNT: ${{ vars.PREVIOUS_BOT_REVIEWS_COUNT || '1' }}
+      # secrets.* is not evaluable in step-level if: conditionals - the
+      # push-path validation of dispatch-only workflows (actions/runner#4001
+      # phantom runs) rejects the file with "Unrecognized named-value:
+      # (secrets)". Deriving the boolean here (job env, where secrets IS
+      # valid) and branching on env.X in step ifs is the sanctioned pattern.
+      ACCOUNT_TOKEN_SET: ${{ secrets.ACCOUNT_GH_TOKEN != '' }}
       COMMENT_FETCH_LIMIT: '20'
       REVIEW_FETCH_LIMIT: '30'
       REVIEW_THREAD_FETCH_LIMIT: '40'
@@ -102,7 +108,7 @@ jobs:
       # Failure never blocks the run (cosmetic signal, continue-on-error).
       - name: Fast eyes on trigger (account mode)
         id: fast_eyes
-        if: github.event_name == 'workflow_dispatch' && inputs.commentId != '' && secrets.ACCOUNT_GH_TOKEN != ''
+        if: github.event_name == 'workflow_dispatch' && inputs.commentId != '' && env.ACCOUNT_TOKEN_SET == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.ACCOUNT_GH_TOKEN }}
