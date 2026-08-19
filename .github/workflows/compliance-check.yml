@@ -38,9 +38,15 @@ concurrency:
 on:
   workflow_dispatch:
     inputs:
+      # required: false at the SCHEMA level, enforced at RUNTIME instead
+      # (first step): GitHub platform bug (actions/runner#4001) gives
+      # dispatch-only workflows phantom push-event runs that fail input
+      # validation (red X, 0s, no jobs) when inputs are schema-required.
+      # Optional + the event guard on the job turn phantoms into clean
+      # skips; the runtime check keeps real dispatches honest.
       pr_number:
         description: 'PR number to check'
-        required: true
+        required: false
         type: string
       commentId:
         description: 'Id of the comment that requested the check (set by agent-router; empty for manual runs)'
@@ -124,6 +130,16 @@ jobs:
         ]
 
     steps:
+      # Runtime enforcement of the dispatch contract (schema-required is
+      # impossible - see the inputs comment for the platform bug).
+      - name: Validate dispatch inputs
+        env:
+          PR_NUMBER_INPUT: ${{ inputs.pr_number }}
+        run: |
+          if [ -z "$PR_NUMBER_INPUT" ]; then
+            echo "::error::pr_number dispatch input is required (got empty value)"
+            exit 1
+          fi
       # ========================================================================
       # FAST EYES (account mode, routed comments only) - see pr-review.yml
       # ========================================================================

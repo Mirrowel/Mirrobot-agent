@@ -7,13 +7,19 @@ on:
   # signals come from GitHub, not from the dispatch payload.
   workflow_dispatch:
     inputs:
+      # required: false at the SCHEMA level, enforced at RUNTIME instead
+      # (first step): GitHub platform bug (actions/runner#4001) gives
+      # dispatch-only workflows phantom push-event runs that fail input
+      # validation (red X, 0s, no jobs) when inputs are schema-required.
+      # Optional + the event guard on the job turn phantoms into clean
+      # skips; the runtime check keeps real dispatches honest.
       commentId:
         description: 'Id of the comment that triggered the reply'
-        required: true
+        required: false
         type: string
       threadNumber:
         description: 'Issue/PR number the comment belongs to (concurrency key: same-thread replies serialize)'
-        required: true
+        required: false
         type: string
 
 # Serialize same-thread agent runs: a second mention on a thread waits for the
@@ -32,6 +38,9 @@ jobs:
     # The bot-loop guard and mention detection live in the router; this
     # resolve step below re-validates both from the API (defense in depth:
     # manual dispatch of a bot-authored or mention-less comment no-ops).
+    # Event guard: phantom push-event runs (see inputs comment) skip the
+    # whole job instead of running with empty inputs.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # Least privilege for the built-in GITHUB_TOKEN: it is only used by the
     # initial actions/checkout. All bot operations (reactions, comments, pushes)
@@ -53,6 +62,17 @@ jobs:
       PREVIOUS_BOT_REVIEWS_COUNT: ${{ vars.PREVIOUS_BOT_REVIEWS_COUNT || '1' }}
 
     steps:
+      # Runtime enforcement of the dispatch contract (schema-required is
+      # impossible - see the inputs comment for the platform bug).
+      - name: Validate dispatch inputs
+        env:
+          COMMENT_ID_INPUT: ${{ inputs.commentId }}
+          THREAD_NUMBER_INPUT: ${{ inputs.threadNumber }}
+        run: |
+          if [ -z "$COMMENT_ID_INPUT" ] || [ -z "$THREAD_NUMBER_INPUT" ]; then
+            echo "::error::commentId and threadNumber dispatch inputs are required (got empty values)"
+            exit 1
+          fi
       # Sparse default-branch checkout for the SHARED routing script, so the
       # re-validation below runs the exact same decision logic as the router
       # (single source of truth: .github/scripts/route-comment.sh). The
