@@ -51,8 +51,17 @@ jobs:
 
     env:
       THREAD_NUMBER: ${{ inputs.threadNumber }}
-      BOT_NAMES_JSON: '["mirrobot", "mirrobot-agent", "mirrobot-agent[bot]"]'
-      IGNORE_BOT_NAMES_JSON: '["ellipsis-dev"]'
+      # Identities of THIS agent only (case-insensitive comparisons).
+      # NOTE: bare "mirrobot" is the NAME, not an identity - a human user
+      # named mirrobot is NOT the agent (name vs identity, like two people
+      # sharing a name). Mention-routing still accepts @mirrobot.
+      BOT_NAMES_JSON: '["mirrobot-agent", "mirrobot-agent[bot]"]'
+      # Noise filtering for thread context (see fetch-pr-discussion.sh):
+      # CONTEXT_IGNORE_AUTHORS - comma logins dropped outright (repo variable)
+      # CONTEXT_FILTER_PATTERNS_JSON - JSON array of body regexes dropping
+      #   matching posts; unset = baked AI-reviewer noise defaults
+      CONTEXT_IGNORE_AUTHORS: ${{ vars.CONTEXT_IGNORE_AUTHORS || '' }}
+      CONTEXT_FILTER_PATTERNS_JSON: ${{ vars.CONTEXT_FILTER_PATTERNS_JSON || '' }}
       COMMENT_FETCH_LIMIT: '20'
       REVIEW_FETCH_LIMIT: '30'
       REVIEW_THREAD_FETCH_LIMIT: '30'
@@ -252,7 +261,8 @@ jobs:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
           EXTRA_TRUSTED_USERS: ${{ vars.TRUSTED_AGENT_USERS }}
           BOT_NAMES_JSON: ${{ env.BOT_NAMES_JSON }}
-          IGNORE_BOT_NAMES_JSON: ${{ env.IGNORE_BOT_NAMES_JSON }}
+          CONTEXT_IGNORE_AUTHORS: ${{ env.CONTEXT_IGNORE_AUTHORS }}
+          CONTEXT_FILTER_PATTERNS_JSON: ${{ env.CONTEXT_FILTER_PATTERNS_JSON }}
           # SECURITY: untrusted comment content reaches the script only through
           # environment variables (resolved from the API by id in the first
           # step) - never via ${{ }} interpolation inside run:, which is
@@ -356,7 +366,7 @@ jobs:
             title=$(echo "$issue_data" | jq -r .title)
             body=$(echo "$issue_data" | jq -r '.body // "(No description provided)"')
             # Prepare comments (exclude ignored bots)
-            comments=$(echo "$issue_data" | jq -r --argjson ignored "$IGNORE_BOT_NAMES_JSON" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login // "" | ascii_downcase as $login | $ignored | index($login)) | not)) | "- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n") else "No comments have been posted yet." end')
+            comments=$(echo "$issue_data" | jq -r --arg ignore_authors "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login // "" | ascii_downcase) as $login | ($ignore_authors | split(",") | map(select(length > 0)) | index($login)) | not)) | "- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n") else "No comments have been posted yet." end')
 
             # Prepare cross-references
             references=$(echo "$timeline_data" | jq -r '.[] | select(.event == "cross-referenced") | .source.issue | "- Mentioned in \(.html_url | if contains("/pull/") then "PR" else "Issue" end): #\(.number) - \(.title)"')
@@ -587,7 +597,11 @@ jobs:
           echo "TRUST_CONTEXT=$TRUST_CONTEXT" >> "$GITHUB_ENV"
           # Scrub taint alarm (PR path only; issue path has no taint file)
           if [ -s /tmp/scrub-taint.txt ]; then
-            taint_summary=$(tr '\n' ' ' < /tmp/scrub-taint.txt | tr -s ' ' | cut -c1-600)
+            # Line 1 of the taint file IS the compact alert (counts + areas,
+            # ends at the details-file pointer - built flatten-proof by the
+            # scrub). Never flatten the whole file: the per-commit bullets
+            # below line 1 are what /tmp/scrub-taint.txt exists for.
+            taint_summary=$(head -1 /tmp/scrub-taint.txt)
             {
               echo "TRUST_CONTEXT_WARNING<<TAINT_EOF"
               echo "$taint_summary"

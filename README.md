@@ -168,6 +168,8 @@ Every secret the platform reads, exhaustively:
 
 **Which identity do the two mode secrets select?** Exactly one pair, ever: `ACCOUNT_GH_TOKEN` present → account mode (recommended); otherwise `BOT_APP_ID` + `BOT_PRIVATE_KEY` → App mode. Neither → the workflow fails with a clear error.
 
+**Name vs identity:** the agent's *identities* are exactly the account login and the App bot login (`mirrobot-agent`, `mirrobot-agent[bot]` — matching is case-insensitive). "mirrobot" is its *name* — used for mentions (`@mirrobot` still routes) — but a user or app merely *named* `mirrobot` is never treated as the agent itself. Renaming your account or App updates the identity automatically; comparisons never break on casing.
+
 **App-mode permission requirements** (App settings → Permissions): Contents **read-only**, Issues **read & write**, Pull requests **read & write** (Metadata is granted automatically). The App must be installed on the repository.
 
 #### Variables reference
@@ -177,7 +179,19 @@ Set under `Settings → Secrets and variables → Actions → Variables` (not se
 | Variable | Default | What it tunes |
 |---|---|---|
 | `TRUSTED_AGENT_USERS` | *(empty)* | Comma-separated usernames the agent treats as trusted people (on top of collaborators) — informs its judgment, never its authorization |
-| `PREVIOUS_BOT_REVIEWS_COUNT` | `1` | How many of the agent's own latest PR reviews are elevated (unfiltered) into its review context
+| `PREVIOUS_BOT_REVIEWS_COUNT` | `1` | How many of the agent's own latest PR reviews are elevated (unfiltered) into its review context |
+| `CONTEXT_IGNORE_AUTHORS` | *(empty)* | Comma-separated logins whose posts are dropped entirely from thread context (bots you never want to hear from). Example: `some-noisy-bot,another-bot[bot]` |
+| `CONTEXT_FILTER_PATTERNS_JSON` | baked defaults | JSON array of case-insensitive regex snippets; any match on a post's **body** drops that post from thread context. Setting it **replaces** the defaults. |
+
+**Noise filtering.** The agent's thread context hides junk automatically: hidden (minimized) content is excluded everywhere — the agent's own posts included; and the built-in pattern defaults drop the known noise classes of AI reviewers (CodeRabbit rate-limit / `Review skipped` / `Too many files` posts, the `No actionable comments` notices, Greptile's status channel) while **keeping their substantive reviews** — walkthroughs, overviews, and inline findings survive. Other AI reviewers are treated as input, never authority: their findings are leads to verify, never verdicts to mirror.
+
+Custom patterns (JSON array; regex metacharacters work; backslashes double as JSON escapes; commas/pipes inside patterns are fine):
+
+```json
+["skip rationale I never want", "^<!-- deploy-status -->", "stale-bot marker [0-9]+"]
+```
+
+Paste that array as the `CONTEXT_FILTER_PATTERNS_JSON` variable to extend or replace the defaults. Malformed JSON falls back to the defaults with a workflow warning.
 
 ### 4. Gate merges (recommended)
 
