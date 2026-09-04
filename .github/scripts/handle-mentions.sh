@@ -47,6 +47,12 @@
 # Contract:
 #   env: GH_TOKEN (account PAT with `notifications` scope for poll mode;
 #        any token able to read the subject APIs for relay mode),
+#        DISPATCH_GH_TOKEN (optional: a token with actions:write on the
+#        platform repo for the bot-reply dispatch - pass the workflow's
+#        ephemeral github.token; the ACCOUNT PAT usually cannot dispatch
+#        (no write access, live-observed) and notifications are
+#        user-scoped so the ephemeral token cannot poll - hence two tokens).
+#        Falls back to GH_TOKEN when unset.
 #        GITHUB_REPOSITORY (the HOST repo = this agent's home),
 #        HOME_OWNER (login of the host repo's owner — home repos are
 #        "repos owned by the same owner as the poller repo"; derived by
@@ -75,7 +81,7 @@ log() { echo "mentions: $*"; }
 # partial roster is worse than a skipped cycle.
 if ROSTER=$(EXTRA_TRUSTED_USERS="${FOREIGN_MENTIONS_USERS:-}" \
              bash "$SCRIPT_DIR/fetch-roster.sh" --print 2>/dev/null) && [ -n "$ROSTER" ]; then
-  log "summoner roster loaded ($(printf '%s' "$ROSTER" | tr ',' '\n' | wc -l) entries)"
+  log "summoner roster loaded ($(echo "$ROSTER" | tr ',' '\n' | grep -c .) entries)"
 else
   log "roster unavailable/empty - failing closed this run (no cross-repo summons)."
   ROSTER=""
@@ -248,12 +254,14 @@ while read -r n; do
     kind=mention
   fi
 
-  # 8. dispatch (cap)
+  # 8. dispatch (cap). Uses DISPATCH_GH_TOKEN when provided (the workflow's
+  # ephemeral token with actions:write - the account PAT cannot dispatch:
+  # notifications are user-scoped, dispatches are repo-write-scoped).
   if [ "$dispatched" -ge "$MAX_DISPATCH" ]; then
     log "cap reached ($MAX_DISPATCH) - @$trigger_author's $reason in $repo#$number skipped this run (already acked; re-mention to retry)."
     continue
   fi
-  if gh workflow run bot-reply.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
+  if GH_TOKEN="${DISPATCH_GH_TOKEN:-$GH_TOKEN}" gh workflow run bot-reply.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
        -f "targetRepo=$repo" -f "threadNumber=$number" \
        -f "commentId=${comment_id:-}" -f "triggerKind=$kind"; then
     dispatched=$((dispatched + 1))

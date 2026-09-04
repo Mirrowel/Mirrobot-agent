@@ -82,6 +82,11 @@ jobs:
       - name: Run mention pipeline
         env:
           GH_TOKEN: ${{ secrets.ACCOUNT_GH_TOKEN }}
+          # Dispatch token: the workflow's ephemeral token (actions: write
+          # declared above). The account PAT cannot dispatch bot-reply (no
+          # write access; notifications are user-scoped but dispatches are
+          # repo-write-scoped - two tokens, two purposes).
+          DISPATCH_GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           HOME_OWNER: ${{ github.repository_owner }}
           FOREIGN_MENTIONS_USERS: ${{ vars.FOREIGN_MENTIONS_USERS || '' }}
