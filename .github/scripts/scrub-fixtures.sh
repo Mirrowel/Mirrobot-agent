@@ -526,6 +526,13 @@ check "mentions: dispatch cap enforced" yes "$( [ "$(grep -c 'workflow run' "$DI
 : > "$ACK_LOG"; : > "$DISPATCH_LOG"
 mention_pipeline "[$(notif 12 review_requested Other/x Other PullRequest 21 '')]"
 check "mentions: mark-read before dispatch" yes "$(grep -q '^ACK' "$ACK_LOG" && grep -q 'DISPATCH' "$DISPATCH_LOG" && echo yes || echo no)"
+
+# K: subscribed reason (follow-up mention in an already-subscribed thread -
+# GitHub classifies re-mentions as "subscribed"; live-observed) still
+# dispatches through the CONTENT token check
+: > "$ACK_LOG"; : > "$DISPATCH_LOG"
+mention_pipeline "[$(notif 13 subscribed Other/x Other Issue 11 https://api.github.com/repos/Other/x/issues/comments/501)]"
+check "mentions: subscribed follow-up with token dispatched" yes "$(grep -q 'workflow run' "$DISPATCH_LOG" && echo yes || echo no)"
 rm -rf "$MSIM_DIR"
 
 # ---- cross-repo workflow contracts (drift tripwires) ------------------------

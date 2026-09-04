@@ -157,9 +157,16 @@ while read -r n; do
   latest_url=$(printf '%s' "$n" | jq -r '.subject.latest_comment_url // empty')
   [ -n "$id" ] && [ -n "$repo" ] || continue
 
-  # 1. reason filter
-  case "$reason" in mention|review_requested) ;; *)
-    mark_read "$id"; declined=$((declined + 1)); continue ;;
+  # 1. reason filter. mention/review_requested are the direct summons;
+  #    subscribed/comment are FOLLOW-UPS in threads whose first mention
+  #    already subscribed the account (GitHub's reason taxonomy: once
+  #    subscribed, later @mentions in the same thread classify as
+  #    "subscribed" - live-observed). They are treated as mention-kind and
+  #    gated by the genuine-mention CONTENT check below, which is the real
+  #    filter (non-mention comments decline there). Everything else is ack.
+  case "$reason" in
+    mention|review_requested|subscribed|comment) ;;
+    *) mark_read "$id"; declined=$((declined + 1)); continue ;;
   esac
 
   # 2. skip matrix — home-owner repos WITH the platform are handled locally
