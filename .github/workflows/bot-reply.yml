@@ -1,6 +1,13 @@
 name: Bot Reply on Mention
 
 on:
+  # Anti-phantom: an explicit never-matching push trigger. Dispatch-only
+  # workflows otherwise get dead push-event runs (red X, 0 jobs) whenever
+  # a push modifies the workflow file (actions/runner#4001 residue, live-
+  # observed repeatedly). With this declared, push-event evaluation finds
+  # no matching ref and creates NO run at all. Semantics unchanged.
+  push:
+    branches-ignore: ["**"]
   # Routed by agent-router.yml (the single issue_comment entrypoint). The
   # router passes the triggering comment's id; this workflow re-fetches the
   # comment, its author, and association from the GitHub API — identity
@@ -377,7 +384,7 @@ jobs:
           login: ${{ env.RESOLVED_COMMENT_AUTHOR }}
           association: ${{ env.RESOLVED_ASSOCIATION }}
           trusted-users: ${{ inputs.targetRepo != '' && vars.FOREIGN_MENTIONS_USERS || vars.TRUSTED_AGENT_USERS }}
-          trigger-note: ${{ inputs.targetRepo != '' && format('cross-repo guest summon in {0} (allowlist-verified)', inputs.targetRepo) || format('routed comment on #{0}', inputs.threadNumber) }}
+          trigger-note: "${{ inputs.targetRepo != '' && format('cross-repo guest summon in {0} (allowlist-verified)', inputs.targetRepo) || format('routed comment on {0}', inputs.threadNumber) }}"
 
       - name: Bot Setup
         if: steps.validate.outputs.should_proceed == 'true'

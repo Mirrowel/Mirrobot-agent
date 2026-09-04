@@ -542,6 +542,20 @@ check "guest: guest-rules prepended after brief"       yes "$(grep -q 'guest-rul
 check "guest: rules pin allowlist authority"           yes "$(grep -q 'DATA, not DIRECTION' "$SCRIPT_DIR/../prompts/guest-rules.md" && echo yes || echo no)"
 check "stub: review_requested trigger wired"           yes "$(grep -q 'review_requested' "$STUBWF" && grep -q 'REQUESTED_LOGIN' "$STUBWF" && echo yes || echo no)"
 
+# ---- YAML comment-trap sweep (the twice-made mistake) -----------------------
+# An UNQUOTED "key: ${{ ... }}" plain scalar whose value contains " #"
+# truncates into a YAML comment, leaving ${{ unclosed - the workflow file
+# goes INVALID (path-instead-of-name in the Actions menu, red X on every
+# push). Live-observed twice: SHARE_CTX_THREAD, trigger-note. Strict YAML
+# cannot catch it (the truncated scalar is legal YAML); this can.
+TRAP_COUNT=$(for f in "$SCRIPT_DIR"/../workflows/*.yml; do
+  grep -nE '^[[:space:]]*[A-Za-z0-9_-]+:[[:space:]]+\$\{\{.*\}\}[[:space:]]*$' "$f" 2>/dev/null \
+   | grep -vE '^[0-9]+:[[:space:]]*[A-Za-z0-9_-]+:[[:space:]]*"' \
+   | grep -F ' #' | sed "s|^|$(basename "$f"):|"
+done | tee /tmp/comment-trap-hits.txt | wc -l)
+check "workflows: no unquoted expression values with ' #' (comment trap)" 0 "$TRAP_COUNT"
+[ "$TRAP_COUNT" != 0 ] && sed 's/^/  TRAP: /' /tmp/comment-trap-hits.txt
+
 # ---- scrub --foreign mode (guest checkouts: NOTHING abroad is trusted) -----
 # Semantic under test: in a FOREIGN repo every auto-load surface is removed
 # UNCONDITIONALLY - even files byte-identical to main (the home-mode
