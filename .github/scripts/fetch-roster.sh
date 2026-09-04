@@ -26,13 +26,23 @@ set -euo pipefail
 if [ "${1:-}" = "--print" ]; then
   # exec does NOT work here (exec in a pipeline subshell leaves the parent
   # running) - capture, print, exit explicitly.
+  # Fallback semantics: if the collaborator read fails (e.g. the token
+  # cannot list collaborators of this repo), the EXPLICIT extra-trust list
+  # still forms the roster - config survives an API outage; collaborators
+  # simply lose summon ability until the API answers again. That is the
+  # safe direction (never MORE trust than configured).
   if ROSTER_OUT=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/collaborators?affiliation=direct&per_page=100" 2>/dev/null \
     | jq -sr --arg extra "${EXTRA_TRUSTED_USERS:-}" \
         '[.[][].login] + ($extra | split("[,; \t\n]+"; null) | map(select(length > 0))) | map(ascii_downcase) | sort | unique | join(", ")') \
     && [ -n "$ROSTER_OUT" ]; then
     printf '%s\n' "$ROSTER_OUT"
+  else
+    # comma-joined (no paste -sd multi-char separator - that cycles per
+    # line, a live-caught bug class); consumers split on commas/spaces.
+    printf '%s' "${EXTRA_TRUSTED_USERS:-}" | tr ',;' '  ' | xargs -r -n1 printf '%s\n' 2>/dev/null \
+      | tr 'A-Z' 'a-z' | sort -u | paste -sd ','
   fi
-  exit 0   # empty output = fetch failed; callers fail closed on empty
+  exit 0   # empty output = nothing configured and fetch failed; callers fail closed on empty
 fi
 
 step_summary_note() {
