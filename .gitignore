@@ -4,3 +4,6 @@ custom_providers.json
 # Locally rendered assembled agent prompts (generated, not source)
 .github/prompts/rendered/
 __pycache__/
+
+# wrangler local state
+tools/mention-worker/.wrangler/
