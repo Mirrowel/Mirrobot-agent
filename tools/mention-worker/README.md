@@ -26,9 +26,11 @@ logged on every response (quota health on the dashboard forever).
 
 **Pre-filter gauntlet (deny-only, fail-open):** before relaying, the
 worker fetches the triggering content (1 call) and checks bot-own
-identity, the author/requester allowlist (platform-repo collaborators +
-the `FOREIGN_MENTIONS_USERS` repo variable), and the genuine
-`@mirrobot-agent` token. Declines are ACKED and **never wake Actions**
+identity, the author/requester allowlist (platform-repo collaborators —
+which include the repo owner — plus the OPTIONAL
+`FOREIGN_MENTIONS_USERS` repo variable; variable absent (404) is a
+legitimate silent config, unreadable (403/5xx) fails the allowlist open),
+and the genuine `@mirrobot-agent` token. Declines are ACKED and **never wake Actions**
 (junk mentions cost 2–3 API calls instead of a full run). Any uncertainty
 fails OPEN — relay anyway; the in-repo gauntlet re-verifies everything and
 stays the sole authority. Why not Cron Triggers: on this account the platform

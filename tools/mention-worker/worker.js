@@ -38,6 +38,8 @@
 //
 // GET /__tick?key=<TEST_TOKEN> runs one poll on demand (through the DO, so
 // conditional state + caches apply), arms the loop, returns diagnostics.
+//   &cmd=1&op=<arm|disarm|pause|resume|snooze&sec=N|status|peek|ack&id=N|
+//    unsub&repo=O/R&n=N>  - the maintenance surface (see the DO /cmd docs)
 //
 // Secrets (wrangler secret put ...):
 //   BOT_PAT      — bot account classic PAT (public_repo + notifications);
@@ -82,8 +84,13 @@ function threadRef(n) {
   return `${n.repository?.full_name || "?"}#${m?.[1] || "?"}`;
 }
 
-// ---- roster: collaborators ∪ FOREIGN_MENTIONS_USERS (both must load for
-// the allowlist rule to be authoritative; failure => fail-open relays).
+// ---- roster: collaborators (INCLUDES the repo owner) ∪ the optional
+// FOREIGN_MENTIONS_USERS variable (additive). The variable is OPTIONAL:
+// 404 (absent) is a legitimate configuration -> silent, roster stays
+// collaborators-only and authoritative. 403/5xx (unreadable) -> roster
+// possibly incomplete -> allowlist rule suspended for the cycle
+// (fail-open relays; the in-repo gauntlet re-verifies authoritatively).
+// A collaborators fetch failure also fails the roster open.
 async function getRoster(env, state) {
   const cached = (await state.storage.get("rosterCache")) || {};
   if (cached.names && Date.now() - cached.ts < ROSTER_TTL_MS) {
@@ -99,7 +106,7 @@ async function getRoster(env, state) {
     if (!res.ok) throw new Error(`collaborators ${res.status}`);
     for (const c of await res.json()) names.push(String(c.login).toLowerCase());
   } catch (e) {
-    console.log(`[poll] roster collaborators failed: ${e}`);
+    console.log(`[poll] roster collaborators failed (fail-open): ${e}`);
     ok = false;
   }
   try {
@@ -107,11 +114,16 @@ async function getRoster(env, state) {
       `/repos/${env.PLATFORM_REPO}/actions/variables/FOREIGN_MENTIONS_USERS`,
       env.DISPATCH_PAT,
     );
-    if (!res.ok) throw new Error(`variable ${res.status}`);
-    const val = (await res.json()).value || "";
-    for (const n of val.split(/[,;\s]+/)) if (n) names.push(n.toLowerCase());
+    if (res.status === 404) {
+      // variable not set: legitimate optional-absent config, not an error
+    } else if (!res.ok) {
+      throw new Error(`variable ${res.status}`);
+    } else {
+      const val = (await res.json()).value || "";
+      for (const n of val.split(/[,;\s]+/)) if (n) names.push(n.toLowerCase());
+    }
   } catch (e) {
-    console.log(`[poll] roster variable failed: ${e}`);
+    console.log(`[poll] roster variable unreadable (fail-open): ${e}`);
     ok = false;
   }
   if (ok) await state.storage.put("rosterCache", { names, ts: Date.now() });
@@ -206,9 +218,25 @@ async function pollOnce(env, state, src) {
   const all = await res.json();
   diag.unread = all.length;
   const qualifying = all.filter((n) => REASONS.has(n.reason));
+  const junk = all.filter((n) => !REASONS.has(n.reason));
+  // Junk hygiene (live-lesson: non-qualifying notifications accumulate as
+  // zombie unread and eventually push real mentions out of the 30/page
+  // window): ack everything we will never act on. One call each.
+  for (const n of junk) {
+    try {
+      const ack = await gh(`/notifications/threads/${n.id}`, env.BOT_PAT, { method: "PATCH" });
+      console.log(`[poll] src=${src} JUNK ${threadRef(n)} reason=${n.reason} ack=${ack.status}`);
+    } catch (e) {
+      console.log(`[poll] src=${src} JUNK-ACK-FAILED ${threadRef(n)}: ${e}`);
+    }
+  }
   diag.qualifying = qualifying.length;
-  if (qualifying.length === 0) {
+  if (qualifying.length === 0 && junk.length === 0) {
     console.log(`[poll] src=${src} idle-200 unread=${all.length} rl=${rl} next=${Math.round(diag.nextDelayMs / 1000)}s (${Date.now() - t0}ms)`);
+    return diag;
+  }
+  if (qualifying.length === 0) {
+    console.log(`[poll] src=${src} idle-200 unread=${all.length} junk=${junk.length} rl=${rl} next=${Math.round(diag.nextDelayMs / 1000)}s (${Date.now() - t0}ms)`);
     return diag;
   }
 
@@ -269,6 +297,10 @@ export class Scheduler {
 
   async alarm() {
     await this.state.storage.setAlarm(Date.now() + POLL_FLOOR_MS);
+    if (await this.state.storage.get("paused")) {
+      console.log("[poll] src=alarm PAUSED (maintenance mode)");
+      return;
+    }
     try {
       const diag = await pollOnce(this.env, this.state, "alarm");
       if (diag.nextDelayMs !== POLL_FLOOR_MS) {
@@ -279,8 +311,21 @@ export class Scheduler {
     }
   }
 
+  // Maintenance command surface (gated by the worker-level __tick secret):
+  //   op=arm               - ensure the alarm loop is running (bootstrap)
+  //   op=disarm            - cancel the alarm entirely (no ticks at all)
+  //   op=pause / resume    - maintenance mode: alarm keeps ticking but
+  //                          never polls (indefinite until resume)
+  //   op=snooze&sec=N      - one-time delay: push the NEXT poll N seconds
+  //                          out, then normal adaptive cadence resumes
+  //   op=status            - paused? + when the alarm next fires
+  //   op=peek              - READ-ONLY unconditional notifications dump
+  //   op=ack&id=N          - mark one thread read
+  //   op=unsub&repo=O/R&n=N - delete the account's thread subscription
   async fetch(request) {
-    const path = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    const path = url.pathname;
+    const op = url.searchParams.get("op");
     if (path === "/ensure") {
       return Response.json({ alarm: await this.ensureAlarm() });
     }
@@ -288,6 +333,74 @@ export class Scheduler {
       const diag = await pollOnce(this.env, this.state, "tick");
       diag.alarm = await this.ensureAlarm();
       return Response.json(diag);
+    }
+    if (path === "/cmd") {
+      const out = { op };
+      if (op === "pause") {
+        await this.state.storage.put("paused", true);
+        out.paused = true;
+      } else if (op === "resume") {
+        await this.state.storage.delete("paused");
+        out.paused = false;
+      } else if (op === "arm") {
+        out.alarm = await this.ensureAlarm();
+      } else if (op === "disarm") {
+        await this.state.storage.deleteAlarm();
+        out.alarm = "disarmed";
+      } else if (op === "snooze") {
+        const sec = Math.max(1, Number(url.searchParams.get("sec")) || 60);
+        await this.state.storage.setAlarm(Date.now() + sec * 1000);
+        out.snoozedSec = sec;
+      } else if (op === "status") {
+        out.paused = !!(await this.state.storage.get("paused"));
+        const at = await this.state.storage.getAlarm();
+        out.alarmAt = at === null ? null : new Date(at).toISOString();
+        out.now = new Date().toISOString();
+      } else if (op === "peek") {
+        const res = await gh("/notifications?all=false&per_page=30", this.env.BOT_PAT);
+        out.status = res.status;
+        out.items = res.ok
+          ? (await res.json()).map((n) => ({
+              id: n.id,
+              reason: n.reason,
+              updated_at: n.updated_at,
+              repo: n.repository?.full_name,
+              title: n.subject?.title?.slice(0, 60),
+              type: n.subject?.type,
+              url: n.subject?.url,
+            }))
+          : await res.text();
+      } else if (op === "ack") {
+        const id = url.searchParams.get("id");
+        const res = await gh(`/notifications/threads/${id}`, this.env.BOT_PAT, { method: "PATCH" });
+        out.status = res.status;
+      } else if (op === "sub") {
+        const repo = url.searchParams.get("repo");
+        const n = url.searchParams.get("n");
+        const res = await gh(`/repos/${repo}/threads/${n}/subscription`, this.env.BOT_PAT);
+        out.status = res.status;
+        out.subscription = res.ok ? await res.json() : await res.text();
+      } else if (op === "setsub") {
+        const repo = url.searchParams.get("repo");
+        const n = url.searchParams.get("n");
+        const sub = url.searchParams.get("sub") === "true";
+        const ign = url.searchParams.get("ignored") === "true";
+        const res = await gh(`/repos/${repo}/threads/${n}/subscription`, this.env.BOT_PAT, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscribed: sub, ignored: ign }),
+        });
+        out.status = res.status;
+        out.result = res.ok ? await res.json() : await res.text();
+      } else if (op === "unsub") {
+        const repo = url.searchParams.get("repo");
+        const n = url.searchParams.get("n");
+        const res = await gh(`/repos/${repo}/threads/${n}/subscription`, this.env.BOT_PAT, { method: "DELETE" });
+        out.status = res.status;
+      } else {
+        return new Response("unknown op\n", { status: 400 });
+      }
+      return Response.json(out);
     }
     return new Response("not found\n", { status: 404 });
   }
@@ -327,6 +440,10 @@ export default {
       return new Response("forbidden\n", { status: 403 });
     }
     const id = env.SCHEDULER.idFromName("only");
+    if (url.searchParams.get("cmd")) {
+      const cmdUrl = "https://do/cmd?" + url.searchParams.toString();
+      return env.SCHEDULER.get(id).fetch(cmdUrl);
+    }
     return env.SCHEDULER.get(id).fetch("https://do/tick");
   },
 }
