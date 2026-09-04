@@ -168,6 +168,26 @@ async function prefilter(env, state, n, roster) {
   }
 }
 
+// Silence an engaged thread (unsub-on-engage). Live-verified semantics
+// (2026-09-04 matrix, CORRECT endpoint /notifications/threads/{id}/subscription):
+// implicit participation IS a subscription row (subscribed:true via the
+// mention); deleting it stops delivery of plain follow-up comments in the
+// thread ENTIRELY, while real @mentions ALWAYS break through afterwards
+// ("muted until you comment or get @mentioned once more" - the bot's own
+// reply re-subscribes it, and the next engagement re-silences). One call
+// per handled thread per engagement cycle; kills the sticky-mention noise
+// at the source. The token pre-filter stays as defense-in-depth for the
+// window before the silence lands.
+async function silenceThread(env, src, n, diag) {
+  try {
+    const res = await gh(`/notifications/threads/${n.id}/subscription`, env.BOT_PAT, { method: "DELETE" });
+    (diag.silenced = diag.silenced || []).push(threadRef(n));
+    console.log(`[poll] src=${src} SILENCED ${threadRef(n)} (${res.status})`);
+  } catch (e) {
+    console.log(`[poll] src=${src} SILENCE-FAILED ${threadRef(n)}: ${e}`);
+  }
+}
+
 // ---- one poll cycle with conditional requests + adaptive cadence.
 async function pollOnce(env, state, src) {
   const t0 = Date.now();
@@ -254,9 +274,14 @@ async function pollOnce(env, state, src) {
       } catch (e) {
         console.log(`[poll] src=${src} DECLINE-ACK-FAILED ${ref} rule=${verdict.decline}: ${e}`);
       }
+      await silenceThread(env, src, n, diag);
     } else {
       relay.push(n);
       console.log(`[poll] src=${src} RELAYED ${ref} reason=${n.reason}`);
+      // engaged threads are silenced too: the pipeline will handle this
+      // mention and mark read; plain follow-ups afterwards must not
+      // deliver at all (verified: mentions always break through)
+      await silenceThread(env, src, n, diag);
     }
   }
 
@@ -375,17 +400,15 @@ export class Scheduler {
         const res = await gh(`/notifications/threads/${id}`, this.env.BOT_PAT, { method: "PATCH" });
         out.status = res.status;
       } else if (op === "sub") {
-        const repo = url.searchParams.get("repo");
-        const n = url.searchParams.get("n");
-        const res = await gh(`/repos/${repo}/threads/${n}/subscription`, this.env.BOT_PAT);
+        const tid = url.searchParams.get("tid");
+        const res = await gh(`/notifications/threads/${tid}/subscription`, this.env.BOT_PAT);
         out.status = res.status;
         out.subscription = res.ok ? await res.json() : await res.text();
       } else if (op === "setsub") {
-        const repo = url.searchParams.get("repo");
-        const n = url.searchParams.get("n");
+        const tid = url.searchParams.get("tid");
         const sub = url.searchParams.get("sub") === "true";
         const ign = url.searchParams.get("ignored") === "true";
-        const res = await gh(`/repos/${repo}/threads/${n}/subscription`, this.env.BOT_PAT, {
+        const res = await gh(`/notifications/threads/${tid}/subscription`, this.env.BOT_PAT, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ subscribed: sub, ignored: ign }),
@@ -393,9 +416,8 @@ export class Scheduler {
         out.status = res.status;
         out.result = res.ok ? await res.json() : await res.text();
       } else if (op === "unsub") {
-        const repo = url.searchParams.get("repo");
-        const n = url.searchParams.get("n");
-        const res = await gh(`/repos/${repo}/threads/${n}/subscription`, this.env.BOT_PAT, { method: "DELETE" });
+        const tid = url.searchParams.get("tid");
+        const res = await gh(`/notifications/threads/${tid}/subscription`, this.env.BOT_PAT, { method: "DELETE" });
         out.status = res.status;
       } else {
         return new Response("unknown op\n", { status: 400 });
