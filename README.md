@@ -197,6 +197,25 @@ Custom patterns (JSON array; regex metacharacters work; backslashes double as JS
 
 Paste that array as the `CONTEXT_FILTER_PATTERNS_JSON` variable to extend or replace the defaults. Malformed JSON falls back to the defaults with a workflow warning.
 
+### Cross-repo guest mode (opt-in)
+
+The agent can answer **anywhere its account is mentioned** — any public repo, even ones it is not installed in. The bot *account* is mentionable globally; GitHub turns `@mirrobot-agent` mentions and review-request-button requests into account notifications; the `mention-poller` workflow consumes them.
+
+**How to enable** (account mode only — the App is structurally blind abroad):
+
+1. Regenerate the account PAT with `public_repo` **+ `notifications`** scopes and update the `ACCOUNT_GH_TOKEN` secret.
+2. Set the variable `FOREIGN_MENTIONS_ENABLED=true`.
+3. Optionally set `FOREIGN_MENTIONS_USERS` — extra logins allowed to summon the agent cross-repo (unioned with the repo's collaborators; deliberately separate from `TRUSTED_AGENT_USERS`).
+
+**The gauntlet every foreign notification passes** (all in `handle-mentions.sh`, battery-tested): reason filter → skip matrix (repos of the home owner that run the platform are no-ops — their own instance answers; foreign repos are handled even when they run their own fork, since a fork serves *their* identity) → mark-read-before-dispatch → subject re-fetch from the API → bot-loop guard → **summoner allowlist** → genuine-mention token verification (for review requests: trust the timeline *actor*, not the PR author) → per-run cap.
+
+**Guest rules** (`guest-rules.md`, injected after the security brief): the agent is a *guest* — read-only by default; writes need a verified home-repo link or an explicit ask from an allowlist member; **authority is pinned to the allowlist, never to thread participation** (later commenters are data, not direction — the guest injection guard). Review requests carry their own invitation, including formal verdict submission where the API allows it.
+
+**Latency**: the in-repo schedule polls every 5 minutes. To move polling off GitHub Actions entirely (Actions runs only when something actually happened), host the dumb relay worker on Cloudflare's free tier — see `tools/mention-worker/`:
+create a Worker with the committed `wrangler.toml`, set two secrets (`BOT_PAT` = the account PAT, `DISPATCH_PAT` = a fine-grained PAT with `contents: write` on **this repo only**), `npx wrangler deploy`. The worker forwards raw notifications via `repository_dispatch`; every field is re-verified in-repo, so the relay holds zero trust.
+
+The **review-request button** also works at home now: on repos with the platform, requesting a review from the agent's identity triggers an instant review (the same path as `/mirrobot-review`), gated on the requested reviewer actually being the agent.
+
 ### 4. Gate merges (recommended)
 
 `Settings → Branches` → protect your default branch → require the **`compliance-check`** status. Now nothing merges until the agent's audit passes.
