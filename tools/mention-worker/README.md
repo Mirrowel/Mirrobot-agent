@@ -10,8 +10,28 @@ runs (the default architecture; the in-repo schedule is an opt-in fallback).
 
 One JavaScript file (`worker.js`) + `wrangler.toml`, scheduled by a
 **self-rescheduling Durable Object alarm** (the `Scheduler` class): each
-wake-up commits the NEXT alarm first (+30s), then polls — no error can
-kill the loop. Why not Cron Triggers: on this account the platform
+wake-up commits the NEXT alarm first, then polls — no error can kill the
+loop.
+
+**Conditional + adaptive polling** (measured against the endpoint's own
+`X-Poll-Interval`, which reads 60 even on a quiet account): every real
+response's `ETag` is persisted and sent back as `If-None-Match`, so idle
+polls return **free 304s** ("leaving your rate limit untouched" — GitHub
+docs). Cadence: **304 → 30s** (unless the header strains >60s, honored,
+capped 120s); **200 → the header's allowance** (60s typical, clamped
+30–120s); **error/403/429 → 120s backoff**. Live-lesson: GitHub omits
+`Last-Modified` on the EMPTY notifications response — the ETag is always
+present, so it is the primary conditional. `x-ratelimit-remaining` is
+logged on every response (quota health on the dashboard forever).
+
+**Pre-filter gauntlet (deny-only, fail-open):** before relaying, the
+worker fetches the triggering content (1 call) and checks bot-own
+identity, the author/requester allowlist (platform-repo collaborators +
+the `FOREIGN_MENTIONS_USERS` repo variable), and the genuine
+`@mirrobot-agent` token. Declines are ACKED and **never wake Actions**
+(junk mentions cost 2–3 API calls instead of a full run). Any uncertainty
+fails OPEN — relay anyway; the in-repo gauntlet re-verifies everything and
+stays the sole authority. Why not Cron Triggers: on this account the platform
 scheduler registered crons but never dispatched them (2026-09-04, zero
 attempts in observability, matching community reports 922869/928936;
 docs admit crons run "on underutilized machines"). DO alarms bypass that
