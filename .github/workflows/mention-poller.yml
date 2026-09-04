@@ -100,11 +100,19 @@ jobs:
           FOREIGN_MENTIONS_USERS: ${{ vars.FOREIGN_MENTIONS_USERS || '' }}
           BOT_NAMES_JSON: '["mirrobot-agent", "mirrobot-agent[bot]"]'
           MAX_DISPATCH: '3'
-          RELAY_PAYLOAD: ${{ github.event.client_payload.notifications || inputs.payload || '' }}
         run: |
           set -euo pipefail
           chmod +x .github/scripts/*.sh
-          if [ -n "$RELAY_PAYLOAD" ]; then
+          # Relay payload comes from the event file, NEVER via env expressions:
+          # client_payload.notifications is a JSON ARRAY, and injecting an
+          # array into an env value makes the whole template invalid
+          # ("A sequence was not expected" — live-lesson; only the real relay
+          # shape triggers it, manual dispatches pass a scalar fallback).
+          RELAY_PAYLOAD="$(jq -rc '.client_payload.notifications // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
+          if [ -z "$RELAY_PAYLOAD" ] || [ "$RELAY_PAYLOAD" = "null" ]; then
+            RELAY_PAYLOAD="$(jq -rc '.inputs.payload // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
+          fi
+          if [ -n "$RELAY_PAYLOAD" ] && [ "$RELAY_PAYLOAD" != "null" ]; then
             bash .github/scripts/handle-mentions.sh --payload "$RELAY_PAYLOAD"
           else
             bash .github/scripts/handle-mentions.sh
