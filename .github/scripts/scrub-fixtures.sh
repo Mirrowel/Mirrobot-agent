@@ -541,7 +541,10 @@ BOTWF="$SCRIPT_DIR/../workflows/bot-reply.yml"
 STUBWF="$SCRIPT_DIR/../workflows/pr-review-trigger.yml"
 check "poller: gated on FOREIGN_MENTIONS_ENABLED var"  yes "$(grep -q "vars.FOREIGN_MENTIONS_ENABLED == 'true'" "$POLLWF" && echo yes || echo no)"
 check "poller: repository_dispatch foreign-mention"    yes "$(grep -q 'foreign-mention' "$POLLWF" && echo yes || echo no)"
-check "poller: schedule at 5m floor"                   yes "$(grep -q 'cron: .\*/5' "$POLLWF" && echo yes || echo no)"
+# WORKER-FIRST contract: NO schedule trigger in the default file (idle
+# polling is the load the worker exists to avoid); the fallback recipe
+# stays documented in the header comment only.
+check "poller: NO schedule by default (worker-first)"  no  "$(grep -q '^  schedule:' "$POLLWF" && echo yes || echo no)"
 check "guest: home PR checkout excludes foreign"       yes "$(grep -q "IS_PR == 'true' && inputs.targetRepo == ''" "$BOTWF" && echo yes || echo no)"
 check "guest: foreign checkout exists"                 yes "$(grep -q 'Checkout foreign PR head (guest)' "$BOTWF" && echo yes || echo no)"
 check "guest: foreign scrub uses --foreign"            yes "$(grep -q 'scrub-workspace.sh --foreign' "$BOTWF" && echo yes || echo no)"

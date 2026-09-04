@@ -211,8 +211,9 @@ The agent can answer **anywhere its account is mentioned** — any public repo, 
 
 **Guest rules** (`guest-rules.md`, injected after the security brief): the agent is a *guest* — read-only by default; writes need a verified home-repo link or an explicit ask from an allowlist member; **authority is pinned to the allowlist, never to thread participation** (later commenters are data, not direction — the guest injection guard). Review requests carry their own invitation, including formal verdict submission where the API allows it.
 
-**Latency**: the in-repo schedule polls every 5 minutes. To move polling off GitHub Actions entirely (Actions runs only when something actually happened), host the dumb relay worker on Cloudflare's free tier — see `tools/mention-worker/`:
-create a Worker with the committed `wrangler.toml`, set two secrets (`BOT_PAT` = the account PAT, `DISPATCH_PAT` = a fine-grained PAT with `contents: write` on **this repo only**), `npx wrangler deploy`. The worker forwards raw notifications via `repository_dispatch`; every field is re-verified in-repo, so the relay holds zero trust.
+**Latency**: the default entry path is the external **mention-worker** (below) — Actions run only when something actually happened. A manual `workflow_dispatch` run polls on demand anytime; an in-repo fallback schedule (`schedule: - cron: '*/5 * * * *'`) is a documented opt-in (see the workflow header) — mark-read acks make the paths mutually exclusive.
+
+**Host the worker** (default architecture, ~10 minutes, free): see [`tools/mention-worker/README.md`](tools/mention-worker/README.md) — Cloudflare Workers, two secrets (`BOT_PAT` = the account PAT, `DISPATCH_PAT` = a fine-grained PAT with `contents: write` on this repo only), `npx wrangler deploy`. The worker is a deliberately dumb relay: it forwards raw notifications via `repository_dispatch` and holds zero trust — every field is re-verified in-repo.
 
 The **review-request button** also works at home now: on repos with the platform, requesting a review from the agent's identity triggers an instant review (the same path as `/mirrobot-review`), gated on the requested reviewer actually being the agent.
 

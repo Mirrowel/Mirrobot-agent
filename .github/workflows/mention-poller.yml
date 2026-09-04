@@ -7,21 +7,31 @@
 #   notifications; this workflow consumes them.
 #
 # Opt-in: the FOREIGN_MENTIONS_ENABLED repo VARIABLE must be exactly 'true'
-#   (variables are the house pattern for non-sensitive toggles; secrets would
-#   need the env-derivation dance for if-conditions). Default: disabled.
+# (variables are the house pattern for non-sensitive toggles; secrets would
+# need the env-derivation dance for if-conditions). Default: disabled.
+#
+# WORKER-FIRST (default): the primary entry path is repository_dispatch
+# from the external mention-worker (tools/mention-worker/, Cloudflare free
+# tier) - Actions run ONLY when a qualifying notification exists. To also
+# keep an in-repo fallback poller, add a schedule trigger back:
+#     schedule:
+#       - cron: '*/5 * * * *'
+# (deliberate opt-in: an always-on schedule costs ~288 runs/day of idle
+# polling - exactly the load the worker exists to avoid; mark-read acks
+# make the two paths mutually exclusive when both are active).
 #
 # Account-mode only: the App is structurally blind abroad (not installed
-#   there). Without ACCOUNT_GH_TOKEN the job notices-and-exits.
+# there). Without ACCOUNT_GH_TOKEN the job notices-and-exits.
 #
 # Two entry paths, one trust pipeline (all logic in handle-mentions.sh):
-#   schedule           — polls /notifications every 5 minutes with the
-#                        account PAT (needs the `notifications` scope)
-#   repository_dispatch — the external mention-worker (tools/mention-worker/,
-#                        Cloudflare, free tier) forwards RAW notifications;
-#                        the worker holds no logic, and every payload field
-#                        is re-fetched from the GitHub API before any
-#                        decision. Actions then only run when something
-#                        actually happened (the anti-abuse path).
+#   workflow_dispatch    — manual runs and testing (the poll entry works
+#                          standalone: run it by hand any time)
+#   repository_dispatch  — the mention-worker (tools/mention-worker/,
+#                          Cloudflare, free tier) forwards RAW notifications;
+#                          the worker holds no logic, and every payload field
+#                          is re-fetched from the GitHub API before any
+#                          decision. Actions then only run when something
+#                          actually happened (the anti-abuse path).
 #
 # SECURITY: this workflow never checks out PR content, never renders request
 #   bodies into prompts. Its ceiling: it can dispatch bot-reply guest runs
@@ -34,14 +44,12 @@ name: Mention Poller
 
 on:
   # Anti-phantom: an explicit never-matching push trigger. Dispatch-only
-  # workflows otherwise get dead push-event runs (red X, 0 jobs) whenever
-  # a push modifies the workflow file (actions/runner#4001 residue, live-
+  # workflows otherwise get dead push-event runs (red X, 0 jobs) whenever a
+  # push modifies the workflow file (actions/runner#4001 residue, live-
   # observed repeatedly). With this declared, push-event evaluation finds
   # no matching ref and creates NO run at all. Semantics unchanged.
   push:
     branches-ignore: ["**"]
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       payload:
