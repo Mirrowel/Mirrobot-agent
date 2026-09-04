@@ -73,7 +73,10 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null)" || {
 }
 
 anchor="$DEFAULT_ANCHOR"
-if [ "${1:-}" = "--anchor" ] && [ -n "${2:-}" ]; then
+FOREIGN=0
+if [ "${1:-}" = "--foreign" ]; then
+  FOREIGN=1
+elif [ "${1:-}" = "--anchor" ] && [ -n "${2:-}" ]; then
   requested="${2:-}"
   case " $ALLOWED_BRANCHES " in
     *" $requested "*) anchor="$requested" ;;
@@ -83,15 +86,20 @@ if [ "${1:-}" = "--anchor" ] && [ -n "${2:-}" ]; then
   esac
 fi
 
-if ! git rev-parse --verify --quiet "refs/remotes/origin/$anchor^{commit}" >/dev/null 2>&1; then
+if [ "$FOREIGN" = 1 ]; then
+  echo "::notice::Foreign-repo mode: no trusted anchor exists in a guest repository; removing ALL auto-load files (quarantined as data)."
+  ANCHOR=""
+elif ! git rev-parse --verify --quiet "refs/remotes/origin/$anchor^{commit}" >/dev/null 2>&1; then
   echo "Anchor branch '$anchor' not present locally; fetching..."
   git fetch --quiet origin "$anchor:refs/remotes/origin/$anchor" 2>/dev/null || true
 fi
-if git rev-parse --verify --quiet "refs/remotes/origin/$anchor^{commit}" >/dev/null 2>&1; then
-  ANCHOR="refs/remotes/origin/$anchor"
-else
-  echo "::warning::scrub-workspace: cannot resolve anchor '$anchor'; removing ALL auto-load files (fail closed)."
-  ANCHOR=""
+if [ "$FOREIGN" != 1 ]; then
+  if git rev-parse --verify --quiet "refs/remotes/origin/$anchor^{commit}" >/dev/null 2>&1; then
+    ANCHOR="refs/remotes/origin/$anchor"
+  else
+    echo "::warning::scrub-workspace: cannot resolve anchor '$anchor'; removing ALL auto-load files (fail closed)."
+    ANCHOR=""
+  fi
 fi
 
 removed_this_run=0
@@ -289,7 +297,12 @@ fi
 TAINT_FILE="${SCRUB_TAINT_FILE:-/tmp/scrub-taint.txt}"
 rm -f "$TAINT_FILE"
 tree_diff=""
-if [ -n "$ANCHOR" ]; then
+if [ "$FOREIGN" = 1 ]; then
+  # A guest repository's .github cannot execute for us (workflows run from
+  # the HOME repo) — there is no trusted base to compare against and no
+  # attack surface to alarm about. Skip the taint machinery entirely.
+  echo "scrub: taint check skipped (foreign repository - its .github cannot execute here)."
+elif [ -n "$ANCHOR" ]; then
   TAINT_BASE="$ANCHOR"
   TAINT_BASE_DESC="${anchor}"
   if mb=$(git merge-base "$ANCHOR" HEAD 2>/dev/null) && [ -n "$mb" ]; then

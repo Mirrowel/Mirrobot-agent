@@ -1,0 +1,19 @@
+name = "mirrobot-mention-worker"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Free plan: 5 cron triggers per account, 30s CPU per run at sub-hour
+# intervals — a 5-minute poll is far inside every limit.
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+# The repository running mention-poller.yml (the platform home).
+PLATFORM_REPO = "Mirrowel/Mirrobot-agent"
+
+# Secrets — set once with:
+#   npx wrangler secret put BOT_PAT
+#   npx wrangler secret put DISPATCH_PAT
+# (BOT_PAT: bot account classic PAT, public_repo + notifications.
+#  DISPATCH_PAT: fine-grained PAT, contents:write, scoped to PLATFORM_REPO
+#  only. Never use a classic `repo`-scope token here.)

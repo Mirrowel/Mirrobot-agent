@@ -1,0 +1,91 @@
+# ============================================================================
+# MENTION POLLER (cross-repo ears)
+# ============================================================================
+# Purpose: lets the agent respond to genuine @mentions of its USER ACCOUNT
+#   (and review-request-button requests) in PUBLIC repos it is NOT installed
+#   in — the account is mentionable anywhere; GitHub turns those into account
+#   notifications; this workflow consumes them.
+#
+# Opt-in: the FOREIGN_MENTIONS_ENABLED repo VARIABLE must be exactly 'true'
+#   (variables are the house pattern for non-sensitive toggles; secrets would
+#   need the env-derivation dance for if-conditions). Default: disabled.
+#
+# Account-mode only: the App is structurally blind abroad (not installed
+#   there). Without ACCOUNT_GH_TOKEN the job notices-and-exits.
+#
+# Two entry paths, one trust pipeline (all logic in handle-mentions.sh):
+#   schedule           — polls /notifications every 5 minutes with the
+#                        account PAT (needs the `notifications` scope)
+#   repository_dispatch — the external mention-worker (tools/mention-worker/,
+#                        Cloudflare, free tier) forwards RAW notifications;
+#                        the worker holds no logic, and every payload field
+#                        is re-fetched from the GitHub API before any
+#                        decision. Actions then only run when something
+#                        actually happened (the anti-abuse path).
+#
+# SECURITY: this workflow never checks out PR content, never renders request
+#   bodies into prompts. Its ceiling: it can dispatch bot-reply guest runs
+#   for qualifying notifications — everything downstream re-verifies
+#   (bot-reply re-fetches the comment, re-checks the allowlist, re-checks
+#   the mention; guest rules govern the session).
+# ============================================================================
+
+name: Mention Poller
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      payload:
+        description: 'Optional relay payload (raw notifications JSON) — internal use'
+        required: false
+        type: string
+  repository_dispatch:
+    types: [foreign-mention]
+
+permissions:
+  contents: read   # sparse checkout of trusted scripts
+  actions: write   # dispatch bot-reply.yml
+
+concurrency:
+  group: mention-poller
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    if: vars.FOREIGN_MENTIONS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sparse checkout of shared scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Guard — account mode required
+        env:
+          ACCOUNT_TOKEN_SET: ${{ secrets.ACCOUNT_GH_TOKEN != '' }}
+        run: |
+          if [ "$ACCOUNT_TOKEN_SET" != "true" ]; then
+            echo "::notice::FOREIGN_MENTIONS_ENABLED is on but ACCOUNT_GH_TOKEN is absent - cross-repo mentions are account-mode only. Skipping."
+            exit 1
+          fi
+
+      - name: Run mention pipeline
+        env:
+          GH_TOKEN: ${{ secrets.ACCOUNT_GH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          HOME_OWNER: ${{ github.repository_owner }}
+          FOREIGN_MENTIONS_USERS: ${{ vars.FOREIGN_MENTIONS_USERS || '' }}
+          BOT_NAMES_JSON: '["mirrobot-agent", "mirrobot-agent[bot]"]'
+          MAX_DISPATCH: '3'
+          RELAY_PAYLOAD: ${{ github.event.client_payload.notifications || inputs.payload || '' }}
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/*.sh
+          if [ -n "$RELAY_PAYLOAD" ]; then
+            bash .github/scripts/handle-mentions.sh --payload "$RELAY_PAYLOAD"
+          else
+            bash .github/scripts/handle-mentions.sh
+          fi
