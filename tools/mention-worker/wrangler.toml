@@ -2,14 +2,22 @@ name = "mirrobot-mention-worker"
 main = "worker.js"
 compatibility_date = "2026-01-01"
 
-# Free plan: 5 cron triggers per account, 30s CPU per run at sub-hour
-# intervals. Every minute is the platform floor (cron cannot go sub-minute;
-# DO alarms would be an architecture change for ~no real gain since GitHub
-# notifications themselves lag seconds and the agent session runs minutes).
-# 1,440 polls/day is far inside every free limit — the worker exits cheap
-# when nothing qualifies.
+# SCHEDULING: Durable Object alarm loop (see worker.js header) — cron
+# triggers are broken on this account (registered, never dispatched; live
+# evidence 2026-09-04). crons = [] is EXPLICIT: an absent [triggers] block
+# would leave any stale schedule attached. The dedicated probe worker
+# (mirrobot-cron-probe) keeps a cron as the platform-healing canary.
 [triggers]
-crons = ["* * * * *"]
+crons = []
+
+# Free tier: SQLite-backed DOs + alarms. The Scheduler singleton owns the
+# 60s poll loop; at-most-once semantics live in the repo pipeline.
+[durable_objects]
+bindings = [{ name = "SCHEDULER", class_name = "Scheduler" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Scheduler"]
 
 [vars]
 # The repository running mention-poller.yml (the platform home).

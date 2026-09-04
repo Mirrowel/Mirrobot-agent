@@ -2,7 +2,7 @@
 
 The cross-repo "ears" of the Mirrobot platform, hosted OFF GitHub Actions:
 a Cloudflare Worker (free tier) that polls the bot account's notifications
-every minute and forwards qualifying events to the platform repo. GitHub
+every minute (Durable Object alarm loop) and forwards qualifying events to the platform repo. GitHub
 Actions then only run when something actually happened — no idle polling
 runs (the default architecture; the in-repo schedule is an opt-in fallback).
 
