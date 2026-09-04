@@ -8,10 +8,24 @@ runs (the default architecture; the in-repo schedule is an opt-in fallback).
 
 ## What it is
 
-One JavaScript file (`worker.js`) + `wrangler.toml`. Deliberately dumb:
+One JavaScript file (`worker.js`) + `wrangler.toml`, scheduled by a
+**self-rescheduling Durable Object alarm** (the `Scheduler` class): each
+wake-up commits the NEXT alarm first (+30s), then polls — no error can
+kill the loop. Why not Cron Triggers: on this account the platform
+scheduler registered crons but never dispatched them (2026-09-04, zero
+attempts in observability, matching community reports 922869/928936;
+docs admit crons run "on underutilized machines"). DO alarms bypass that
+machinery entirely, are free-tier (SQLite-backed), and go sub-minute.
+A dormant `*/5` cron stays attached to the same worker as a backup — if
+it ever fires, either the platform healed (and the DO loop died —
+investigate) or nothing is wrong and the run no-ops (mark-read acks in
+the pipeline dedupe both paths).
+
+Deliberately dumb:
 
 1. `GET /notifications` with the bot account PAT — keeps only
    `mention` / `review_requested` / `subscribed` / `comment` reasons
+   (filter mirrors `handle-mentions.sh` exactly)
 2. forwards the RAW notification objects to the platform repo via
    `repository_dispatch` (`event_type: foreign-mention`)
 3. marks NOTHING read — `handle-mentions.sh` (in the repo, battery-tested)
@@ -50,7 +64,8 @@ Prerequisites: a free [Cloudflare account](https://dash.cloudflare.com)
    npx wrangler tail             # live logs: "N unread, M qualifying"
    ```
    Also: Cloudflare dashboard → Workers → `mirrobot-mention-worker` →
-   Triggers shows the `* * * * *` cron (every minute — the platform floor).
+   Triggers shows the dormant `*/5 * * * *` backup cron. The DO alarm
+   loop arms itself on first `__tick` (or any fetch) and runs every 30s.
 
 4. **Enable the platform side** (if not already on): repo variables
    `FOREIGN_MENTIONS_ENABLED=true` and optionally `FOREIGN_MENTIONS_USERS`

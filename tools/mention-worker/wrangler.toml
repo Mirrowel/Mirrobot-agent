@@ -2,13 +2,14 @@ name = "mirrobot-mention-worker"
 main = "worker.js"
 compatibility_date = "2026-01-01"
 
-# SCHEDULING: Durable Object alarm loop (see worker.js header) — cron
-# triggers are broken on this account (registered, never dispatched; live
-# evidence 2026-09-04). crons = [] is EXPLICIT: an absent [triggers] block
-# would leave any stale schedule attached. The dedicated probe worker
-# (mirrobot-cron-probe) keeps a cron as the platform-healing canary.
+# SCHEDULING: the DO alarm loop in worker.js is the PRIMARY mechanism (30s
+# period). The */5 cron below is a DORMANT BACKUP — never fires while the
+# account's cron-dispatch bug persists (live evidence 2026-09-04); if it
+# ever starts, that means the platform healed (and the primary loop died —
+# investigate). Duplicate fires are no-ops: mark-read-before-dispatch in
+# the repo pipeline is the at-most-once guard.
 [triggers]
-crons = []
+crons = ["*/5 * * * *"]
 
 # Free tier: SQLite-backed DOs + alarms. The Scheduler singleton owns the
 # 60s poll loop; at-most-once semantics live in the repo pipeline.

@@ -5,15 +5,19 @@
 // GitHub Actions: Actions then only run when a qualifying notification
 // actually exists (the anti-abuse path).
 //
-// SCHEDULING: a self-rescheduling Durable Object alarm (60s period), NOT
+// SCHEDULING: a self-rescheduling Durable Object alarm (30s period), NOT
 // Cron Triggers. Live-lesson 2026-09-04: on this account the cron scheduler
-// registered `* * * * *` but never dispatched it once over ~2h — zero
+// registered schedules but never dispatched them once over ~2h — zero
 // scheduled attempts in workersInvocationsAdaptive, exact-match community
 // reports (922869, 928936), and docs admit crons "run on underutilized
 // machines" (the parking edge case). DO alarms bypass that machinery
-// entirely and are free-tier (SQLite-backed DO). A dedicated probe worker
-// (mirrobot-cron-probe) keeps a cron attached as the canary for when the
-// platform side ever heals — until then crons = [] here, explicitly.
+// entirely, are free-tier (SQLite-backed DO), and can go sub-minute —
+// something crons could never do. A dormant */5 cron stays attached to this
+// same worker as a BACKUP: zero code (the scheduled() handler runs the same
+// pipeline), never fires while the platform bug persists, and if the DO
+// loop ever dies after the platform heals, worst-case latency is 5 minutes.
+// Duplicate fires across both paths are no-ops: mark-read-before-dispatch
+// in the repo pipeline is the at-most-once guard.
 //
 // WHAT IT DOES (deliberately dumb — zero trust, zero logic):
 //   1. polls GET /notifications for the bot ACCOUNT (reason filter mirrors
@@ -47,7 +51,9 @@
 //   PLATFORM_REPO — "owner/name" of the repo running mention-poller.yml
 
 const GH = "https://api.github.com";
-const POLL_PERIOD_MS = 60_000;
+// 30s: halves guest-reply latency vs a minute loop; ~2,880 polls/day is
+// noise against free-tier limits (100k DO requests/day, 5k GitHub req/hr).
+const POLL_PERIOD_MS = 30_000;
 
 async function runPipeline(env) {
   const diag = {
