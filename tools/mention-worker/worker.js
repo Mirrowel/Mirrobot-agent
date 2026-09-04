@@ -45,10 +45,17 @@ export default {
       return;
     }
     const all = await res.json();
-    const qualifying = all.filter(
-      (n) => n.reason === "mention" || n.reason === "review_requested",
-    );
-    console.log(`${all.length} unread, ${qualifying.length} qualifying`);
+    // Reason filter MUST mirror handle-mentions.sh exactly: mention and
+    // review_requested are the direct summons; subscribed and comment are
+    // the follow-up shapes (GitHub classifies re-mentions in threads the
+    // account already participated in as `subscribed` — live-lesson: a
+    // narrow filter here silently drops them and the worker looks dead).
+    // The in-repo gauntlet re-verifies everything anyway; this relay
+    // pre-filters only to avoid waking Actions for noise.
+    const REASONS = new Set(["mention", "review_requested", "subscribed", "comment"]);
+    const qualifying = all.filter((n) => REASONS.has(n.reason));
+    const breakdown = all.reduce((acc, n) => ((acc[n.reason] = (acc[n.reason] || 0) + 1), acc), {});
+    console.log(`${all.length} unread, ${qualifying.length} qualifying, reasons: ${JSON.stringify(breakdown)}`);
     if (qualifying.length === 0) return;
 
     // Relay: repository_dispatch -> mention-poller.yml runs the pipeline.
