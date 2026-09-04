@@ -16,10 +16,10 @@ scheduler registered crons but never dispatched them (2026-09-04, zero
 attempts in observability, matching community reports 922869/928936;
 docs admit crons run "on underutilized machines"). DO alarms bypass that
 machinery entirely, are free-tier (SQLite-backed), and go sub-minute.
-A dormant `*/5` cron stays attached to the same worker as a backup — if
-it ever fires, either the platform healed (and the DO loop died —
-investigate) or nothing is wrong and the run no-ops (mark-read acks in
-the pipeline dedupe both paths).
+No cron is attached (`crons = []`, explicit); the one-line backup option
+is documented as a comment in `wrangler.toml` (`crons = ["* * * * *"]` —
+the `scheduled()` handler already runs the same pipeline, and mark-read
+acks in the pipeline dedupe both paths if ever both run).
 
 Deliberately dumb:
 
@@ -64,8 +64,11 @@ Prerequisites: a free [Cloudflare account](https://dash.cloudflare.com)
    npx wrangler tail             # live logs: "N unread, M qualifying"
    ```
    Also: Cloudflare dashboard → Workers → `mirrobot-mention-worker` →
-   Triggers shows the dormant `*/5 * * * *` backup cron. The DO alarm
-   loop arms itself on first `__tick` (or any fetch) and runs every 30s.
+   The DO alarm loop arms itself on first `__tick` (or any fetch) and
+   runs every 30s. Every run logs one structured `[poll] src=...` line
+   (idle/dispatched/error + duration), and with observability enabled
+   (see wrangler.toml) all of it lands in Workers → Logs on the dashboard
+   — searchable, with invocation context.
 
 4. **Enable the platform side** (if not already on): repo variables
    `FOREIGN_MENTIONS_ENABLED=true` and optionally `FOREIGN_MENTIONS_USERS`

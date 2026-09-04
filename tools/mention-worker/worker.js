@@ -55,12 +55,15 @@ const GH = "https://api.github.com";
 // noise against free-tier limits (100k DO requests/day, 5k GitHub req/hr).
 const POLL_PERIOD_MS = 30_000;
 
-async function runPipeline(env) {
+async function runPipeline(env, src) {
+  const t0 = Date.now();
   const diag = {
+    src,
     pollStatus: null,
     unread: 0,
     qualifying: 0,
     reasons: {},
+    dispatched: [],
     dispatchStatus: null,
     dispatchBody: null,
   };
@@ -75,6 +78,7 @@ async function runPipeline(env) {
   diag.pollStatus = res.status;
   if (!res.ok) {
     diag.pollError = (await res.text()).slice(0, 300);
+    console.log(`[poll] src=${src} ERROR status=${res.status} body=${diag.pollError} (${Date.now() - t0}ms)`);
     return diag;
   }
   const all = await res.json();
@@ -83,7 +87,18 @@ async function runPipeline(env) {
   diag.unread = all.length;
   diag.qualifying = qualifying.length;
   diag.reasons = all.reduce((acc, n) => ((acc[n.reason] = (acc[n.reason] || 0) + 1), acc), {});
-  if (qualifying.length === 0) return diag;
+  if (qualifying.length === 0) {
+    console.log(`[poll] src=${src} idle unread=${all.length} (${Date.now() - t0}ms)`);
+    return diag;
+  }
+
+  // Audit line per notification BEFORE relaying — visible on the dashboard.
+  for (const n of qualifying) {
+    const ref = (n.subject?.url || "").match(/\/(?:issues|pulls)\/(\d+)$/)?.[1] || "?";
+    const entry = `${n.repository?.full_name || "?"}#${ref} reason=${n.reason}`;
+    diag.dispatched.push(entry);
+    console.log(`[poll] src=${src} relaying ${entry}`);
+  }
 
   const dispatch = await fetch(`${GH}/repos/${env.PLATFORM_REPO}/dispatches`, {
     method: "POST",
@@ -99,6 +114,10 @@ async function runPipeline(env) {
   });
   diag.dispatchStatus = dispatch.status;
   if (!dispatch.ok) diag.dispatchBody = (await dispatch.text()).slice(0, 300);
+  console.log(
+    `[poll] src=${src} dispatched=${qualifying.length} status=${dispatch.status}` +
+      (diag.dispatchBody ? ` body=${diag.dispatchBody}` : "") + ` (${Date.now() - t0}ms)`,
+  );
   return diag;
 }
 
@@ -122,15 +141,9 @@ export class Scheduler {
   async alarm() {
     await this.state.storage.setAlarm(Date.now() + POLL_PERIOD_MS);
     try {
-      const diag = await runPipeline(this.env);
-      console.log(
-        `[alarm] poll ${diag.pollStatus}, ${diag.unread} unread, ${diag.qualifying} qualifying, ` +
-          `reasons: ${JSON.stringify(diag.reasons)}, dispatch ${diag.dispatchStatus}` +
-          (diag.dispatchBody ? ` (${diag.dispatchBody})` : "") +
-          (diag.pollError ? ` pollError: ${diag.pollError}` : ""),
-      );
+      await runPipeline(this.env, "alarm");
     } catch (err) {
-      console.log(`[alarm] pipeline error: ${err}`);
+      console.log(`[poll] src=alarm EXCEPTION ${err}`);
     }
   }
 
@@ -143,10 +156,9 @@ export class Scheduler {
 
 export default {
   // Cron path kept only for manual remote tests (wrangler dev --test-
-  // scheduled). No cron is attached in production — see header.
+  // scheduled). No cron is attached in production — see wrangler.toml.
   async scheduled(event, env) {
-    const diag = await runPipeline(env);
-    console.log(`[cron] ${JSON.stringify(diag)}`);
+    await runPipeline(env, "cron");
   },
 
   async fetch(request, env) {
@@ -158,7 +170,7 @@ export default {
     if (!env.TEST_TOKEN || key !== env.TEST_TOKEN) {
       return new Response("forbidden\n", { status: 403 });
     }
-    const diag = await runPipeline(env);
+    const diag = await runPipeline(env, "tick");
     // Bootstrap the alarm loop on every tick (idempotent ensure).
     const id = env.SCHEDULER.idFromName("only");
     const boot = await env.SCHEDULER.get(id).fetch("https://do/ensure");
