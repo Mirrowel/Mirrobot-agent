@@ -42,6 +42,19 @@
 
 name: Mention Poller
 
+# The default dispatch run title ("Repository dispatch triggered by
+# <token owner>") is misleading - the token owner did nothing; the
+# mention-worker relayed an automated mention FROM somewhere. Name the
+# actual source: the first relayed notification's repo + reason for
+# worker relays, the human actor for manual polls. (No extraction of
+# issue numbers in GH expressions - repo + reason is the ceiling.)
+run-name: >
+  ${{ github.event_name == 'repository_dispatch'
+      && format('Automated mention relay from {0} ({1})',
+           github.event.client_payload.notifications[0].repository.full_name,
+           github.event.client_payload.notifications[0].reason)
+      || format('Manual poll by @{0}', github.actor) }}
+
 on:
   # Anti-phantom: an explicit never-matching push trigger. Dispatch-only
   # workflows otherwise get dead push-event runs (red X, 0 jobs) whenever a
