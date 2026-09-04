@@ -3,9 +3,13 @@ main = "worker.js"
 compatibility_date = "2026-01-01"
 
 # Free plan: 5 cron triggers per account, 30s CPU per run at sub-hour
-# intervals — a 5-minute poll is far inside every limit.
+# intervals. Every minute is the platform floor (cron cannot go sub-minute;
+# DO alarms would be an architecture change for ~no real gain since GitHub
+# notifications themselves lag seconds and the agent session runs minutes).
+# 1,440 polls/day is far inside every free limit — the worker exits cheap
+# when nothing qualifies.
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["* * * * *"]
 
 [vars]
 # The repository running mention-poller.yml (the platform home).
