@@ -70,6 +70,23 @@ git ls-files -s AGENTS.md | grep -q '^120000' || { echo "FAIL: AGENTS.md fixture
 git commit -qm 'autoload: hostile additions + modifications + out-of-repo symlink'
 git checkout -q main
 
+# parity fixtures: platform-sync carve-out matrix (see scrub-workspace.sh
+# "Post-fork platform parity"). main evolves AFTER the fork points — D
+# (deletion) and E (addition) — so branches syncing that content carry
+# post-fork anchor states (-> EXPLAINED sync), while a rollback to pre-fork
+# bytes stays a TAINT (the rollback cap).
+git branch parity-preD main
+git rm -q .github/workflows/new.yml && git commit -qm 'D: main removes new.yml'
+git branch parity-preE main
+printf 'extra\n' > .github/workflows/extra.yml && git add .github/workflows/extra.yml && git commit -qm 'E: main adds extra.yml'
+git checkout -q parity-preD; git checkout -q -b sync-parity
+git rm -q .github/workflows/new.yml && git commit -qm 'sync: adopt main D (delete new.yml)'
+git checkout -q parity-preE; git checkout -q -b sync-content
+printf 'extra\n' > .github/workflows/extra.yml && git add .github/workflows/extra.yml && git commit -qm 'sync: adopt main E (add extra.yml)'
+git checkout -q main; git checkout -q -b sync-rollback
+printf 'wf: v1\n' > .github/workflows/main.yml && git add -A && git commit -qm 'rollback: main.yml to v1 (pre-fork)'
+git checkout -q main
+
 cd "$WORK" && git clone -q "$SRC" work && cd work || exit 1
 git fetch -q origin '+refs/heads/*:refs/remotes/origin/*'
 
@@ -96,6 +113,11 @@ check "direct .github modify -> ALARM"                          ALARM "$(run_scr
 check "modify+revert identical tree -> ALARM"                   ALARM "$(run_scrub revert-hide)"
 check "evil merge (no per-commit .github lines) -> ALARM"       ALARM "$(run_scrub mergebase)"
 check "anchor tip itself -> CLEAN"                              CLEAN "$(run_scrub main)"
+check "platform-sync content parity -> INFO"                    INFO  "$(run_scrub sync-content)"
+check "platform-sync deletion parity -> INFO"                   INFO  "$(run_scrub sync-parity)"
+check "rollback below fork era -> ALARM"                        ALARM "$(run_scrub sync-rollback)"
+run_scrub sync-content >/dev/null
+check "sync EXPLAINED names merge consequence"                  yes   "$(grep -q 'platform content synced from' /tmp/scrub-taint.txt && grep -q 'confirm that is intended' /tmp/scrub-taint.txt && echo yes || echo no)"
 
 # ---- autoload surface matrix (tier-1 + tier-2) -----------------------------
 # Reuses the taint harness: checks SURVIVORS (files still present after the
