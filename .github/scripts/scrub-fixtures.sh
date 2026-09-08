@@ -261,13 +261,18 @@ check "filter: boot sentinel touched on first line" yes "$(grep -q 'printf \"\" 
 # ---- bootstrap: dispatch-only, sole actions:write, state-silent ---------------
 BOOT="$SCRIPT_DIR/../workflows/agent-bootstrap.yml"
 check "bootstrap: workflow_dispatch only"          yes "$(grep -A2 '^on:' "$BOOT" | grep -q 'workflow_dispatch' && ! grep -q 'schedule:' "$BOOT" && echo yes || echo no)"
-check "bootstrap: grants actions:write"            yes "$(grep -q 'actions: write' "$BOOT" && echo yes || echo no)"
+# GITHUB_TOKEN cannot reach the variables API at all (live-verified 403
+# class) - the workflow must hold NO grant (permissions: {}) and seed via
+# the bot identity tokens; with none it degrades to manual instructions.
+check "bootstrap: no GITHUB_TOKEN grant (variables need user tokens)" no  "$(grep -A2 '^permissions:' "$BOOT" | grep -q 'actions: write' && echo yes || echo no)"
+check "bootstrap: resolves bot identity token"        yes "$(grep -q 'mode=account' "$BOOT" && grep -q 'mode=app' "$BOOT" && grep -q 'create-github-app-token' "$BOOT" && echo yes || echo no)"
+check "bootstrap: manual fallback when tokenless"     yes "$(grep -q 'mode=manual' "$BOOT" && grep -q 'gh variable set' "$BOOT" && echo yes || echo no)"
 check "bootstrap: seeds AGENT_PAUSED default"      yes "$(grep -q '\[AGENT_PAUSED\]="false"' "$BOOT" && echo yes || echo no)"
 check "bootstrap: models template prefilled"       yes "$(grep -q '{\"pr-review\":{\"model\":\"\",\"fast\":\"\"}' "$BOOT" && echo yes || echo no)"
 check "bootstrap: exists-check never overwrites"   yes "$(grep -q 'actions/variables/\$name' "$BOOT" && grep -q 'continue' "$BOOT" && echo yes || echo no)"
 # State-silence: no per-variable outcome lines anywhere in the seed step.
 check "bootstrap: no per-variable outcome logs"    no  "$(grep -E 'echo .*(created|already exists|skipping)' "$BOOT" | grep -v 'Bootstrap complete' | grep -q . && echo yes || echo no)"
-check "bootstrap: static checklist in summary"     yes "$(grep -q 'Agent Bootstrap complete' "$BOOT" && echo yes || echo no)"
+check "bootstrap: static checklist in summary"     yes "$(grep -q '## Agent Bootstrap' "$BOOT" && echo yes || echo no)"
 # Bootstrap is the ONLY workflow holding actions:write (least privilege
 # concentration: one dispatch-only surface for variable creation).
 OTHERS_WITH_WRITE=$(grep -l 'actions: write' "$SCRIPT_DIR/../workflows/"*.yml | grep -v agent-bootstrap | grep -v pr-review-trigger || true)

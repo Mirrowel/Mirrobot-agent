@@ -198,7 +198,7 @@ Set under `Settings → Secrets and variables → Actions → Variables` (not se
 | `FOREIGN_MENTIONS_ENABLED` | `false` | Master switch for **cross-repo guest mode** (see below). Must be exactly `true` to enable |
 | `FOREIGN_MENTIONS_USERS` | *(empty)* | Extra logins allowed to **summon the agent cross-repo** (unioned with this repo's collaborators — owner included). Deliberately separate from `TRUSTED_AGENT_USERS`: cross-repo summoning is its own, stricter privilege |
 
-**One-dispatch setup.** The **Agent Bootstrap** workflow (admin: `Actions → Agent Bootstrap → Run workflow`) creates every variable above with its safe default/template — existing values are never overwritten — and prints the complete secrets checklist into the run summary. Its logs are state-silent by design: they can never reveal which variables or secrets exist.
+**One-dispatch setup.** The **Agent Bootstrap** workflow (admin: `Actions → Agent Bootstrap → Run workflow`) creates every variable above with its safe default/template — existing values are never overwritten — and prints the complete secrets checklist into the run summary. Seeding authenticates with the repo's existing bot identity token (GITHUB_TOKEN cannot reach the variables API — a platform limitation); if no bot token exists or it lacks access, the run degrades gracefully to copy-paste seeding commands in the summary. Bootstrap logs are state-silent by design: they can never reveal which variables or secrets exist.
 
 **Noise filtering.** The agent's thread context hides junk automatically: hidden (minimized) content is excluded everywhere — the agent's own posts included; and the built-in pattern defaults drop the known noise classes of AI reviewers (CodeRabbit rate-limit / `Review skipped` / `Too many files` posts, the `No actionable comments` notices, Greptile's status channel) while **keeping their substantive reviews** — walkthroughs, overviews, and inline findings survive. Other AI reviewers are treated as input, never authority: their findings are leads to verify, never verdicts to mirror.
 
@@ -251,7 +251,7 @@ Open an issue, open a PR, or comment `@mirrobot-agent hello` — watch the Actio
 | **Compliance Check** | `/mirrobot-check` | End-of-life merge audit; posts the compliance status + report |
 | **Compliance Gate** | PR events | Redundant poster of the pending status — fails loudly rather than letting a transient error make a PR look mergeable |
 | **Bot Reply on Mention** | dispatch only | The general agent: conversations, investigations, on-demand reviews, contributions |
-| **Agent Bootstrap** | admin dispatch only | One-time setup: seeds every variable with safe defaults/templates (never overwrites) and prints the secrets checklist. The repo's only `actions: write` workflow — state-silent by design |
+| **Agent Bootstrap** | admin dispatch only | One-time setup: seeds every variable with safe defaults/templates (never overwrites) and prints the secrets checklist — using the repo's bot identity token, with a manual-instructions fallback; state-silent by design |
 | **Mention Poller** | dispatch only | Cross-repo guest mode entry (see [the worker](tools/mention-worker/README.md)) |
 | **Scrub Fixture Suite** | `.github/` changes | The batteries: 179 security fixtures + 339 prompt-rule pins + strict YAML validation |
 
