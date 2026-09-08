@@ -26,7 +26,12 @@
 #     "thread-comments": 10,        // replies per review-linked thread
 #     "orphan-threads": 20,         // review-less threads ("Add single
 #                                    //   comment"), newest first
-#     "orphan-thread-comments": 10  // replies per orphaned thread
+#     "orphan-thread-comments": 10, // replies per orphaned thread
+#     "body-chars": 3000            // per-post body cap (comments AND review
+#                                    //   summaries); longer bodies are cut
+#                                    //   with a visible [body truncated]
+#                                    //   marker - count caps alone cannot
+#                                    //   bound a 50KB single comment
 #   }
 #   Everything is "up to", newest first, deduped. FILTER BEFORE CAP, in every
 #   window: hidden (minimized) content never consumes a slot; resolved/outdated
@@ -85,6 +90,7 @@ PREFIX_TEXT="${PREFIX_TEXT:-}"
 LIM_COMMENTS=30; LIM_REVIEWS=15; LIM_OWN=5
 LIM_THREADS_PER_REVIEW=25; LIM_THREAD_COMMENTS=10
 LIM_ORPHAN_THREADS=20; LIM_ORPHAN_THREAD_COMMENTS=10
+LIM_BODY_CHARS=3000
 if [ -n "${CONTEXT_LIMITS_JSON:-}" ]; then
   if printf '%s' "$CONTEXT_LIMITS_JSON" | jq -e 'type == "object"' >/dev/null 2>&1; then
     LIM_COMMENTS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '.comments // 30')
@@ -94,6 +100,7 @@ if [ -n "${CONTEXT_LIMITS_JSON:-}" ]; then
     LIM_THREAD_COMMENTS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."thread-comments" // 10')
     LIM_ORPHAN_THREADS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."orphan-threads" // 20')
     LIM_ORPHAN_THREAD_COMMENTS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."orphan-thread-comments" // 10')
+    LIM_BODY_CHARS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."body-chars" // 3000')
   else
     echo "::warning::CONTEXT_LIMITS_JSON is not a JSON object; using per-key defaults."
   fi
@@ -274,8 +281,10 @@ thread_context=$(printf '%s' "$discussion_data" | jq -r \
   --arg ignore_authors "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" \
   --argjson patterns "$FILTER_PATTERNS_JSON" \
   --argjson limComments "$LIM_COMMENTS" \
+  --argjson bodyChars "$LIM_BODY_CHARS" \
   --arg exclude_ids "$EXCLUDE_COMMENT_IDS" '
   ($ignore_authors | split(",") | map(select(length > 0))) as $ignored |
+  def clip($s): if ($s | length) > $bodyChars then ($s[0:$bodyChars] + "\n[body truncated]") else $s end;
   def noisy: ((.body // "") as $b | [ $patterns[] | . as $p | select($b | test("(?i)" + $p)) ] | length > 0);
   (.data.repository.pullRequest.comments.nodes // [])
   | map(select(
@@ -286,7 +295,7 @@ thread_context=$(printf '%s' "$discussion_data" | jq -r \
     ))
   | if length > $limComments then .[($limComments * -1):] else . end
   | if length > 0 then
-      map("- " + (.author.login? // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n")
+      map("- " + (.author.login? // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + clip((.body // "") | tostring) + "\n")
       | join("")
     else "No general comments."
     end
@@ -310,8 +319,10 @@ if ! agent_blocks=$(printf '%s' "$discussion_data" | jq -r \
   --argjson limThreadsPerReview "$LIM_THREADS_PER_REVIEW" \
   --argjson limThreadComments "$LIM_THREAD_COMMENTS" \
   --argjson limOrphanThreads "$LIM_ORPHAN_THREADS" \
-  --argjson limOrphanThreadComments "$LIM_ORPHAN_THREAD_COMMENTS" '
+  --argjson limOrphanThreadComments "$LIM_ORPHAN_THREAD_COMMENTS" \
+  --argjson bodyChars "$LIM_BODY_CHARS" '
   ($ignore_authors | split(",") | map(select(length > 0))) as $ignored |
+  def clip($s): if ($s | length) > $bodyChars then ($s[0:$bodyChars] + "\n[body truncated]") else $s end;
   def noisy: ((.body // "") as $b | [ $patterns[] | . as $p | select($b | test("(?i)" + $p)) ] | length > 0);
   (.data.repository.pullRequest) as $pr |
   def is_own: ((.author.login? // "" | ascii_downcase) as $l | $agentbots | index($l)) != null;
@@ -329,7 +340,7 @@ if ! agent_blocks=$(printf '%s' "$discussion_data" | jq -r \
     (if .thResolved then " [resolved]" else "" end)
     + (if .thOutdated then " [outdated]" else "" end)
     + (if .isMinimized then " [hidden]" else "" end);
-  def fmt_c: ("- " + (.path // "Unknown file") + ":" + (((.line // .originalLine // "N/A")) | tostring) + " (" + (.createdAt // "N/A") + ") by " + (.author.login? // "unknown") + " - " + ((.body // "") | tostring) + markers + " <" + (.url // "") + ">");
+  def fmt_c: ("- " + (.path // "Unknown file") + ":" + (((.line // .originalLine // "N/A")) | tostring) + " (" + (.createdAt // "N/A") + ") by " + (.author.login? // "unknown") + " - " + clip((.body // "") | tostring) + markers + " <" + (.url // "") + ">");
   # ---- review selection: newest limReviews + own-newest limOwn (safeguard) -
   (($pr.reviews.nodes // []) | sort_by(.submittedAt) | reverse) as $reviews_new |
   ([ $reviews_new[] | select(is_own and (.isMinimized != true)) ] | .[0:$limOwn]) as $own_sel |
@@ -358,7 +369,7 @@ if ! agent_blocks=$(printf '%s' "$discussion_data" | jq -r \
     . as $r |
     (rv_alloc($r.databaseId; $skipfilter)) as $lines |
     "## " + (.submittedAt // "N/A") + " - " + (.state // "UNKNOWN") + " - " + (.author.login? // "unknown") + " <" + (.url // "") + ">\n"
-    + ((.body // "(No summary comment)") | tostring) + "\n"
+    + clip((.body // "(No summary comment)") | tostring) + "\n"
     + (if ($lines | length) > 0 then "Inline comments:\n" + ($lines | map(fmt_c) | join("\n")) + "\n" else "Inline comments: (none)\n" end);
   def dismissed_note: if any(.[]?; .state == "DISMISSED") then "\nNote: DISMISSED here usually means an APPROVED review auto-cleared by a later push - the Verdict line in the body holds the original verdict. Treat it as re-review-the-delta, not a wrong review.\n" else "" end;
   # ---- orphan threads: review-less, filtered, newest, capped ----------------
@@ -381,7 +392,7 @@ if ! agent_blocks=$(printf '%s' "$discussion_data" | jq -r \
     | . as $r
     | (rv_alloc($r.databaseId; false)) as $lines
     | "- " + (.author.login? // "unknown") + " at " + (.submittedAt // "N/A") + " - " + (.state // "UNKNOWN") + " <" + (.url // "") + ">\n"
-      + ((.body // "") | tostring | if length > 0 then "  " + . + "\n" else "" end)
+      + (clip((.body // "") | tostring) | if length > 0 then "  " + . + "\n" else "" end)
       + (if ($lines | length) > 0 then "  Inline comments:\n" + ($lines | map(fmt_c) | join("\n")) + "\n" else "  (no active inline comments)\n" end)
   ] | join("") as $othertext |
   ([ $allc[] | select((cmt_ok and (thread_ok and cmt_fresh)) | not) ] | length) as $n_filtered |

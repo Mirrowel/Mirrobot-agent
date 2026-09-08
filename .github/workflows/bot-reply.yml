@@ -88,9 +88,10 @@ jobs:
       # Everything a fork tunes in THIS file lives near this block (the rest
       # is machinery). Full reference: docs/configuration.md and
       # docs/workflows/bot-reply.md.
-      # Diff truncation ceiling (bytes) - oversized diffs are cut to protect
-      # the first prompt. 500000 = ~500KB.
-      DIFF_MAX_BYTES: '500000'
+      # Diff split threshold (bytes) - diffs larger than this are SPLIT into
+      # navigable parts + an index (split-diff.sh); never truncated.
+      # 1000000 = ~1MB per part.
+      DIFF_SPLIT_BYTES: '1000000'
       # PR-TARGET context only ("is the base a maintained branch?" for the
       # trust-context line) — NOT the scrub anchor. Scrub trust is SPLIT:
       # .github taint anchors to MAIN alone; auto-load content trusts
@@ -575,7 +576,10 @@ jobs:
               for number in $issue_numbers; do
                 issue_details_json=$(gh issue view "$number" --repo "${{ github.repository }}" --json title,body 2>/dev/null || echo "{}")
                 issue_title=$(echo "$issue_details_json" | jq -r '.title // "Title not available"')
-                issue_body=$(echo "$issue_details_json" | jq -r '.body // "Body not available"')
+                # Body capped: linked issues are CONTEXT (the agent can read
+                # the full issue on demand) - a 64KB body x N linked issues
+                # must not silently eat the prompt.
+                issue_body=$(echo "$issue_details_json" | jq -r --argjson bc 4000 '(.body // "Body not available") | if length > $bc then .[0:$bc] + "\n[linked-issue body truncated - read the full issue if it matters]" else . end')
                 linked_issues_content+=$(printf "<issue>\n <number>#%s</number>\n <title>%s</title>\n <body>\n%s\n</body>\n</issue>\n" "$number" "$issue_title" "$issue_body")
               done
               linked_issues=$linked_issues_content
@@ -610,9 +614,32 @@ jobs:
             created_at=$(echo "$issue_data" | jq -r .createdAt)
             state=$(echo "$issue_data" | jq -r .state)
             title=$(echo "$issue_data" | jq -r .title)
-            body=$(echo "$issue_data" | jq -r '.body // "(No description provided)"')
-            # Prepare comments (exclude ignored bots)
-            comments=$(echo "$issue_data" | jq -r --arg ignore_authors "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" 'if (((.comments // []) | length) > 0) then ((.comments[]? | select((.author.login // "" | ascii_downcase) as $login | ($ignore_authors | split(",") | map(select(length > 0)) | index($login)) | not)) | "- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n") else "No comments have been posted yet." end')
+            body=$(echo "$issue_data" | jq -r --argjson bc "$(printf '%s' "${CONTEXT_LIMITS_JSON:-}" | jq -r '."body-chars" // 3000')" '(.body // "(No description provided)") | if length > $bc then .[0:$bc] + "\n[body truncated]" else . end')
+            # Prepare comments - SAME discipline as fetch-pr-discussion.sh:
+            # filter-before-cap (ignored authors + AI-reviewer noise patterns
+            # never consume a slot), then newest-N survivors, then per-body
+            # clip. gh's --json comments window is ~100; N comes from
+            # CONTEXT_LIMITS_JSON .comments.
+            if ! printf '%s' "${CONTEXT_FILTER_PATTERNS_JSON:-}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+              FILTER_PATTERNS_JSON='["rate limited by coderabbit\\.ai","No actionable comments were generated","Review skipped","Too many files","<!-- greptile-status -->","Too many files changed for review"]'
+            else
+              FILTER_PATTERNS_JSON="$CONTEXT_FILTER_PATTERNS_JSON"
+            fi
+            comments=$(echo "$issue_data" | jq -r \
+              --arg ignore_authors "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" \
+              --argjson patterns "$FILTER_PATTERNS_JSON" \
+              --argjson limComments "$(printf '%s' "${CONTEXT_LIMITS_JSON:-}" | jq -r '.comments // 30')" \
+              --argjson bodyChars "$(printf '%s' "${CONTEXT_LIMITS_JSON:-}" | jq -r '."body-chars" // 3000')" '
+              ($ignore_authors | split(",") | map(select(length > 0))) as $ignored |
+              def noisy: ((.body // "") as $b | [ $patterns[] | . as $p | select($b | test("(?i)" + $p)) ] | length > 0);
+              def clip($s): if ($s | length) > $bodyChars then ($s[0:$bodyChars] + "\n[body truncated]") else $s end;
+              (.comments // [])
+              | map(select(((.author.login // "" | ascii_downcase) as $login | ($ignored | index($login)) | not) and (noisy | not)))
+              | if length > $limComments then .[($limComments * -1):] else . end
+              | if length > 0 then
+                  map("- " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + clip((.body // "") | tostring) + "\n") | join("")
+                else "No comments have been posted yet."
+                end')
 
             # Prepare cross-references
             references=$(echo "$timeline_data" | jq -r '.[] | select(.event == "cross-referenced") | .source.issue | "- Mentioned in \(.html_url | if contains("/pull/") then "PR" else "Issue" end): #\(.number) - \(.title)"')
@@ -734,7 +761,8 @@ jobs:
           cp .github/scripts/opencode-cleanup.sh /tmp/opencode-cleanup.sh
           cp .github/scripts/fetch-pr-discussion.sh /tmp/fetch-pr-discussion.sh
           cp .github/scripts/generate-review-kit.sh /tmp/generate-review-kit.sh
-          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/fetch-pr-discussion.sh /tmp/generate-review-kit.sh /tmp/react.sh /tmp/opencode-cleanup.sh /tmp/share-filter.sh
+          cp .github/scripts/split-diff.sh /tmp/split-diff.sh
+          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/fetch-pr-discussion.sh /tmp/generate-review-kit.sh /tmp/react.sh /tmp/opencode-cleanup.sh /tmp/share-filter.sh /tmp/split-diff.sh
           bash /tmp/assemble-prompt.sh --verify
           # Resolve identity + trigger stems (exports BOT_NAMES_JSON / BOT_TRIGGER_STEMS)
           bash /tmp/bot-config.sh
@@ -790,7 +818,9 @@ jobs:
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/.mirrobot_files"
           if gh pr diff --repo "$TARGET_REPO" "$THREAD_NUMBER" > /tmp/guest_full.diff 2>/dev/null; then
-            head -c ${DIFF_MAX_BYTES:-500000} /tmp/guest_full.diff > "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
+            # Full content, then split-not-truncate (guest diffs too)
+            cp /tmp/guest_full.diff "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
+            bash /tmp/split-diff.sh "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt" "${DIFF_SPLIT_BYTES:-1000000}"
             echo "full diff generated (API, $(wc -l < /tmp/guest_full.diff) lines)"
           else
             echo "(Guest diff generation failed. Explore via gh api.)" > "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
@@ -798,7 +828,8 @@ jobs:
           if [ -n "$LAST_REVIEWED_SHA_INPUT" ]; then
             if gh api "/repos/$TARGET_REPO/compare/${LAST_REVIEWED_SHA_INPUT}...${PR_HEAD_SHA}" \
                  --jq '.files[] | select(.status != "unchanged") | .patch // ""' 2>/dev/null \
-                 | head -c ${DIFF_MAX_BYTES:-500000} > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"; then
+                 > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"; then
+              bash /tmp/split-diff.sh "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt" "${DIFF_SPLIT_BYTES:-1000000}"
               echo "incremental diff generated (compare API)"
             else
               echo "(Incremental diff unavailable - use the full diff.)" > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
@@ -825,20 +856,16 @@ jobs:
           CURRENT_SHA="${PR_HEAD_SHA}"
           LAST_SHA="${LAST_REVIEWED_SHA_INPUT}"
           
-          # Always generate full diff against base branch
+          # Always generate full diff against base branch (split-not-truncate)
           echo "Generating full PR diff against base branch: $BASE_BRANCH"
           if git fetch origin "$BASE_BRANCH":refs/remotes/origin/"$BASE_BRANCH" 2>/dev/null; then
             if MERGE_BASE=$(git merge-base origin/"$BASE_BRANCH" "$CURRENT_SHA" 2>/dev/null); then
-              if DIFF_CONTENT=$(git diff --patch "$MERGE_BASE".."$CURRENT_SHA" 2>/dev/null); then
-                DIFF_SIZE=${#DIFF_CONTENT}
-                if [ $DIFF_SIZE -gt ${DIFF_MAX_BYTES:-500000} ]; then
-                  TRUNCATION_MSG=$'\n\n[DIFF TRUNCATED - PR is very large. Showing first 500KB only. Review scaled to high-impact areas.]'
-                  DIFF_CONTENT="${DIFF_CONTENT:0:${DIFF_MAX_BYTES:-500000}}${TRUNCATION_MSG}"
-                fi
-                echo "$DIFF_CONTENT" > "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
-                echo "Full diff generated ($(echo "$DIFF_CONTENT" | wc -l) lines)"
+              FULL_OUT="$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
+              if git diff --patch "$MERGE_BASE".."$CURRENT_SHA" > "$FULL_OUT" 2>/dev/null; then
+                echo "Full diff generated ($(wc -l < "$FULL_OUT") lines, $(wc -c < "$FULL_OUT") bytes)"
+                bash /tmp/split-diff.sh "$FULL_OUT" "${DIFF_SPLIT_BYTES:-1000000}"
               else
-                echo "(Diff generation failed. Please refer to the changed files list above.)" > "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
+                echo "(Diff generation failed. Please refer to the changed files list above.)" > "$FULL_OUT"
               fi
             else
               echo "(No common ancestor found. This might be a new branch or orphaned commits.)" > "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
@@ -846,21 +873,17 @@ jobs:
           else
             echo "(Base branch not available for diff. Please refer to the changed files list above.)" > "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
           fi
-          
+
           # Generate incremental diff if this is a follow-up review
           if [ -n "$LAST_SHA" ]; then
             echo "Generating incremental diff from $LAST_SHA to $CURRENT_SHA"
             if git fetch origin $LAST_SHA 2>/dev/null || git cat-file -e $LAST_SHA^{commit} 2>/dev/null; then
-              if DIFF_CONTENT=$(git diff --patch $LAST_SHA..$CURRENT_SHA 2>/dev/null); then
-                DIFF_SIZE=${#DIFF_CONTENT}
-                if [ $DIFF_SIZE -gt ${DIFF_MAX_BYTES:-500000} ]; then
-                  TRUNCATION_MSG=$'\n\n[DIFF TRUNCATED - Changes are very large. Showing first 500KB only.]'
-                  DIFF_CONTENT="${DIFF_CONTENT:0:${DIFF_MAX_BYTES:-500000}}${TRUNCATION_MSG}"
-                fi
-                echo "$DIFF_CONTENT" > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
-                echo "Incremental diff generated ($(echo "$DIFF_CONTENT" | wc -l) lines)"
+              INC_OUT="$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
+              if git diff --patch $LAST_SHA..$CURRENT_SHA > "$INC_OUT" 2>/dev/null; then
+                echo "Incremental diff generated ($(wc -l < "$INC_OUT") lines, $(wc -c < "$INC_OUT") bytes)"
+                bash /tmp/split-diff.sh "$INC_OUT" "${DIFF_SPLIT_BYTES:-1000000}"
               else
-                echo "(Unable to generate incremental diff.)" > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
+                echo "(Unable to generate incremental diff.)" > "$INC_OUT"
               fi
             else
               echo "(Last reviewed SHA not accessible for incremental diff.)" > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"

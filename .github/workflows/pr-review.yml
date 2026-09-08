@@ -90,7 +90,7 @@ jobs:
       PR_NUMBER: ${{ inputs.prNumber }}
       # Diff truncation ceiling (bytes) - oversized diffs are cut to protect
       # the first prompt. 500000 = ~500KB.
-      DIFF_MAX_BYTES: '500000'
+      DIFF_SPLIT_BYTES: '1000000'
       # PR-TARGET context only ("is the base a maintained branch?" for the
       # trust-context line) — NOT the scrub anchor. Scrub trust is SPLIT:
       # .github taint anchors to MAIN alone; auto-load content trusts
@@ -420,12 +420,15 @@ jobs:
           if [ -z "$issue_numbers" ]; then
             linked_issues="No issues are formally linked for closure by this PR."
           else
-            for number in $issue_numbers; do
-              issue_details_json=$(gh issue view "$number" --repo "${{ github.repository }}" --json title,body 2>/dev/null || echo "{}")
-              issue_title=$(echo "$issue_details_json" | jq -r '.title // "Title not available"')
-              issue_body=$(echo "$issue_details_json" | jq -r '.body // "Body not available"')
-              linked_issues_content+=$(printf "<issue>\n <number>#%s</number>\n <title>%s</title>\n <body>\n%s\n</body>\n</issue>\n" "$number" "$issue_title" "$issue_body")
-            done
+             for number in $issue_numbers; do
+               issue_details_json=$(gh issue view "$number" --repo "${{ github.repository }}" --json title,body 2>/dev/null || echo "{}")
+               issue_title=$(echo "$issue_details_json" | jq -r '.title // "Title not available"')
+               # Body capped: linked issues are CONTEXT (the agent can read
+               # the full issue on demand) - a 64KB body x N linked issues
+               # must not silently eat the prompt.
+               issue_body=$(echo "$issue_details_json" | jq -r --argjson bc 4000 '(.body // "Body not available") | if length > $bc then .[0:$bc] + "\n[linked-issue body truncated - read the full issue if it matters]" else . end')
+               linked_issues_content+=$(printf "<issue>\n <number>#%s</number>\n <title>%s</title>\n <body>\n%s\n</body>\n</issue>\n" "$number" "$issue_title" "$issue_body")
+             done
             linked_issues=$linked_issues_content
           fi
 
@@ -596,7 +599,8 @@ jobs:
           cp .github/scripts/react.sh /tmp/react.sh
           cp .github/scripts/opencode-cleanup.sh /tmp/opencode-cleanup.sh
           cp .github/scripts/share-filter.sh /tmp/share-filter.sh
-          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/react.sh /tmp/opencode-cleanup.sh /tmp/share-filter.sh
+          cp .github/scripts/split-diff.sh /tmp/split-diff.sh
+          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/react.sh /tmp/opencode-cleanup.sh /tmp/share-filter.sh /tmp/split-diff.sh
           bash /tmp/assemble-prompt.sh --verify
           # Resolve identity + trigger stems (exports BOT_NAMES_JSON / BOT_TRIGGER_STEMS)
           bash /tmp/bot-config.sh
@@ -698,25 +702,18 @@ jobs:
             if MERGE_BASE=$(git merge-base origin/"$BASE_BRANCH" "$CURRENT_SHA" 2>/dev/null); then
               echo "Found merge base: $MERGE_BASE"
               
-              # Generate diff from merge base to current commit
-              if DIFF_CONTENT=$(git diff --patch "$MERGE_BASE".."$CURRENT_SHA" 2>/dev/null); then
-                DIFF_SIZE=${#DIFF_CONTENT}
-                DIFF_LINES=$(echo "$DIFF_CONTENT" | wc -l)
-                echo "Generated PR diff: $DIFF_LINES lines, $DIFF_SIZE characters"
-                
-                # Truncate if too large (500KB limit to avoid context overflow)
-                if [ $DIFF_SIZE -gt ${DIFF_MAX_BYTES:-500000} ]; then
-                  echo "::warning::PR diff is very large ($DIFF_SIZE chars). Truncating to 500KB."
-                  TRUNCATION_MSG=$'\n\n[DIFF TRUNCATED - PR is very large. Showing first 500KB only. Review scaled to high-impact areas.]'
-                  DIFF_CONTENT="${DIFF_CONTENT:0:${DIFF_MAX_BYTES:-500000}}${TRUNCATION_MSG}"
-                fi
-                # Write diff directly into the repository workspace in the dedicated folder
-                echo "$DIFF_CONTENT" > "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
+              # Generate diff from merge base to current commit.
+              # Written straight to the file (never a shell var - huge diffs
+              # would balloon runner memory) then handed to the splitter:
+              # oversized diffs are SPLIT into navigable parts + an index at
+              # this path, never truncated.
+              DIFF_OUT="$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
+              if git diff --patch "$MERGE_BASE".."$CURRENT_SHA" > "$DIFF_OUT" 2>/dev/null; then
+                echo "Generated PR diff: $(wc -l < "$DIFF_OUT") lines, $(wc -c < "$DIFF_OUT") bytes"
+                bash /tmp/split-diff.sh "$DIFF_OUT" "${DIFF_SPLIT_BYTES:-1000000}"
               else
                 echo "::warning::Could not generate diff. Using changed files list only."
-                DIFF_CONTENT="(Diff generation failed. Please refer to the changed files list above.)"
-                # Write fallback diff directly into the workspace folder
-                echo "$DIFF_CONTENT" > "$GITHUB_WORKSPACE/.mirrobot_files/first_review_diff.txt"
+                echo "(Diff generation failed. Please refer to the changed files list above.)" > "$DIFF_OUT"
               fi
             else
             echo "::warning::Could not find merge base between $BASE_BRANCH and $CURRENT_SHA."
@@ -775,23 +772,15 @@ jobs:
           if git fetch origin $LAST_SHA 2>/dev/null || git cat-file -e $LAST_SHA^{commit} 2>/dev/null; then
             echo "Successfully located $LAST_SHA."
             # Generate diff, fallback to empty if git diff fails (e.g., no common ancestor)
-            if DIFF_CONTENT=$(git diff --patch $LAST_SHA..$CURRENT_SHA 2>/dev/null); then
-              DIFF_SIZE=${#DIFF_CONTENT}
-              DIFF_LINES=$(echo "$DIFF_CONTENT" | wc -l)
-              echo "Generated incremental diff: $DIFF_LINES lines, $DIFF_SIZE characters"
-              
-              # Truncate if too large (500KB limit)
-              if [ $DIFF_SIZE -gt ${DIFF_MAX_BYTES:-500000} ]; then
-                echo "::warning::Incremental diff is very large ($DIFF_SIZE chars). Truncating to 500KB."
-                TRUNCATION_MSG=$'\n\n[DIFF TRUNCATED - Changes are very large. Showing first 500KB only.]'
-                DIFF_CONTENT="${DIFF_CONTENT:0:${DIFF_MAX_BYTES:-500000}}${TRUNCATION_MSG}"
-              fi
-              # Write incremental diff directly into the repository workspace folder
-              echo "$DIFF_CONTENT" > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
+            # Same split-not-truncate contract as the full diff above.
+            INC_OUT="$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
+            if git diff --patch $LAST_SHA..$CURRENT_SHA > "$INC_OUT" 2>/dev/null; then
+              echo "Generated incremental diff: $(wc -l < "$INC_OUT") lines, $(wc -c < "$INC_OUT") bytes"
+              bash /tmp/split-diff.sh "$INC_OUT" "${DIFF_SPLIT_BYTES:-1000000}"
             else
               echo "::warning::Could not generate diff between $LAST_SHA and $CURRENT_SHA. Possible rebase/force-push. AI will perform full review."
               # Ensure an empty incremental diff file exists in the workspace folder as fallback
-              echo "" > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
+              echo "" > "$INC_OUT"
             fi
           else
             echo "::warning::Failed to fetch last reviewed SHA: $LAST_SHA. This can happen if the commit was part of a force-push or rebase. The AI will perform a full review as a fallback."

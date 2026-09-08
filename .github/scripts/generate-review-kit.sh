@@ -54,24 +54,31 @@ printf '%s\n' "$PR_HEAD_SHA" > "$KIT_DIR/head_sha.txt"
 # --- review type: latest review by THIS agent carrying the marker ----------
 # (single retry: GitHub intermittently 500s this endpoint; a failed fetch
 # degrades to FIRST = full-diff review, which is safe but wasteful)
-reviews_json=""
+# Memory-bounded: jq sits OUTSIDE gh api and streams page documents one at a
+# time, keeping ONLY this agent's review bodies (a 300-review PR never lands
+# whole in shell memory); reviews arrive chronologically, so the LAST marker
+# in the stream is the newest.
+LAST_REVIEWED_SHA=""
+bot_review_bodies() {
+  # Streams THIS agent's review bodies (chronological, newest last) without
+  # ever holding a full review list in memory: jq sits on the pipe outside
+  # gh api and passes page documents through one at a time.
+  gh api "/repos/$REPO/pulls/$PR/reviews" --paginate 2>/dev/null |
+    jq -r --arg bots "$BOT_IDS_CSV" \
+      '.[] | select((.user.login // "" | ascii_downcase) as $u | ($bots | split(",") | index($u))) | (.body // "")'
+}
+BOT_IDS_CSV=$(printf '%s' "$BOT_NAMES_JSON" | jq -r 'join(",")')
 for _attempt in 1 2; do
-  reviews_json=$(gh api "/repos/$REPO/pulls/$PR/reviews" --paginate 2>/dev/null) && break
+  # A 5xx from gh fails the substitution (pipefail) and retries; a
+  # marker-less stream (genuine FIRST review) is SUCCESS with no output.
+  if marker_stream=$(bot_review_bodies); then
+    break
+  fi
   sleep 2
 done
-reviews_json="${reviews_json:-[]}"
-# --paginate emits one JSON document PER PAGE; jq -s 'add' merges them into a
-# single array before the pipeline (without it, 30+ review PRs produce one
-# result line per page and the concatenated SHA breaks the diff below).
-LAST_REVIEWED_SHA=$(printf '%s' "$reviews_json" | jq -s -r \
-  --argjson bots "$BOT_NAMES_JSON" '
-  add
-  | map(select((.user.login // "" | ascii_downcase) as $u | $bots | index($u)))
-  | sort_by(.submitted_at)
-  | map(.body // "" | scan("last_reviewed_sha:[a-f0-9]{7,40}"))
-  | flatten
-  | last // ""
-  | ltrimstr("last_reviewed_sha:")')
+if [ -n "${marker_stream:-}" ]; then
+  LAST_REVIEWED_SHA=$(printf '%s\n' "$marker_stream" | grep -o 'last_reviewed_sha:[a-f0-9]\{7,40\}' | tail -1 | cut -d: -f2 || true)
+fi
 if [ -n "$LAST_REVIEWED_SHA" ]; then
   REVIEW_TYPE="FOLLOW-UP"
 else
@@ -97,6 +104,15 @@ if [ "$REVIEW_TYPE" = "FOLLOW-UP" ]; then
     echo "KIT NOTE: last-reviewed SHA $LAST_REVIEWED_SHA unresolvable - incremental diff fell back to the full diff"
     LAST_REVIEWED_SHA=""
   fi
+fi
+
+# Split-not-truncate: oversized diffs become navigable parts + an index AT the
+# same path (the agent's prompts tell it to detect the index and read parts
+# selectively). Sibling trusted artifact; skip silently when absent so the kit
+# still works under older artifact sets.
+if [ -f /tmp/split-diff.sh ]; then
+  bash /tmp/split-diff.sh "$FULL_DIFF" "${DIFF_SPLIT_BYTES:-1000000}" >/dev/null
+  [ -n "$INCREMENTAL_DIFF" ] && bash /tmp/split-diff.sh "$INCREMENTAL_DIFF" "${DIFF_SPLIT_BYTES:-1000000}" >/dev/null
 fi
 
 # --- discussion blocks (shared machinery, GITHUB_ENV redirected to a file) --
@@ -174,11 +190,18 @@ else
 fi
 
 # --- result -----------------------------------------------------------------
+diff_desc() { # $1 diff file -> "N lines" or "N parts (index; original M bytes)"
+  if head -c 12 "$1" | grep -q '^\[DIFF SPLIT'; then
+    echo "$(ls "$(dirname "$1")/$(basename "$1").part"* 2>/dev/null | wc -l) parts (this path is the INDEX - read parts selectively)"
+  else
+    echo "$(wc -l < "$1") lines"
+  fi
+}
 echo "KIT RESULT (PR #$PR):"
 echo "  Review type:      $REVIEW_TYPE$([ -n "${LAST_REVIEWED_SHA:-}" ] && echo " (last reviewed: ${LAST_REVIEWED_SHA:0:12})")"
 echo "  Instructions:     /tmp/instructions/$INSTR_NAME.md"
 echo "  Review memory:    /tmp/instructions/review-memory.md"
-echo "  Full diff:        $FULL_DIFF ($(wc -l < "$FULL_DIFF") lines)"
-[ -n "$INCREMENTAL_DIFF" ] && echo "  Incremental diff: $INCREMENTAL_DIFF ($(wc -l < "$INCREMENTAL_DIFF") lines)"
+echo "  Full diff:        $FULL_DIFF ($(diff_desc "$FULL_DIFF"))"
+[ -n "$INCREMENTAL_DIFF" ] && echo "  Incremental diff: $INCREMENTAL_DIFF ($(diff_desc "$INCREMENTAL_DIFF"))"
 echo "  Head SHA file:    $KIT_DIR/head_sha.txt"
 echo "  Kit files are for PR #$PR - re-run the kit to switch PRs."

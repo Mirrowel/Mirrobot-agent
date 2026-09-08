@@ -13,8 +13,9 @@
 - **Prompts are parts**: 33 instruction parts assembled per mode (13 manifests) by a fail-closed assembler; load-bearing wording is pinned by CI fixtures
 - **Dual identity, automatic**: `ACCOUNT_GH_TOKEN` present selects account mode; otherwise `BOT_APP_ID` + `BOT_PRIVATE_KEY` selects App mode; neither fails fast
 - **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
+- **Open-triggering gate, opt-out**: `OPEN_TRIGGERING=false` limits on-demand summons (mentions + commands through the router) to collaborators and the `TRUSTED_AGENT_USERS` roster, with a visible decline notice; auto paths (PR auto-reviews, issues-opened analysis, cross-repo mentions with their own allowlist) stay open, and the check is zero API cost (association rides the event payload, the roster is a variable)
 - **Graceful pause ladder**: one kill switch (`AGENT_PAUSED`) plus per-part switches (`AGENT_PAUSED_PARTS_JSON`); the status stubs deliberately keep running so a paused agent never makes a PR mergeable
-- **Batteries in CI**: 193 security fixtures + 339 pinned prompt rules run on every `.github/` change, so drift turns CI red
+- **Batteries in CI**: 207 security fixtures + 357 pinned prompt rules run on every `.github/` change, so drift turns CI red
 
 ## Layers
 
@@ -34,8 +35,8 @@
 
 **Shared Machinery Layer:**
 - Purpose: All reusable logic, identity/token minting, bot identity+trigger resolution, workspace scrub, context assembly, routing, reactions, share-link filtering, config cleanup
-- Location: `.github/scripts/` (13 bash scripts) and `.github/actions/` (2 composite actions: `bot-setup/`, `requester-context/`)
-- Contains: Bash scripts with strict env-contract headers; composite action YAML
+- Location: `.github/scripts/` (14 bash scripts) and `.github/actions/` (2 composite actions: `bot-setup/`, `requester-context/`)
+- Contains: Bash scripts with strict env-contract headers; composite action YAML; `split-diff.sh` turns oversized diffs into navigable parts + an index (never truncates)
 - Depends on: `gh` CLI, `git`, `jq`, env variables only (never event payloads interpolated)
 - Used by: All agent workflows and some CI fixtures (`scrub-fixtures.sh` tests `scrub-workspace.sh` + `fetch-roster.sh` directly)
 
@@ -65,8 +66,9 @@
 **Comment Routing (one comment → one run):**
 1. `issue_comment[created]` wakes `agent-router.yml` (default-branch by GitHub rule) with a generic bot guard on the job `if`; exact identity membership is checked in the routing step after `bot-config.sh` resolves the identity set
 2. Comment body is parsed once by `.github/scripts/route-comment.sh` against the stem-derived trigger matrix (trigger words inside quotes/code fences are ignored); text arrives via `env:`, never interpolation
-3. Router dispatches matching targets (`pr-review.yml`, `bot-reply.yml`, `compliance-check.yml`) by comment id; targets re-fetch the comment from the API by id, so author/body never arrive from dispatch inputs
-4. Routing decisions are logged to the run step summary; the router run is the audit trail
+3. Open-triggering gate: when `OPEN_TRIGGERING=false`, a routed comment is accepted only from collaborators (event-payload `author_association`) or the `TRUSTED_AGENT_USERS` roster; anyone else gets a visible decline notice and nothing dispatches (auto paths are never gated)
+4. Router dispatches matching targets (`pr-review.yml`, `bot-reply.yml`, `compliance-check.yml`) by comment id; targets re-fetch the comment from the API by id, so author/body never arrive from dispatch inputs
+5. Routing decisions are logged to the run step summary; the router run is the audit trail
 
 **PR Review (the life of a review):**
 1. PR event → `pr-review-trigger.yml` stub (runs from the PR's **base branch**, zero secrets, no checkout) decides if a review is wanted and posts the pending merge-blocker status; declined events dispatch nothing
@@ -113,7 +115,7 @@
 **Identity & trigger resolution (bot-config.sh):**
 - Purpose: One resolver for "who am I" and "what summons me", consumed by the router, the mention pipeline, the stub, and every loop guard
 - Location: `.github/scripts/bot-config.sh`
-- Pattern: Identities = `BOT_IDENTITIES` variable (comma-separated logins) ∪ the live `/user` login (account mode), with the stock names as fallback only when both are absent; trigger stems = `BOT_TRIGGERS` variable, else identity-derived, else the stock words; each stem derives `@stem`, `/stem-review`, `/stem-check` forms. No identity or trigger word is hardcoded in workflows, scripts, or the worker; a renamed or forked bot changes one variable
+- Pattern: Identities = `BOT_IDENTITIES` variable (comma-separated logins) ∪ the live `/user` login (account mode), with the stock names as fallback only when both are absent; trigger stems = `BOT_TRIGGERS` variable, else identity-derived, else the stock words; each stem derives `@stem`, `/stem-review`, `/stem-check` forms. Also exports `BOT_IDENTITY_LIST` / `BOT_IDENTITY_PRIMARY` (display case preserved, deduped) so prompt parts self-check identities via envsubst instead of hardcoding them. No identity or trigger word is hardcoded in workflows, scripts, or the worker; a renamed or forked bot changes one variable
 
 **Review kit:**
 - Purpose: Self-serve review context for ANY PR, from any thread, used both by `pr-review.yml` and by the agent itself on demand ("review PR #42" from an unrelated issue)
@@ -123,14 +125,14 @@
 **Three-block discussion context:**
 - Purpose: Single source of truth for what the reviewer remembers, its own newest N reviews (elevated: only resolved/outdated markers bypassed), older review history (fully filtered), and everything else (correlated, noise-filtered) plus orphaned inline threads
 - Location: `.github/scripts/fetch-pr-discussion.sh`
-- Pattern: Hidden/minimized content stays hidden everywhere (own content included); filtering happens *before* capping so filtered content never consumes fetch budget; the own-newest-reviews window is a safeguard that always applies even beyond the general review cap; all window sizes come from the `CONTEXT_LIMITS_JSON` variable; filter variables `CONTEXT_IGNORE_AUTHORS` / `CONTEXT_FILTER_PATTERNS_JSON` come from repo variables with baked AI-reviewer noise defaults
+- Pattern: Hidden/minimized content stays hidden everywhere (own content included); filtering happens *before* capping so filtered content never consumes fetch budget; budget slots count content shown, never content fetched: windows overfill 3x in the same single GraphQL request, and at most one cursor catch-up page runs when noise truncated a window while slots stayed unfilled (the common case stays exactly one request); the own-newest-reviews window is a safeguard that always applies even beyond the general review cap; all window sizes come from the `CONTEXT_LIMITS_JSON` variable; filter variables `CONTEXT_IGNORE_AUTHORS` / `CONTEXT_FILTER_PATTERNS_JSON` come from repo variables with baked AI-reviewer noise defaults
 
 ## Entry Points
 
 **Agent Router:**
 - Location: `.github/workflows/agent-router.yml`
 - Triggers: any `issue_comment[created]` (single comment-trigger entrypoint, consolidates 3 former per-workflow triggers into 1 run per comment)
-- Responsibilities: Parse once via `route-comment.sh`, dispatch exactly the matching agent workflow(s); log the decision to the step summary; compound comments dispatch all matches in parallel; a failing dispatch fails the run so the miss is visible
+- Responsibilities: Parse once via `route-comment.sh`, enforce the `OPEN_TRIGGERING` gate on routed comments (collaborators + trusted roster when off), dispatch exactly the matching agent workflow(s); log the decision to the step summary; compound comments dispatch all matches in parallel; a failing dispatch fails the run so the miss is visible
 
 **PR Review Trigger (stub):**
 - Location: `.github/workflows/pr-review-trigger.yml`
@@ -170,7 +172,7 @@
 **Scrub Fixture Suite:**
 - Location: `.github/workflows/scrub-fixtures.yml`
 - Triggers: any `.github/` change
-- Responsibilities: The batteries, 193 security fixtures (`scrub-fixtures.sh`), 339 pinned prompt rules (`prompt-rule-fixtures.sh`), strict YAML validation
+- Responsibilities: The batteries, 207 security fixtures (`scrub-fixtures.sh`), 357 pinned prompt rules (`prompt-rule-fixtures.sh`), strict YAML validation
 
 ## Error Handling
 

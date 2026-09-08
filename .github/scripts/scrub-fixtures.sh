@@ -861,5 +861,48 @@ check "era: pr-review exports TRUST_CONTEXT_ERA" yes \
 check "era: brief carries the era placeholder" yes \
   "$(grep -q 'TRUST_CONTEXT_ERA' "$SCRIPT_DIR/../prompts/security-brief.md" && echo yes || echo no)"
 
+# ---- diff split-not-truncate (DIFF_SPLIT_BYTES replaced DIFF_MAX_BYTES) ----
+check "split: no truncation path in any workflow" none \
+  "$(grep -l 'DIFF TRUNCATED' "$SCRIPT_DIR"/../workflows/pr-review.yml "$SCRIPT_DIR"/../workflows/bot-reply.yml "$SCRIPT_DIR"/../workflows/compliance-check.yml 2>/dev/null | wc -l | tr -d ' ' | sed 's/^0$/none/;t;s/.*/FOUND/')"
+check "split: DIFF_SPLIT_BYTES knob in all three workflows" "3" \
+  "$(grep -l "DIFF_SPLIT_BYTES: '1000000'" "$SCRIPT_DIR"/../workflows/pr-review.yml "$SCRIPT_DIR"/../workflows/bot-reply.yml "$SCRIPT_DIR"/../workflows/compliance-check.yml | wc -l | tr -d ' ')"
+check "split: no DIFF_MAX_BYTES residue" no \
+  "$(grep -rq 'DIFF_MAX_BYTES' "$SCRIPT_DIR"/../workflows/ && echo yes || echo no)"
+check "split: split-diff.sh captured as trusted artifact everywhere" "3" \
+  "$(grep -l 'cp .github/scripts/split-diff.sh /tmp/split-diff.sh' "$SCRIPT_DIR"/../workflows/pr-review.yml "$SCRIPT_DIR"/../workflows/bot-reply.yml "$SCRIPT_DIR"/../workflows/compliance-check.yml | wc -l | tr -d ' ')"
+check "split: kit splits both diff files" yes \
+  "$(grep -q 'split-diff.sh "$FULL_DIFF"' "$SCRIPT_DIR/generate-review-kit.sh" && grep -q 'split-diff.sh "$INCREMENTAL_DIFF"' "$SCRIPT_DIR/generate-review-kit.sh" && echo yes || echo no)"
+check "split: missions teach index detection" "2" \
+  "$(grep -l 'DIFF SPLIT' "$SCRIPT_DIR/../prompts/parts/mission-review.md" "$SCRIPT_DIR/../prompts/parts/mission-compliance.md" | wc -l | tr -d ' ')"
+check "split: <diff> inline-fossil tag renamed" no \
+  "$(grep -q '<diff>$' "$SCRIPT_DIR/../prompts/parts/mission-review.md" && echo yes || echo no)"
+
+# ---- split-diff.sh behavior (unit, temp dir; threshold >= 1000 floor) ------
+SD_TMP=$(mktemp -d)
+printf 'small\n' > "$SD_TMP/small.txt"
+check "split unit: under threshold is a no-op" "$SD_TMP/small.txt" \
+  "$(bash "$SCRIPT_DIR/split-diff.sh" "$SD_TMP/small.txt" 1000)"
+{ echo "diff --git a/one.py b/one.py"; echo "+hello $(head -c 800 /dev/zero | tr '\0' 'z')"; echo "diff --git a/two.py b/two.py"; echo "+world $(head -c 800 /dev/zero | tr '\0' 'z')"; } > "$SD_TMP/big.txt"
+SD_ORIG_BYTES=$(wc -c < "$SD_TMP/big.txt")
+bash "$SCRIPT_DIR/split-diff.sh" "$SD_TMP/big.txt" 1000 >/dev/null 2>&1
+SD_PART_BYTES=$(cat "$SD_TMP/big.txt".part* 2>/dev/null | wc -c)
+check "split unit: content conserved byte-for-byte" "yes" \
+  "$([ "$SD_ORIG_BYTES" -eq "$SD_PART_BYTES" ] && echo yes || echo no)"
+check "split unit: index marker at the base path" yes \
+  "$(head -c 12 "$SD_TMP/big.txt" | grep -q '^\[DIFF SPLIT' && echo yes || echo no)"
+check "split unit: idempotent on an existing index" "0" \
+  "$(N1=$(ls "$SD_TMP/big.txt".part* | wc -l); bash "$SCRIPT_DIR/split-diff.sh" "$SD_TMP/big.txt" 1000 >/dev/null 2>&1; N2=$(ls "$SD_TMP/big.txt".part* | wc -l); echo $((N2 - N1)))"
+rm -rf "$SD_TMP"
+
+# ---- per-body budget (body-chars) ------------------------------------------
+check "body-chars: default parsed in fetch-pr-discussion" yes \
+  "$(grep -q '"body-chars" // 3000' "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
+check "body-chars: clip applied to all four body sites" "4" \
+  "$(grep -c 'clip((' "$SCRIPT_DIR/fetch-pr-discussion.sh" | tr -d ' ')"
+check "body-chars: issue-mode comments clip + patterns + budget" yes \
+  "$(grep -q 'noisy' "$SCRIPT_DIR/../workflows/bot-reply.yml" && grep -q 'bodyChars' "$SCRIPT_DIR/../workflows/bot-reply.yml" && grep -q 'limComments' "$SCRIPT_DIR/../workflows/bot-reply.yml" && echo yes || echo no)"
+check "body-chars: linked-issue body cap in both PR workflows" "2" \
+  "$(grep -l 'linked-issue body truncated' "$SCRIPT_DIR"/../workflows/bot-reply.yml "$SCRIPT_DIR"/../workflows/pr-review.yml | wc -l | tr -d ' ')"
+
 echo "----"; echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

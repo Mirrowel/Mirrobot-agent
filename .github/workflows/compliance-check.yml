@@ -93,9 +93,10 @@ jobs:
       # BASIC CONFIGURATION
       # -----------------------------------------------------------------------
       PR_NUMBER: ${{ inputs.pr_number }}
-      # Diff truncation ceiling (bytes) - oversized diffs are cut to protect
-      # the first prompt. 500000 = ~500KB.
-      DIFF_MAX_BYTES: '500000'
+      # Diff split threshold (bytes) - diffs larger than this are SPLIT into
+      # navigable parts + an index (split-diff.sh); never truncated.
+      # 1000000 = ~1MB per part.
+      DIFF_SPLIT_BYTES: '1000000'
       # PR-TARGET context only ("is the base a maintained branch?" for the
       # trust-context line) — NOT the scrub anchor. Scrub trust is SPLIT:
       # .github taint anchors to MAIN alone; auto-load content trusts
@@ -446,6 +447,11 @@ jobs:
           latest_id=$(printf '%s' "$latest" | jq -r '.id')
           latest_sha=$(printf '%s' "$latest" | jq -r '.body | capture("<!-- compliance-check-id: [0-9]+-(?<sha>[a-f0-9]+) -->") | .sha' 2>/dev/null || echo "")
           latest_body=$(printf '%s' "$latest" | jq -r '.body')
+          # latest_body renders WHOLE into the prompt, deliberately: it is
+          # this agent's own previous audit and the re-verification input
+          # (every warning must be re-checked) - the one body-chars does not
+          # clip. Bounded in practice by our own report sizes (~64KB platform
+          # ceiling worst case).
           echo "REVIEW_TYPE=FOLLOW-UP" >> "$GITHUB_ENV"
           echo "LAST_COMPLIANCE_SHA=$latest_sha" >> "$GITHUB_ENV"
           # Dedup: the elevated report must not also appear in thread context.
@@ -494,7 +500,8 @@ jobs:
           cp .github/scripts/bot-config.sh /tmp/bot-config.sh
           cp .github/scripts/react.sh /tmp/react.sh
           cp .github/scripts/opencode-cleanup.sh /tmp/opencode-cleanup.sh
-          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/react.sh /tmp/opencode-cleanup.sh /tmp/share-filter.sh
+          cp .github/scripts/split-diff.sh /tmp/split-diff.sh
+          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/react.sh /tmp/opencode-cleanup.sh /tmp/share-filter.sh /tmp/split-diff.sh
           bash /tmp/assemble-prompt.sh --verify
           # Resolve identity + trigger stems (exports BOT_NAMES_JSON / BOT_TRIGGER_STEMS)
           bash /tmp/bot-config.sh
@@ -585,35 +592,24 @@ jobs:
             if MERGE_BASE=$(git merge-base origin/"$BASE_BRANCH" "$CURRENT_SHA" 2>/dev/null); then
               echo "Found merge base: $MERGE_BASE"
               
-              # Generate diff
-              if DIFF_CONTENT=$(git diff --patch "$MERGE_BASE".."$CURRENT_SHA" 2>/dev/null); then
-                DIFF_SIZE=${#DIFF_CONTENT}
-                DIFF_LINES=$(echo "$DIFF_CONTENT" | wc -l)
-                echo "Generated PR diff: $DIFF_LINES lines, $DIFF_SIZE characters"
-                
-                # Truncate if too large (500KB limit)
-                if [ $DIFF_SIZE -gt ${DIFF_MAX_BYTES:-500000} ]; then
-                  echo "::warning::PR diff is very large ($DIFF_SIZE chars). Truncating to 500KB."
-                  TRUNCATION_MSG=$'\n\n[DIFF TRUNCATED - PR is very large. Showing first 500KB only.]'
-                  DIFF_CONTENT="${DIFF_CONTENT:0:${DIFF_MAX_BYTES:-500000}}${TRUNCATION_MSG}"
-                fi
-                
-                echo "$DIFF_CONTENT" > "$GITHUB_WORKSPACE/.mirrobot_files/pr_diff.txt"
-                echo "diff_path=$GITHUB_WORKSPACE/.mirrobot_files/pr_diff.txt" >> $GITHUB_OUTPUT
+              # Generate diff (split-not-truncate; file write, never a shell var)
+              DIFF_OUT="$GITHUB_WORKSPACE/.mirrobot_files/pr_diff.txt"
+              if git diff --patch "$MERGE_BASE".."$CURRENT_SHA" > "$DIFF_OUT" 2>/dev/null; then
+                echo "Generated PR diff: $(wc -l < "$DIFF_OUT") lines, $(wc -c < "$DIFF_OUT") bytes"
+                bash /tmp/split-diff.sh "$DIFF_OUT" "${DIFF_SPLIT_BYTES:-1000000}"
+
+                echo "diff_path=$DIFF_OUT" >> $GITHUB_OUTPUT
 
                 # FOLLOW-UP runs also get an incremental diff since the last
                 # compliance-checked commit (same contract as PR Review).
                 if [ -n "$LAST_COMPLIANCE_SHA" ]; then
-                  if INC_CONTENT=$(git diff --patch "$LAST_COMPLIANCE_SHA".."$CURRENT_SHA" 2>/dev/null); then
-                    INC_SIZE=${#INC_CONTENT}
-                    if [ $INC_SIZE -gt ${DIFF_MAX_BYTES:-500000} ]; then
-                      INC_CONTENT="${INC_CONTENT:0:${DIFF_MAX_BYTES:-500000}} [INCREMENTAL DIFF TRUNCATED - showing first 500KB only.]"
-                    fi
-                    echo "$INC_CONTENT" > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
-                    echo "incremental_diff_path=$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt" >> $GITHUB_OUTPUT
+                  INC_OUT="$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
+                  if git diff --patch "$LAST_COMPLIANCE_SHA".."$CURRENT_SHA" > "$INC_OUT" 2>/dev/null; then
+                    bash /tmp/split-diff.sh "$INC_OUT" "${DIFF_SPLIT_BYTES:-1000000}"
+                    echo "incremental_diff_path=$INC_OUT" >> $GITHUB_OUTPUT
                   else
                     echo "::warning::Incremental diff failed; falling back to full diff focus."
-                    echo "incremental_diff_path=$GITHUB_WORKSPACE/.mirrobot_files/pr_diff.txt" >> $GITHUB_OUTPUT
+                    echo "incremental_diff_path=$DIFF_OUT" >> $GITHUB_OUTPUT
                   fi
                 else
                   # FOLLOW-UP with unresolvable last SHA (marker present but

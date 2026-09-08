@@ -80,7 +80,8 @@ So the default value gives you `@mirrobot`, `@mirrobot-agent`, `/mirrobot-review
   "threads-per-review": 25,
   "thread-comments": 10,
   "orphan-threads": 20,
-  "orphan-thread-comments": 10
+  "orphan-thread-comments": 10,
+  "body-chars": 3000
 }
 ```
 
@@ -95,8 +96,11 @@ How much thread context the agent reads, per fetch:
 | `thread-comments` | Replies per fetched thread (oldest dropped) |
 | `orphan-threads` | Review-less threads ("Add single comment" notes), newest first |
 | `orphan-thread-comments` | Replies per orphaned thread |
+| `body-chars` | Per-post body cap (comments AND review summaries). Longer bodies are cut with a visible `[body truncated]` marker. Count caps alone cannot bound a single 50KB comment; this does |
 
 Everything is *up to*, newest-first, deduped. **Filter before cap, everywhere:** hidden (minimized) content never consumes a slot; resolved/outdated content never does outside the elevated block; and the fetch itself overfills each window (3x) with a cursor catch-up page when noise truncates one, so the numbers below count *content shown*, never content wasted on filtered posts. Lower the numbers on noisy repos for smaller first prompts; this is the primary cost knob alongside per-agent models. Malformed JSON: warning + per-key defaults (a broken knob is visible, not fatal).
+
+**Diff size is handled differently:** diffs are never truncated. Diff files larger than `DIFF_SPLIT_BYTES` (workflow `env:` knob, default `1000000` = ~1MB) are split into navigable part files with an index at the original path; the prompts teach the agent to read the index and open only relevant parts.
 
 **Two knobs that sound alike, one distinction:** `own-reviews` (here) is how many of the agent's own reviews are *fetched at all*, the always-include safeguard. `PREVIOUS_BOT_REVIEWS_COUNT` is how many of those render *unfiltered* (the elevated block). Fetch more, elevate fewer.
 

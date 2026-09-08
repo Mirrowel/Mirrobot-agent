@@ -304,7 +304,7 @@ The full threat model, defense by defense, with the known residuals: [docs/secur
 │   ├── security-brief.md             # read first in every agent session
 │   ├── parts/                        # 33 instruction parts (the prose)
 │   └── manifests/                    # 13 mode manifests (the assembly order)
-├── scripts/                          # 13 scripts: assembler, scrub, identity
+├── scripts/                          # 14 scripts: assembler, scrub, identity
 │                                     # config, discussion fetch, roster, review
 │                                     # kit, mention gauntlet, router, reactions,
 │                                     # share filter, boot cleanup,
