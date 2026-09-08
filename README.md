@@ -120,6 +120,16 @@ Both work identically downstream; presence of the account token selects account 
 | `OPENCODE_CONFIG_JSON` | Your complete OpenCode config (see below) — **including the LLM API key**, so no separate key secret is needed |
 | + identity | One mode pair from the [complete reference below](#complete-secrets-reference): `BOT_APP_ID` + `BOT_PRIVATE_KEY` (App mode), or `ACCOUNT_GH_TOKEN` (account mode) |
 
+From a terminal (gh authenticated with repo admin), that's:
+
+```bash
+gh secret set OPENCODE_MODEL       -R <owner>/<repo> --body "anthropic/claude-sonnet-4"
+gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < config.min.json
+gh secret set ACCOUNT_GH_TOKEN     -R <owner>/<repo>   # paste the PAT when prompted
+```
+
+Every optional secret (fast model, API key, share-link key, App credentials) is documented with where-to-get-it in the [complete secrets reference](#complete-secrets-reference) below — nothing else is needed to go live.
+
 #### What `OPENCODE_CONFIG_JSON` actually is
 
 It's a **complete [OpenCode config](https://opencode.ai/docs/config)**, minified to one line — not just permissions. Anything opencode's config supports can live in it: provider definitions (with models and API keys), `small_model`, custom agents, MCP servers, instructions, and the agent's `permission` profile. The committed [permissions.example.json](.github/actions/bot-setup/permissions.example.json) is the recommended `permission` block — embed it as the `"permission"` key inside your config:
@@ -184,19 +194,90 @@ Every secret the platform reads, exhaustively:
 
 #### Variables reference
 
-Set under `Settings → Secrets and variables → Actions → Variables` (not secrets — these are non-sensitive tuning):
+Set under `Settings → Secrets and variables → Actions → Variables` (not secrets — these are non-sensitive tuning). Two ways to set one:
+
+```bash
+# from a terminal (gh authenticated as someone with repo admin)
+gh variable set AGENT_PAUSED -R <owner>/<repo> --body "true"
+# or in the UI: Settings → Secrets and variables → Actions → Variables tab
+```
 
 | Variable | Default | What it tunes |
 |---|---|---|
 | `AGENT_PAUSED` | `false` | Kill switch: `true` pauses the agent's brain — router, mention poller, and all four agent workflows skip (visible gray). The stub + compliance-gate keep running, so the pending status keeps blocking merges while paused. |
-| `AGENT_MODELS_JSON` | *(empty template)* | Per-agent models: `{"pr-review": {"model": "provider/model", "fast": "provider/model"}, "bot-reply": {...}}`. Empty strings fall back to the global `OPENCODE_MODEL` secret; malformed JSON fails loudly. |
-| `OPENCODE_PLUGINS_JSON` (+ `_1`..`_5`) | *(empty)* | Plugin files for opencode: `{"<relative-path>": "<file content>"}` — each file is materialized to `~/.mirrobot-plugins/<path>` (never committed, never downloaded). Reference them by absolute path in your config secret's `plugin` array. Numbered variables let each plugin live separately; path collisions across variables are a hard error. |
+| `AGENT_MODELS_JSON` | *(empty template)* | Per-agent models — see worked example below. |
+| `OPENCODE_PLUGINS_JSON` (+ `_1`..`_5`) | *(empty)* | Plugin files for opencode, without committing them — see worked example below. |
 | `TRUSTED_AGENT_USERS` | *(empty)* | Comma-separated usernames the agent treats as trusted people (on top of collaborators) — informs its judgment, never its authorization |
 | `PREVIOUS_BOT_REVIEWS_COUNT` | `1` | How many of the agent's own latest PR reviews are elevated (unfiltered) into its review context |
-| `CONTEXT_IGNORE_AUTHORS` | *(empty)* | Comma-separated logins whose posts are dropped entirely from thread context (bots you never want to hear from). Example: `some-noisy-bot,another-bot[bot]` |
+| `CONTEXT_IGNORE_AUTHORS` | *(empty)* | Comma-separated logins whose posts are dropped entirely from thread context (bots you never want to hear from) |
 | `CONTEXT_FILTER_PATTERNS_JSON` | baked defaults | JSON array of case-insensitive regex snippets; any match on a post's **body** drops that post from thread context. Setting it **replaces** the defaults. |
 | `FOREIGN_MENTIONS_ENABLED` | `false` | Master switch for **cross-repo guest mode** (see below). Must be exactly `true` to enable |
 | `FOREIGN_MENTIONS_USERS` | *(empty)* | Extra logins allowed to **summon the agent cross-repo** (unioned with this repo's collaborators — owner included). Deliberately separate from `TRUSTED_AGENT_USERS`: cross-repo summoning is its own, stricter privilege |
+
+##### `AGENT_MODELS_JSON` — different models per agent
+
+Give specific agents their own model (and optionally their own fast model) while everyone else keeps the global `OPENCODE_MODEL` secret. Paste as the variable value:
+
+```json
+{
+  "pr-review":       { "model": "anthropic/claude-sonnet-4", "fast": "anthropic/claude-haiku-4" },
+  "bot-reply":       { "model": "openai/gpt-5" },
+  "compliance-check": { "model": "anthropic/claude-sonnet-4" },
+  "issue-comment":   { "model": "anthropic/claude-haiku-4" }
+}
+```
+
+Rules, with behaviors you can observe:
+- **Empty string = "not set"**: `{"bot-reply": {"model": ""}}` silently falls back to `OPENCODE_MODEL`. The bootstrap-seeded template is all empty strings — fill in what you want, leave the rest.
+- **Missing key = same fallback.** Only the agents you list change.
+- **Malformed JSON fails loudly** — the run errors immediately rather than every agent silently dropping to the global model.
+- **Model names never appear in logs.** The run log only says `Model: per-agent override for 'pr-review' active.` — the value itself is never echoed.
+- `"fast"` (when set) becomes that agent's `small_model` (what opencode uses for its own sub-tasks, like the explore agent). Skip it to keep the global fast model.
+- The model string format is identical to `OPENCODE_MODEL`: `provider/model`, where `provider` must exist in your `OPENCODE_CONFIG_JSON`.
+
+##### `OPENCODE_PLUGINS_JSON` — plugins without committing them
+
+For opencode plugins you don't want in the repo (a provider plugin whose code should stay private, for example). Each entry is `"<relative-path>": "<the file's content>"`. Three steps:
+
+**1.** Put the file in the variable (this example is one variable; use `OPENCODE_PLUGINS_JSON_1` .. `_5` for additional separate plugins — all are merged, and the same path in two variables is a hard error):
+
+```json
+{ "myrouter/myrouter.js": "export default function({ project, client, $ }) {\n  // plugin code - \\n escapes newlines, \" escapes quotes\n}" }
+```
+
+Handy way to build the value without hand-escaping (Python one-liner, run from the plugin's directory):
+
+```bash
+python -c "import json,pathlib;print(json.dumps({'myrouter/myrouter.js': pathlib.Path('myrouter.js').read_text()}))" | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo> --body-file -
+```
+
+**2.** Reference the materialized file in your `OPENCODE_CONFIG_JSON` secret's `plugin` array, by **absolute path on the runner**:
+
+```json
+"plugin": ["/home/runner/.mirrobot-plugins/myrouter/myrouter.js"]
+```
+
+**3.** That's it — every agent run materializes the file (chmod 600, outside the workspace), and it's deleted again seconds after opencode boots.
+
+Rules: relative paths only (no `/`, no `..`, no spaces — unsafe paths fail the run); the agent cannot read `~/.mirrobot-plugins` (permission-denied in the example profile); if you later remove the plugin, remove its `plugin` entry too — referencing a path nothing materializes is a boot error. Remove the whole `plugin` array if you use no plugins.
+
+##### `AGENT_PAUSED` — the pause switch
+
+`true` pauses the agent's brain: the router dispatches nothing, the mention poller stays silent, and all four agent workflows skip with a visible gray "skipped" — including manual dispatches. What deliberately keeps running: the PR-review stub and the compliance gate, so open PRs keep their pending merge-blocker status — **pausing never makes a PR mergeable**. Resume by setting the variable back to `false` (or deleting it). Typical use: quiet the agent during an incident or a migration.
+
+##### The comma-separated trio
+
+```bash
+gh variable set TRUSTED_AGENT_USERS      -R <owner>/<repo> --body "alice,bob"
+gh variable set CONTEXT_IGNORE_AUTHORS   -R <owner>/<repo> --body "some-noisy-bot,another-bot[bot]"
+gh variable set FOREIGN_MENTIONS_USERS   -R <owner>/<repo> --body "alice"
+```
+
+- `TRUSTED_AGENT_USERS` — people (beyond collaborators) whose asks carry friendly context in the agent's judgment. It still evaluates risk on its own; this is a trust *signal*, not an authorization bypass.
+- `CONTEXT_IGNORE_AUTHORS` — posts from these logins never enter the agent's thread context at all. Perfect for another bot you never want the agent reading. `[bot]` suffixes work.
+- `FOREIGN_MENTIONS_USERS` — who may summon the agent into *other* repositories via mention (cross-repo guest mode — needs `FOREIGN_MENTIONS_ENABLED=true` too). Deliberately separate from trust: cross-repo summoning is its own, stricter privilege.
+
+`PREVIOUS_BOT_REVIEWS_COUNT` (default `1`): raise it to give the agent deeper memory of its own past reviews on a PR — `3` means its three latest reviews are included unfiltered when re-reviewing, which helps on long-lived PRs with many rounds.
 
 **One-dispatch setup.** The **Agent Bootstrap** workflow (admin: `Actions → Agent Bootstrap → Run workflow`) creates every variable above with its safe default/template — existing values are never overwritten — and prints the complete secrets checklist into the run summary. Seeding authenticates with the repo's existing bot identity token (GITHUB_TOKEN cannot reach the variables API — a platform limitation); if no bot token exists or it lacks access, the run degrades gracefully to copy-paste seeding commands in the summary. Bootstrap logs are state-silent by design: they can never reveal which variables or secrets exist.
 
