@@ -1,6 +1,6 @@
 # Codebase Structure
 
-*What the code is* — the file inventory and where things live. The *why* — principles, doctrine, reasoning — lives in [`docs/design.md`](docs/design.md).
+*What the code is* (the file inventory and where things live. The *why*) principles, doctrine, reasoning, lives in [`docs/design.md`](docs/design.md).
 
 ## Directory Layout
 
@@ -43,14 +43,14 @@ Non-code directories: `.github/buk/` is archived pre-parts prompt backups (do no
 ## Directory Purposes
 
 **`.github/workflows/`:**
-- Purpose: Every entry point — dispatchers, stubs, and agent workflows (10 files)
+- Purpose: Every entry point, dispatchers, stubs, and agent workflows (10 files)
 - Contains: Workflow YAML with extensive security-model comment headers and editable `env:` knob blocks
 - Key files: `agent-router.yml` (sole comment entrypoint), `pr-review.yml` (the reviewer, ~1000 lines), `pr-review-trigger.yml` + `compliance-gate.yml` (the two zero-secret base-branch stubs)
 
 **`.github/scripts/`:**
 - Purpose: All shared logic, callable from any workflow or the agent's own tooling
 - Contains: Bash scripts, each with a strict contract header (env in/out, files written, exit semantics)
-- Key files: `bot-config.sh` (identity + trigger resolution — the single "who am I / what summons me" source), `assemble-prompt.sh` (fail-closed parts assembler), `scrub-workspace.sh` (split-trust scrub), `route-comment.sh` (shared routing decision), `handle-mentions.sh` (the guest gauntlet — sole authority for cross-repo mentions), `generate-review-kit.sh` (review context for any PR), `fetch-pr-discussion.sh` (three-block context, `CONTEXT_LIMITS_JSON` budgeting), `fetch-roster.sh`, `react.sh` (reaction lifecycle), `share-filter.sh` (share-URL mask/encrypt + boot sentinel), `opencode-cleanup.sh` (config/plugin delete-after-boot), plus the two CI batteries `scrub-fixtures.sh` and `prompt-rule-fixtures.sh`
+- Key files: `bot-config.sh` (identity + trigger resolution, the single "who am I / what summons me" source), `assemble-prompt.sh` (fail-closed parts assembler), `scrub-workspace.sh` (split-trust scrub), `route-comment.sh` (shared routing decision), `handle-mentions.sh` (the guest gauntlet, sole authority for cross-repo mentions), `generate-review-kit.sh` (review context for any PR), `fetch-pr-discussion.sh` (three-block context, `CONTEXT_LIMITS_JSON` budgeting), `fetch-roster.sh`, `react.sh` (reaction lifecycle), `share-filter.sh` (share-URL mask/encrypt + boot sentinel), `opencode-cleanup.sh` (config/plugin delete-after-boot), plus the two CI batteries `scrub-fixtures.sh` and `prompt-rule-fixtures.sh`
 
 **`.github/prompts/`:**
 - Purpose: The agent's behavior and security doctrine as content, not code
@@ -63,16 +63,16 @@ Non-code directories: `.github/buk/` is archived pre-parts prompt backups (do no
 
 **`tools/`:**
 - Purpose: Cloudflare Workers deployed outside GitHub, each self-contained with its own README and `wrangler.toml`
-- Key files: `mention-worker/worker.js` (conditional-request notification polling, deny-only fail-open pre-filter, `repository_dispatch` relay), `cron-probe/worker.js` (a canary for the cron-trigger outage — delete when it starts firing)
+- Key files: `mention-worker/worker.js` (conditional-request notification polling, deny-only fail-open pre-filter, `repository_dispatch` relay), `cron-probe/worker.js` (a canary for the cron-trigger outage, delete when it starts firing)
 
 **`docs/`:**
-- Purpose: The deep documentation: `getting-started.md`, `design.md` (principles — execution map, split-trust model, update doctrine), `configuration.md`, `customization.md`, `security.md`, `workflows/*.md`
+- Purpose: The deep documentation: `getting-started.md`, `design.md` (principles, execution map, split-trust model, update doctrine), `configuration.md`, `customization.md`, `security.md`, `workflows/*.md`
 
 ## Key File Locations
 
-**Entry Points:** `.github/workflows/*.yml` — all 10 workflows; GitHub events and dispatches start here. The comment path always enters via `agent-router.yml`.
-**Core Logic:** `.github/scripts/*.sh` — identity/triggers, routing, scrubbing, context assembly, prompt assembly, verification; `.github/actions/bot-setup/action.yml` — token minting and config lifecycle.
-**Configuration:** Secrets and variables live in GitHub (not in the repo); behavior knobs are variables (`AGENT_PAUSED`, `AGENT_PAUSED_PARTS_JSON`, `BOT_IDENTITIES_JSON`, `BOT_TRIGGERS`, `CONTEXT_LIMITS_JSON`, `AGENT_MODELS_JSON`, `OPENCODE_PLUGINS_JSON*`, roster/filter lists — see `docs/configuration.md`). The committed config surface is `.github/actions/bot-setup/permissions.example.json` (full-config template) and per-workflow `env:` knob blocks (e.g. `MAINTAINED_BASE_BRANCHES` in `pr-review.yml`, `FILE_GROUPS_JSON` in `compliance-check.yml`, `DIFF_MAX_BYTES` diff caps). `custom_providers.json` is local test input only.
+**Entry Points:** `.github/workflows/*.yml`, all 10 workflows; GitHub events and dispatches start here. The comment path always enters via `agent-router.yml`.
+**Core Logic:** `.github/scripts/*.sh` (identity/triggers, routing, scrubbing, context assembly, prompt assembly, verification; `.github/actions/bot-setup/action.yml`) token minting and config lifecycle.
+**Configuration:** Secrets and variables live in GitHub (not in the repo); behavior knobs are variables (`AGENT_PAUSED`, `AGENT_PAUSED_PARTS_JSON`, `BOT_IDENTITIES_JSON`, `BOT_TRIGGERS`, `CONTEXT_LIMITS_JSON`, `AGENT_MODELS_JSON`, `OPENCODE_PLUGINS_JSON*`, roster/filter lists, see `docs/configuration.md`). The committed config surface is `.github/actions/bot-setup/permissions.example.json` (full-config template) and per-workflow `env:` knob blocks (e.g. `MAINTAINED_BASE_BRANCHES` in `pr-review.yml`, `FILE_GROUPS_JSON` in `compliance-check.yml`, `DIFF_MAX_BYTES` diff caps). `custom_providers.json` is local test input only.
 **Tests:** `.github/scripts/scrub-fixtures.sh` (193 security fixtures covering the scrub, roster transforms, and permission-profile deny patterns) and `.github/scripts/prompt-rule-fixtures.sh` (339 pinned prompt rules), wired to CI via `.github/workflows/scrub-fixtures.yml`. Local: `test-config.py` emulates secrets/inputs and writes to `test_results/`.
 
 ## Naming Conventions
@@ -82,11 +82,11 @@ Non-code directories: `.github/buk/` is archived pre-parts prompt backups (do no
 
 ## Where to Add New Code
 
-**New agent behavior:** `.github/prompts/parts/<new-part>.md`, then reference it from the relevant `.github/prompts/manifests/*.manifest` files — a part edit propagates to every mode that lists it; if the wording is load-bearing, pin it in `prompt-rule-fixtures.sh` and run `bash .github/scripts/assemble-prompt.sh --verify` before committing.
+**New agent behavior:** `.github/prompts/parts/<new-part>.md`, then reference it from the relevant `.github/prompts/manifests/*.manifest` files; a part edit propagates to every mode that lists it; if the wording is load-bearing, pin it in `prompt-rule-fixtures.sh` and run `bash .github/scripts/assemble-prompt.sh --verify` before committing.
 **New agent mode:** create a `.github/prompts/manifests/<mode>.manifest` ordering existing (and new) parts; verify with `bash .github/scripts/assemble-prompt.sh --list`.
-**New shared script:** `.github/scripts/<kebab-name>.sh` — start from an existing script's contract header (env in/out, files, exit semantics); never interpolate untrusted text into the shell except via `env:`.
-**New workflow:** `.github/workflows/<name>.yml` — dispatch-only agent workflows must declare the phantom-suppressing never-matching `push` trigger and runtime input validation (see `pr-review.yml`); anything `pull_request`-triggered must stay zero-secret with no checkout. Never add `pull_request*` triggers to agent workflows.
-**New composite action:** `.github/actions/<action-name>/action.yml` — keep it secrets-free if it can ever run on a base branch.
-**New external worker:** `tools/<worker-name>/` with `worker.js` + `wrangler.toml` + README — follow the mention-worker pattern: pre-filters are deny-only and fail-open, and never hold authority (re-verify every relayed field in-repo).
+**New shared script:** `.github/scripts/<kebab-name>.sh`, start from an existing script's contract header (env in/out, files, exit semantics); never interpolate untrusted text into the shell except via `env:`.
+**New workflow:** `.github/workflows/<name>.yml`; dispatch-only agent workflows must declare the phantom-suppressing never-matching `push` trigger and runtime input validation (see `pr-review.yml`); anything `pull_request`-triggered must stay zero-secret with no checkout. Never add `pull_request*` triggers to agent workflows.
+**New composite action:** `.github/actions/<action-name>/action.yml`; keep it secrets-free if it can ever run on a base branch.
+**New external worker:** `tools/<worker-name>/` with `worker.js` + `wrangler.toml` + README; follow the mention-worker pattern: pre-filters are deny-only and fail-open, and never hold authority (re-verify every relayed field in-repo).
 **New fixtures/tests:** extend `.github/scripts/scrub-fixtures.sh` (scrub/roster/permissions) or `.github/scripts/prompt-rule-fixtures.sh` (prompt rules); the CI battery picks them up automatically.
-**Local admin tooling:** repository root as Python (`*.py`), used by humans only — nothing in CI may depend on root scripts.
+**Local admin tooling:** repository root as Python (`*.py`), used by humans only; nothing in CI may depend on root scripts.

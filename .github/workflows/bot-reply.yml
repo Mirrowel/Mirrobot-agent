@@ -948,7 +948,7 @@ jobs:
           IS_PR: ${{ steps.context.outputs.IS_PR }}
         run: |
           mkdir -p /tmp/instructions
-          IVARS='$DIFF_FILE_PATH $INCREMENTAL_DIFF_PATH $LAST_REVIEWED_SHA $PR_HEAD_SHA $PREVIOUS_BOT_REVIEWS $AGENT_REVIEW_HISTORY $PR_NUMBER $GITHUB_REPOSITORY $THREAD_NUMBER $THREAD_AUTHOR $NEW_COMMENT_AUTHOR'
+          IVARS='$DIFF_FILE_PATH $INCREMENTAL_DIFF_PATH $LAST_REVIEWED_SHA $PR_HEAD_SHA $PREVIOUS_BOT_REVIEWS $AGENT_REVIEW_HISTORY $PR_NUMBER $GITHUB_REPOSITORY $THREAD_NUMBER $THREAD_AUTHOR $NEW_COMMENT_AUTHOR $BOT_IDENTITY_LIST $BOT_IDENTITY_PRIMARY'
           # General strategies (any thread type)
           bash /tmp/assemble-prompt.sh agentlib-investigate  | envsubst "$IVARS" > /tmp/instructions/investigate.md
           bash /tmp/assemble-prompt.sh agentlib-contribute   | envsubst "$IVARS" > /tmp/instructions/contribute.md
@@ -1012,7 +1012,7 @@ jobs:
               INCREMENTAL_DIFF_PATH=""
               LAST_REVIEWED_SHA=""
             fi
-            VARS='$THREAD_CONTEXT $NEW_COMMENT_AUTHOR $NEW_COMMENT_BODY $TRIGGER_MESSAGE $THREAD_NUMBER $GITHUB_REPOSITORY $THREAD_AUTHOR $PR_HEAD_SHA $IS_FIRST_REVIEW $FULL_DIFF_PATH $INCREMENTAL_DIFF_PATH $LAST_REVIEWED_SHA $PR_NUMBER $PREVIOUS_BOT_REVIEWS $AGENT_REVIEW_HISTORY $REVIEW_KIT_SUMMARY'
+            VARS='$THREAD_CONTEXT $NEW_COMMENT_AUTHOR $NEW_COMMENT_BODY $TRIGGER_MESSAGE $THREAD_NUMBER $GITHUB_REPOSITORY $THREAD_AUTHOR $PR_HEAD_SHA $IS_FIRST_REVIEW $FULL_DIFF_PATH $INCREMENTAL_DIFF_PATH $LAST_REVIEWED_SHA $PR_NUMBER $PREVIOUS_BOT_REVIEWS $AGENT_REVIEW_HISTORY $REVIEW_KIT_SUMMARY $BOT_IDENTITY_LIST $BOT_IDENTITY_PRIMARY'
             # Prepend the security brief (with the verified requester and trust context lines);
             # guest sessions additionally carry the guest rules block right after the brief.
             # Config lifecycle: opencode reads config + plugins once at boot.

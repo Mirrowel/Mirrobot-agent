@@ -28,12 +28,15 @@
 #                                    //   comment"), newest first
 #     "orphan-thread-comments": 10  // replies per orphaned thread
 #   }
-#   Everything is "up to", newest first, deduped. FILTER BEFORE CAP: hidden
-#   (minimized) content never consumes the allocation budget; resolved/outdated
-#   content never does outside the elevated block (one edge: the flat
-#   conversation window is capped at fetch time and filtered after) (the elevated
-#   block alone bypasses resolved/outdated - with markers - because it IS the
-#   agent's memory of its own findings). Per-comment `outdated` gives mixed
+#   Everything is "up to", newest first, deduped. FILTER BEFORE CAP, in every
+#   window: hidden (minimized) content never consumes a slot; resolved/outdated
+#   content never does outside the elevated block (the elevated block alone
+#   bypasses resolved/outdated - with markers - because it IS the agent's
+#   memory of its own findings). Windows OVERFILL 3x at fetch time and a
+#   cursor catch-up page runs when noise truncates one while slots stay
+#   unfilled, so budget numbers count content shown, never content wasted
+#   (thread-reply windows overfill but do not paginate per-thread - rate
+#   frugality, documented bound). Per-comment `outdated` gives mixed
 #   threads precise treatment in filtered blocks: a fresh reply on a moved
 #   anchor survives; the stale anchor itself drops.
 #   Fetch ceilings (implementation bounds, not tunables): reviews window 64,
@@ -97,8 +100,23 @@ if [ -n "${CONTEXT_LIMITS_JSON:-}" ]; then
 fi
 # Implementation fetch ceilings (see header).
 REVIEW_WINDOW=64
+
+# ---- Overfetch + fill loop --------------------------------------------------
+# Budget slots are CONTENT SHOWN, never content fetched: a hidden or noisy
+# post inside the raw window must not silently consume a context slot.
+# GraphQL charges 1 point per REQUEST (node count is free), so the cheap
+# strategy is: overfetch 3x the window in the same single query, filter,
+# take the newest N. Only when a window was truncated by the fetch limit
+# AND the filtered survivors still under-fill it does ONE cursor catch-up
+# page run (max 1 extra request per flat window; the common clean case
+# costs exactly one request total, same as before). Thread-reply windows
+# share the 3x overfetch but do not paginate per-thread (rate frugality;
+# documented bound).
+CMT_FETCH=$(( LIM_COMMENTS * 3 ));   [ "$CMT_FETCH" -gt 100 ] && CMT_FETCH=100
+REV_FETCH=$(( REVIEW_WINDOW * 2 ));  [ "$REV_FETCH" -gt 100 ] && REV_FETCH=100
 THREAD_WINDOW=100
 THREAD_COMMENT_FETCH=$(( LIM_THREAD_COMMENTS > LIM_ORPHAN_THREAD_COMMENTS ? LIM_THREAD_COMMENTS : LIM_ORPHAN_THREAD_COMMENTS ))
+THREAD_COMMENT_FETCH=$(( THREAD_COMMENT_FETCH * 3 )); [ "$THREAD_COMMENT_FETCH" -gt 100 ] && THREAD_COMMENT_FETCH=100
 
 # Noise-filter configuration (repo variables; see header).
 CONTEXT_IGNORE_AUTHORS="${CONTEXT_IGNORE_AUTHORS:-}"
@@ -129,6 +147,7 @@ GRAPHQL_QUERY='query($owner:String!, $name:String!, $number:Int!, $commentLimit:
           isMinimized
           minimizedReason
         }
+        pageInfo { hasPreviousPage startCursor }
       }
       reviews(last: $reviewLimit) {
         nodes {
@@ -141,6 +160,7 @@ GRAPHQL_QUERY='query($owner:String!, $name:String!, $number:Int!, $commentLimit:
           isMinimized
           minimizedReason
         }
+        pageInfo { hasPreviousPage startCursor }
       }
       reviewThreads(last: $threadLimit) {
         nodes {
@@ -177,8 +197,8 @@ if ! discussion_data=$(gh api graphql \
   -F owner="$repo_owner" \
   -F name="$repo_name" \
   -F number="$PR_NUMBER" \
-  -F commentLimit="$LIM_COMMENTS" \
-  -F reviewLimit="$REVIEW_WINDOW" \
+  -F commentLimit="$CMT_FETCH" \
+  -F reviewLimit="$REV_FETCH" \
   -F threadLimit="$THREAD_WINDOW" \
   -F threadCommentLimit="$THREAD_COMMENT_FETCH" \
   -f query="$GRAPHQL_QUERY"); then
@@ -186,10 +206,74 @@ if ! discussion_data=$(gh api graphql \
   exit 1
 fi
 
+# ---- Fill loop catch-up (at most ONE extra request per flat window) --------
+# Runs only when a window was truncated AND filtering left it under-filled:
+# fetch the next-older page and prepend its nodes (chronological order is
+# ascending; older nodes go first). Steady state: zero extra requests.
+catch_up() { # $1 = connection (comments|reviews), $2 = cursor
+  local conn="$1" cursor="$2" page extra fields
+  # Per-connection field sets: GraphQL validates the selection against the
+  # node type, so a shared query must not request review fields on comments.
+  case "$conn" in
+    comments) fields='databaseId author { login } body createdAt isMinimized minimizedReason' ;;
+    reviews)  fields='databaseId author { login } body createdAt isMinimized minimizedReason state submittedAt url' ;;
+  esac
+  page=$(gh api graphql \
+    -F owner="$repo_owner" -F name="$repo_name" -F number="$PR_NUMBER" \
+    -F limit=100 -f cursor="$cursor" -f query="
+      query(\$owner:String!, \$name:String!, \$number:Int!, \$limit:Int!, \$cursor:String!) {
+        repository(owner: \$owner, name: \$name) { pullRequest(number: \$number) {
+          ${conn}(last: \$limit, before: \$cursor) {
+            nodes { ${fields} }
+            pageInfo { hasPreviousPage startCursor }
+          }
+        } }
+      }") || return 0   # transient failure: proceed with what we have
+  extra=$(printf '%s' "$page" | jq -c --arg conn "$conn" '.data.repository.pullRequest[$conn].nodes // []')
+  discussion_data=$(printf '%s' "$discussion_data" | jq -c --arg conn "$conn" --argjson extra "$extra" \
+    '.data.repository.pullRequest[$conn].nodes = ($extra + .data.repository.pullRequest[$conn].nodes)')
+}
+
+pr_node=$(printf '%s' "$discussion_data" | jq -c '.data.repository.pullRequest')
+
+# Flat comments: truncated + under-filled after the same filters the
+# renderer applies (hidden, ignored authors, noise patterns, exclusions)?
+cmt_survivors=$(printf '%s' "$pr_node" | jq --arg ignore "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" --argjson patterns "$FILTER_PATTERNS_JSON" --arg exclude "$EXCLUDE_COMMENT_IDS" -r '
+  ($ignore | split(",") | map(select(length > 0))) as $ig |
+  def noisy: ((.body // "") as $b | [ $patterns[] | . as $p | select($b | test("(?i)" + $p)) ] | length > 0);
+  [.comments.nodes[] | select((.isMinimized != true) and ((((.author.login? // "unknown") | ascii_downcase) as $l | $ig | index($l)) | not) and (((.databaseId|tostring) as $id | ($exclude|split(",")|map(select(length>0))|index($id))|not)) and (noisy|not))] | length')
+if [ "$cmt_survivors" -lt "$LIM_COMMENTS" ] \
+   && [ "$(printf '%s' "$pr_node" | jq '.comments.nodes | length')" -ge "$CMT_FETCH" ] \
+   && [ "$(printf '%s' "$pr_node" | jq '.comments.pageInfo.hasPreviousPage')" = "true" ]; then
+  catch_up comments "$(printf '%s' "$pr_node" | jq -r '.comments.pageInfo.startCursor')"
+fi
+
+# Reviews: truncated + own-newest or other-newest selection still short?
+pr_node=$(printf '%s' "$discussion_data" | jq -c '.data.repository.pullRequest')
+rv_short=$(printf '%s' "$pr_node" | jq --argjson agentbots "$BOT_NAMES_JSON" --argjson limOwn "$LIM_OWN" --argjson limReviews "$LIM_REVIEWS" --arg ignore "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" --argjson patterns "$FILTER_PATTERNS_JSON" -r '
+  ($ignore | split(",") | map(select(length > 0))) as $ig |
+  def is_own: ((.author.login? // "" | ascii_downcase) as $l | $agentbots | index($l)) != null;
+  def noisy: ((.body // "") as $b | [ $patterns[] | . as $p | select($b | test("(?i)" + $p)) ] | length > 0);
+  ([(.reviews.nodes // [])[] | select(is_own and (.isMinimized != true))] | length) as $own |
+  ([(.reviews.nodes // [])[] | select((is_own|not) and (.isMinimized != true) and (noisy|not) and ((((.author.login? // "unknown")|ascii_downcase) as $l | $ig | index($l))|not))] | length) as $other |
+  if ($own < $limOwn or $other < $limReviews) then "short" else "ok" end')
+if [ "$rv_short" = "short" ] \
+   && [ "$(printf '%s' "$pr_node" | jq '.reviews.nodes | length')" -ge "$REV_FETCH" ] \
+   && [ "$(printf '%s' "$pr_node" | jq '.reviews.pageInfo.hasPreviousPage')" = "true" ]; then
+  catch_up reviews "$(printf '%s' "$pr_node" | jq -r '.reviews.pageInfo.startCursor')"
+fi
+# The big downstream program re-filters and re-selects from the (possibly
+# extended) node arrays; overfetched surplus is dropped there by the caps.
+
 # ---- Thread context: issue comments (filtered, optional id exclusion) ----
+# The upstream fetch overfills this window on purpose (filter-before-cap:
+# hidden/noisy posts never consume a slot), so the cap lives HERE now:
+# newest $limComments survivors of the filtered array (chronological
+# ascending, hence the negative slice).
 thread_context=$(printf '%s' "$discussion_data" | jq -r \
   --arg ignore_authors "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" \
   --argjson patterns "$FILTER_PATTERNS_JSON" \
+  --argjson limComments "$LIM_COMMENTS" \
   --arg exclude_ids "$EXCLUDE_COMMENT_IDS" '
   ($ignore_authors | split(",") | map(select(length > 0))) as $ignored |
   def noisy: ((.body // "") as $b | [ $patterns[] | . as $p | select($b | test("(?i)" + $p)) ] | length > 0);
@@ -200,6 +284,7 @@ thread_context=$(printf '%s' "$discussion_data" | jq -r \
       and (((.databaseId | tostring) as $id | ($exclude_ids | split(",") | map(select(length > 0)) | index($id)) | not))
       and (noisy | not)
     ))
+  | if length > $limComments then .[($limComments * -1):] else . end
   | if length > 0 then
       map("- " + (.author.login? // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + ((.body // "") | tostring) + "\n")
       | join("")

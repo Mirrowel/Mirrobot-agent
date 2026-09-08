@@ -37,10 +37,20 @@ target_id="${3:?target id}"
 # remove_own by the app login and never delete their own eyes (live-observed:
 # trigger comments ending with BOTH eyes and rocket).
 if [ -z "${BOT_LOGIN:-}" ]; then
-  BOT_LOGIN=$(gh api /user --jq .login 2>/dev/null || true)
+  # Run-local cache: react.sh runs up to 3 times per run (start/success/
+  # failure) and must not spend a /user call on each. BOT_DETECTED_LOGIN
+  # (bot-setup, account mode) wins when already resolved.
+  BOT_LOGIN="${BOT_DETECTED_LOGIN:-}"
+  if [ -z "$BOT_LOGIN" ] && [ -f /tmp/.bot-login-cache ]; then
+    BOT_LOGIN=$(head -1 /tmp/.bot-login-cache 2>/dev/null || true)
+  fi
+  if [ -z "$BOT_LOGIN" ]; then
+    BOT_LOGIN=$(gh api /user --jq .login 2>/dev/null || true)
+    [ -n "$BOT_LOGIN" ] && printf '%s\n' "$BOT_LOGIN" > /tmp/.bot-login-cache 2>/dev/null || true
+  fi
 fi
-# Fallback order: /user (live identity) → first DECLARED identity in
-# BOT_NAMES_JSON (operator-stated, credential/detection-proven upstream) →
+# Fallback order: /user (live identity) -> first DECLARED identity in
+# BOT_NAMES_JSON (operator-stated, credential/detection-proven upstream) ->
 # the stock app-bot constant (this project's own default deployment; never
 # a synthesized twin — shape proves nothing).
 if [ -z "$BOT_LOGIN" ]; then

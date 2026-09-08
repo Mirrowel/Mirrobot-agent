@@ -139,7 +139,14 @@ if [ -n "$(printf '%s' "$pr_json" | jq -r '.body // empty')" ]; then
 
 $(printf '%s' "$pr_json" | jq -r '.body')"
 fi
-RVARS='${DIFF_FILE_PATH} ${INCREMENTAL_DIFF_PATH} ${LAST_REVIEWED_SHA} ${PR_HEAD_SHA} ${PREVIOUS_BOT_REVIEWS} ${AGENT_REVIEW_HISTORY} ${PR_NUMBER} ${GITHUB_REPOSITORY} ${THREAD_NUMBER} ${PR_AUTHOR} ${REVIEW_TYPE} ${PULL_REQUEST_CONTEXT}'
+# Identity display vars (same derivation as bot-config; BOT_NAMES_JSON is
+# in env from the workflow, lowercased there, so recover a display-case
+# primary from the raw variable when present, else fall back to the set).
+BOT_IDENTITY_LIST=$(printf '%s' "${BOT_NAMES_JSON:-[\"mirrobot-agent\",\"mirrobot-agent[bot]\"]}" | jq -r 'join(",")')
+BOT_IDENTITY_PRIMARY=$(printf '%s' "${BOT_IDENTITIES_INPUT:-}" | jq -r '.[0] // empty' 2>/dev/null)
+[ -n "$BOT_IDENTITY_PRIMARY" ] || BOT_IDENTITY_PRIMARY=$(printf '%s' "$BOT_NAMES_JSON" | jq -r '.[0]')
+export BOT_IDENTITY_LIST BOT_IDENTITY_PRIMARY
+RVARS='${DIFF_FILE_PATH} ${INCREMENTAL_DIFF_PATH} ${LAST_REVIEWED_SHA} ${PR_HEAD_SHA} ${PREVIOUS_BOT_REVIEWS} ${AGENT_REVIEW_HISTORY} ${PR_NUMBER} ${GITHUB_REPOSITORY} ${THREAD_NUMBER} ${PR_AUTHOR} ${REVIEW_TYPE} ${PULL_REQUEST_CONTEXT} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY}'
 export THREAD_NUMBER="$PR"
 if [ -f /tmp/assemble-prompt.sh ]; then
   bash /tmp/assemble-prompt.sh review-memory-instructions \

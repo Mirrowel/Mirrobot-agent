@@ -79,6 +79,7 @@ jobs:
           COMMENT_ID: ${{ github.event.comment.id }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
           THREAD_NUMBER: ${{ github.event.issue.number }}
           IS_PR: ${{ github.event.issue.pull_request != '' && 'true' || 'false' }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -86,6 +87,8 @@ jobs:
           BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
           BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
           AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
+          OPEN_TRIGGERING: ${{ vars.OPEN_TRIGGERING || 'true' }}
+          TRUSTED_USERS: ${{ vars.TRUSTED_AGENT_USERS || '' }}
         run: |
           set -euo pipefail
 
@@ -105,6 +108,33 @@ jobs:
           # matching as every former per-workflow guard, from the one file
           # bot-reply re-validation and the fixture suite also use.
           ROUTES=$(printf '%s' "$COMMENT_BODY" | bash .github/scripts/route-comment.sh "$IS_PR")
+
+          # --- Open-triggering gate (OPEN_TRIGGERING, default true). false =
+          # on-demand summons (mentions + commands through this router) are
+          # accepted only from collaborators or the TRUSTED_AGENT_USERS
+          # roster. Auto paths are deliberately NOT gated: PR auto-reviews,
+          # issues-opened analysis, and cross-repo mentions (which carry
+          # their own FOREIGN_MENTIONS_USERS allowlist). Zero API cost: the
+          # association rides the event payload, the roster is a variable.
+          if [ "$ROUTES" != "none" ] && [ "${OPEN_TRIGGERING}" != "true" ]; then
+            authorized=no
+            case "$AUTHOR_ASSOC" in
+              OWNER|MEMBER|COLLABORATOR) authorized=yes ;;
+            esac
+            if [ "$authorized" = "no" ] && [ -n "$TRUSTED_USERS" ]; then
+              author_check=$(printf '%s' "$TRUSTED_USERS" | tr ',' '\n' | tr -d '[:space:]' | tr 'A-Z' 'a-z')
+              if printf '%s\n' "$author_check" | grep -qxf "$author_lc"; then
+                authorized=yes
+              fi
+            fi
+            if [ "$authorized" = "no" ]; then
+              {
+                echo "- OPEN_TRIGGERING is off: on-demand summons are limited to collaborators and the trusted roster; this author ($AUTHOR_ASSOC) is neither. Not routed."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice::OPEN_TRIGGERING is off and @${COMMENT_AUTHOR} is not a collaborator/trusted user - on-demand trigger declined."
+              exit 0
+            fi
+          fi
 
           route_review=false
           route_compliance=false

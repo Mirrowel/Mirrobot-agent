@@ -283,7 +283,7 @@ jobs:
         run: |
             set -o pipefail
             # Only substitute the variables we intend; leave example $vars and secrets intact
-            VARS='${ISSUE_CONTEXT} ${ISSUE_NUMBER} ${ISSUE_AUTHOR} ${TRIGGER_MESSAGE} ${GITHUB_REPOSITORY}'
+            VARS='${ISSUE_CONTEXT} ${ISSUE_NUMBER} ${ISSUE_AUTHOR} ${TRIGGER_MESSAGE} ${GITHUB_REPOSITORY} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY}'
             # Config lifecycle: opencode reads config + plugins once at boot.
             # The share filter touches /tmp/.oc-booted on the first output
             # line (= boot complete, config consumed); this waiter deletes

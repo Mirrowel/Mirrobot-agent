@@ -37,6 +37,8 @@
 # env out: BOT_NAMES_JSON    resolved identity array (legacy-compatible name:
 #                            every consumer script already reads this env)
 #          BOT_TRIGGER_STEMS comma-separated stems for the router
+#          BOT_IDENTITY_LIST display-case comma list (prompt prose self-checks)
+#          BOT_IDENTITY_PRIMARY display-case primary login (footers, prose)
 # Exit: 0 (bad variable input degrades loudly to defaults — config mistakes
 #       must be visible, not silent).
 # ============================================================================
@@ -83,8 +85,16 @@ if [ -n "$IDENT_ITEMS" ]; then
   # (GITHUB_ENV values must be one line)
   BOT_NAMES_JSON=$(printf '%s' "$IDENT_ITEMS" | tr 'A-Z' 'a-z' | sort -u | jq -R . | jq -sc .)
   identity_sourced=1
+  # Display forms for prompt prose (original casing kept; deduped against
+  # the same lowercased set so a variable declaring "Zeta" + detected "zeta"
+  # renders once). "$BOT_IDENTITY_PRIMARY" is the footer/first-mention name,
+  # "$BOT_IDENTITY_LIST" the exact-match enumeration for self-checks.
+  BOT_IDENTITY_LIST=$(printf '%s' "$IDENT_ITEMS" | awk 'NF' | awk '!seen[tolower($0)]++' | paste -sd, -)
+  BOT_IDENTITY_PRIMARY=$(printf '%s' "$IDENT_ITEMS" | awk 'NF' | head -1)
 else
   BOT_NAMES_JSON="$FALLBACK_IDENTITIES"
+  BOT_IDENTITY_LIST="mirrobot-agent,mirrobot-agent[bot]"
+  BOT_IDENTITY_PRIMARY="mirrobot-agent"
   identity_sourced=0
   ident_note="fallback (set BOT_IDENTITIES_JSON to override)"
 fi
@@ -119,10 +129,14 @@ if [ "${1:-}" = "--export" ]; then
   # shell-evaluable exports — nothing else may reach stdout in this mode.
   printf 'export BOT_NAMES_JSON=%q\n' "$BOT_NAMES_JSON"
   printf 'export BOT_TRIGGER_STEMS=%q\n' "$BOT_TRIGGER_STEMS"
+  printf 'export BOT_IDENTITY_LIST=%q\n' "$BOT_IDENTITY_LIST"
+  printf 'export BOT_IDENTITY_PRIMARY=%q\n' "$BOT_IDENTITY_PRIMARY"
 else
   {
     printf 'BOT_NAMES_JSON=%s\n' "$BOT_NAMES_JSON"
     printf 'BOT_TRIGGER_STEMS=%s\n' "$BOT_TRIGGER_STEMS"
+    printf 'BOT_IDENTITY_LIST=%s\n' "$BOT_IDENTITY_LIST"
+    printf 'BOT_IDENTITY_PRIMARY=%s\n' "$BOT_IDENTITY_PRIMARY"
   } >> "${GITHUB_ENV:-/dev/null}" 2>/dev/null || true
 fi
 # Provenance log lines go to STDERR so the --export eval can never see them.

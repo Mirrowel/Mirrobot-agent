@@ -821,7 +821,7 @@ jobs:
           fi
           # Substitute variables, embedding PR context and diff file path; DIFF_FILE_PATH kept local to this process
           TMP_DIR="${RUNNER_TEMP:-/tmp}"
-          VARS='${REVIEW_TYPE} ${PR_AUTHOR} ${PR_NUMBER} ${GITHUB_REPOSITORY} ${PR_HEAD_SHA} ${PULL_REQUEST_CONTEXT} ${DIFF_FILE_PATH} ${TRIGGER_MESSAGE} ${PREVIOUS_BOT_REVIEWS} ${AGENT_REVIEW_HISTORY} ${THREAD_CONTEXT}'
+          VARS='${REVIEW_TYPE} ${PR_AUTHOR} ${PR_NUMBER} ${GITHUB_REPOSITORY} ${PR_HEAD_SHA} ${PULL_REQUEST_CONTEXT} ${DIFF_FILE_PATH} ${TRIGGER_MESSAGE} ${PREVIOUS_BOT_REVIEWS} ${AGENT_REVIEW_HISTORY} ${THREAD_CONTEXT} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY}'
           # Prepend the security brief (with the verified requester + trust context lines)
           { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $TRUST_CONTEXT_ERA $TRUSTED_PEOPLE' < /tmp/security-brief.md; bash /tmp/assemble-prompt.sh "$MANIFEST" | DIFF_FILE_PATH="$DIFF_FILE_PATH" envsubst "$VARS"; } > "$TMP_DIR/assembled_prompt.txt"
           # Immediately clear large env after use
