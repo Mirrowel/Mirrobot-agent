@@ -127,7 +127,7 @@ check "syntax scrub-workspace" OK "$(bash -n "$SCRUB" && echo OK)"
 check "syntax fetch-roster"    OK "$(bash -n "$SCRIPT_DIR/fetch-roster.sh" && echo OK)"
 check "syntax fetch-pr-discussion" OK "$(bash -n "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo OK)"
 check "discussion: ellipsis hardcode removed" no "$(grep -q ellipsis "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
-check "discussion: minimized filter on agent reviews" yes "$(grep -q "isMinimized != true)))) as \$agent_reviews" "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
+check "discussion: minimized filter on agent reviews" yes "$(grep -q "select(is_own and (.isMinimized != true))" "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
 check "discussion: noise patterns baked" yes "$(grep -q "rate limited by coderabbit" "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
 check "discussion: jq pattern binding (. as \$p)" yes "$(grep -q ". as \$p | select" "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
 check "stale-base docs branch -> INFO (informed, not alarmed)"  INFO  "$(run_scrub stale)"
@@ -262,7 +262,9 @@ for wf in pr-review bot-reply compliance-check issue-comment; do
   # Config lifecycle: opencode reads config+plugins once at boot; the
   # boot-sentinel waiter + post-run cleanup guarantee the sensitive files
   # do not survive the run.
-  check "lifecycle: $wf has boot-sentinel waiter"  yes "$(grep -q '/tmp/.oc-booted' "$WFF" && grep -q '\[ -f /tmp/.oc-booted \] && break' "$WFF" && echo yes || echo no)"
+  # The waiter logic lives in the shared trusted artifact
+  # (opencode-cleanup.sh); workflows must background it and copy it to /tmp.
+  check "lifecycle: $wf has boot-sentinel waiter"  yes "$(grep -q 'bash /tmp/opencode-cleanup.sh waiter' "$WFF" && grep -q 'cp .github/scripts/opencode-cleanup.sh /tmp/opencode-cleanup.sh' "$WFF" && echo yes || echo no)"
   check "lifecycle: $wf post-run cleanup step"     yes "$(grep -q 'Post-run cleanup and usage stats' "$WFF" && echo yes || echo no)"
   check "lifecycle: $wf cleanup is always()"       yes "$(grep -A5 'Post-run cleanup and usage stats' "$WFF" | grep -q 'if: always()' && echo yes || echo no)"
   # Bare stats only: --models would EXPOSE model names; --days is pointless

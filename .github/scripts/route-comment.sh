@@ -32,10 +32,30 @@ clean=$(awk '
   !in_code { print }
 ' | sed 's/`[^`]*`//g' | grep -v '^[[:space:]]*>' || true)
 
+# ── Trigger matrix (single source: the stems) ───────────────────────────────
+# BOT_TRIGGER_STEMS is a comma list of RAW names (no @ or / prefixes) — set
+# by bot-config.sh from the BOT_TRIGGERS variable, the resolved identities,
+# or the mirrobot fallback. Every stem derives: an @<stem> mention, a
+# /<stem>-review and a /<stem>_review command, and a /<stem>-check +
+# /<stem>_check command. Stems are regex-escaped, matched case-insensitively
+# (loose substring, identical to the original contains() guards).
 routes=""
-if printf '%s' "$clean" | grep -qiE '/mirrobot[-_]review'; then routes="$routes review"; fi
-if printf '%s' "$clean" | grep -qiE '/mirrobot[-_]check';  then routes="$routes compliance"; fi
-if printf '%s' "$clean" | grep -qiE '@mirrobot(-agent)?';  then routes="$routes reply"; fi
+stems="${BOT_TRIGGER_STEMS:-mirrobot,mirrobot-agent}"
+mention_re=""
+review_re=""
+check_re=""
+first=1
+for stem in $(printf '%s' "$stems" | tr ',' ' '); do
+  esc=$(printf '%s' "$stem" | sed 's/[][^.*+?(){}\|$]/\\&/g')
+  sep=""; [ $first = 1 ] || sep="|"
+  mention_re="${mention_re}${sep}@${esc}"
+  review_re="${review_re}${sep}/${esc}[-_]review"
+  check_re="${check_re}${sep}/${esc}[-_]check"
+  first=0
+done
+if printf '%s' "$clean" | grep -qiE "$review_re"; then routes="$routes review"; fi
+if printf '%s' "$clean" | grep -qiE "$check_re";  then routes="$routes compliance"; fi
+if printf '%s' "$clean" | grep -qiE "$mention_re"; then routes="$routes reply"; fi
 
 # Review/compliance commands only apply to pull requests.
 if [ "$is_pr" != "true" ]; then

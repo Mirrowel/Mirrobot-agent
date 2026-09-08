@@ -53,17 +53,13 @@ concurrency:
 
 jobs:
   route:
-    # Bot-loop guard: never route comments authored by bots or by the agent
-    # itself (its own replies/comments must not re-trigger agents).
-    # NOTE: GitHub Actions expressions have NO case-insensitive compare, so
-    # agent names enumerate known casings (logins are case-insensitive; when
-    # an identity is renamed, add its new casing here).
+    # Bot-loop guard, platform level: comments authored by any [bot] identity
+    # never even start a runner. The AGENT-identity half of the guard runs
+    # inside the routing step (shell, case-insensitive, from the resolved
+    # identity set - no login enumeration here, so renames need no edit).
     if: |
       vars.AGENT_PAUSED != 'true' &&
-      !endsWith(github.event.comment.user.login, '[bot]') &&
-      github.event.comment.user.login != 'mirrobot' &&
-      github.event.comment.user.login != 'mirrobot-agent' &&
-      github.event.comment.user.login != 'Mirrobot-Agent'
+      !endsWith(github.event.comment.user.login, '[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -82,12 +78,28 @@ jobs:
         env:
           COMMENT_ID: ${{ github.event.comment.id }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
           THREAD_NUMBER: ${{ github.event.issue.number }}
           IS_PR: ${{ github.event.issue.pull_request != '' && 'true' || 'false' }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GITHUB_TOKEN: ${{ github.token }}
+          BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
+          BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
+          AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
         run: |
           set -euo pipefail
+
+          # --- Resolve identity + trigger stems (workspace copy is trusted:
+          # default-branch checkout). Same-step consumption via --export.
+          eval "$(bash .github/scripts/bot-config.sh --export)"
+
+          # --- Agent-identity loop guard (the [bot] half ran at job level).
+          author_lc=$(printf '%s' "$COMMENT_AUTHOR" | tr 'A-Z' 'a-z')
+          if printf '%s' "$BOT_NAMES_JSON" | jq -e --arg a "$author_lc" \
+               'map(ascii_downcase) | index($a) != null' >/dev/null 2>&1; then
+            echo "::notice::Comment authored by our own identity (@${COMMENT_AUTHOR}); bot-loop guard - not routed."
+            exit 0
+          fi
 
           # --- Shared decision logic (route-comment.sh): same cleaning and
           # matching as every former per-workflow guard, from the one file
@@ -117,32 +129,58 @@ jobs:
 
           dispatched=0
           failed=0
+          # Per-part pause (AGENT_PAUSED_PARTS_JSON): {"pr-review":true,...}
+          # pauses ONE agent part; true = paused, missing key/variable =
+          # not paused, malformed = loud fail (a broken kill switch must be
+          # visible, not silently ignored). AGENT_PAUSED (job-level if)
+          # remains the global kill above all parts.
+          part_paused() { # $1 = part key
+            v="${AGENT_PAUSED_PARTS_JSON:-}"
+            [ -z "$v" ] && return 1
+            if ! printf '%s' "$v" | jq -e 'type == "object"' >/dev/null 2>&1; then
+              echo "::error::AGENT_PAUSED_PARTS_JSON is not a JSON object - fix the variable (got: $(printf '%s' "$v" | head -c 80))."
+              exit 1
+            fi
+            printf '%s' "$v" | jq -e --arg k "$1" '.[$k] == true' >/dev/null 2>&1
+          }
           # Each dispatch is isolated: one failing target (renamed workflow
           # file, API hiccup) must not silently kill the remaining routes for
           # compound comments - warn, record, keep routing.
           if [ "$route_review" = "true" ]; then
-            echo "::notice::Routing to PR Review (PR #$THREAD_NUMBER)"
-            if ! gh workflow run pr-review.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f prNumber="$THREAD_NUMBER" -f commentId="$COMMENT_ID" -f source=router; then
-              echo "::warning::Failed to dispatch PR Review for #$THREAD_NUMBER"
-              failed=1
+            if part_paused pr-review; then
+              echo "::notice::PR Review is paused (AGENT_PAUSED_PARTS_JSON) - skipping dispatch."
+            else
+              echo "::notice::Routing to PR Review (PR #$THREAD_NUMBER)"
+              if ! gh workflow run pr-review.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f prNumber="$THREAD_NUMBER" -f commentId="$COMMENT_ID" -f source=router; then
+                echo "::warning::Failed to dispatch PR Review for #$THREAD_NUMBER"
+                failed=1
+              fi
+              dispatched=1
             fi
-            dispatched=1
           fi
           if [ "$route_compliance" = "true" ]; then
-            echo "::notice::Routing to Compliance Check (PR #$THREAD_NUMBER)"
-            if ! gh workflow run compliance-check.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f pr_number="$THREAD_NUMBER" -f commentId="$COMMENT_ID"; then
-              echo "::warning::Failed to dispatch Compliance Check for #$THREAD_NUMBER"
-              failed=1
+            if part_paused compliance-check; then
+              echo "::notice::Compliance Check is paused (AGENT_PAUSED_PARTS_JSON) - skipping dispatch."
+            else
+              echo "::notice::Routing to Compliance Check (PR #$THREAD_NUMBER)"
+              if ! gh workflow run compliance-check.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f pr_number="$THREAD_NUMBER" -f commentId="$COMMENT_ID"; then
+                echo "::warning::Failed to dispatch Compliance Check for #$THREAD_NUMBER"
+                failed=1
+              fi
+              dispatched=1
             fi
-            dispatched=1
           fi
           if [ "$route_reply" = "true" ]; then
-            echo "::notice::Routing to Bot Reply (thread #$THREAD_NUMBER)"
-            if ! gh workflow run bot-reply.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f commentId="$COMMENT_ID" -f threadNumber="$THREAD_NUMBER"; then
-              echo "::warning::Failed to dispatch Bot Reply for #$THREAD_NUMBER"
-              failed=1
+            if part_paused bot-reply; then
+              echo "::notice::Bot Reply is paused (AGENT_PAUSED_PARTS_JSON) - skipping dispatch."
+            else
+              echo "::notice::Routing to Bot Reply (thread #$THREAD_NUMBER)"
+              if ! gh workflow run bot-reply.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f commentId="$COMMENT_ID" -f threadNumber="$THREAD_NUMBER"; then
+                echo "::warning::Failed to dispatch Bot Reply for #$THREAD_NUMBER"
+                failed=1
+              fi
+              dispatched=1
             fi
-            dispatched=1
           fi
 
           if [ "$dispatched" = "0" ]; then

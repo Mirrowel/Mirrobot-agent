@@ -4,7 +4,7 @@
 # Single source of truth for the THREE-BLOCK context separation used by both
 # PR Review and Compliance Check (identical machinery, identical semantics):
 #   1. PREVIOUS_BOT_REVIEWS  - newest N reviews by THIS agent (BOT_NAMES_JSON,
-#      NOT bots in general) with ALL their inline comments, bypassing the
+#      NOT bots in general) with their inline comments, bypassing the
 #      resolved/outdated filter (markers shown instead - the latest review
 #      deserves the full picture). Minimized (hidden) content is the ONE
 #      exception: hidden stays hidden everywhere, own content included.
@@ -15,43 +15,57 @@
 #      reviews with their inline comments CORRELATED under each review
 #      (filtered), plus the filtering summary.
 #
+# CONTEXT BUDGET (CONTEXT_LIMITS_JSON repo variable; per-key defaults):
+#   {
+#     "comments": 30,               // conversation comments, newest first
+#     "reviews": 15,                // review objects, newest first
+#     "own-reviews": 5,             // SAFEGUARD: this agent's own newest
+#                                    //   reviews are ALWAYS included, even
+#                                    //   beyond the reviews window
+#     "threads-per-review": 25,     // inline threads per selected review
+#     "thread-comments": 10,        // replies per review-linked thread
+#     "orphan-threads": 20,         // review-less threads ("Add single
+#                                    //   comment"), newest first
+#     "orphan-thread-comments": 10  // replies per orphaned thread
+#   }
+#   Everything is "up to", newest first, deduped. FILTER BEFORE CAP: hidden
+#   (minimized) content never consumes budget anywhere; resolved/outdated
+#   content never consumes budget outside the elevated block (the elevated
+#   block alone bypasses resolved/outdated - with markers - because it IS the
+#   agent's memory of its own findings). Per-comment `outdated` gives mixed
+#   threads precise treatment in filtered blocks: a fresh reply on a moved
+#   anchor survives; the stale anchor itself drops.
+#   Fetch ceilings (implementation bounds, not tunables): reviews window 64,
+#   threads window 100 - allocation happens inside them; on truly enormous
+#   PRs older content beyond a window is unreachable (documented ceiling).
+#   Malformed JSON: warning + per-key defaults (a broken knob must be
+#   visible, not fatal - unlike AGENT_MODELS_JSON it cannot brick identity).
+#
 # NOISE FILTERING (other-people content only; never the agent's own blocks):
 #   CONTEXT_IGNORE_AUTHORS   - comma-separated logins whose posts are dropped
 #                              outright (repo variable). Default: empty.
 #   CONTEXT_FILTER_PATTERNS_JSON - JSON array of regex snippets (repo
 #                              variable). Any case-insensitive match on a
-#                              post's body drops that post. JSON array means
-#                              patterns may contain commas/semicolons/pipes;
-#                              backslashes double as JSON escapes ("\\.").
-#                              Setting the variable REPLACES the baked-in
-#                              defaults (defaults: known AI-reviewer noise -
-#                              rate-limit notices, review-skipped/Too-many-
-#                              files posts, greptile status channel). Malformed
+#                              post's body drops that post. Setting the
+#                              variable REPLACES the baked-in defaults
+#                              (defaults: known AI-reviewer noise). Malformed
 #                              JSON falls back to defaults with a warning.
 #
 # Contract:
 #   $1      : PR number
-#   env in  : GH_TOKEN, GITHUB_REPOSITORY, BOT_NAMES_JSON, COMMENT_FETCH_LIMIT,
-#             REVIEW_FETCH_LIMIT, REVIEW_THREAD_FETCH_LIMIT,
-#             THREAD_COMMENT_FETCH_LIMIT, PREVIOUS_BOT_REVIEWS_COUNT (default 1),
+#   env in  : GH_TOKEN, GITHUB_REPOSITORY, BOT_NAMES_JSON (resolved by
+#             bot-config.sh), CONTEXT_LIMITS_JSON (optional; per-key defaults),
+#             PREVIOUS_BOT_REVIEWS_COUNT (default 1 - the ELEVATED count,
+#             distinct from the own-reviews fetch safeguard),
 #             EXCLUDE_COMMENT_IDS (optional comma-separated databaseIds to drop
 #             from THREAD_CONTEXT - used to dedup elevated injections),
-#             PREFIX_TEXT (optional text prepended verbatim to THREAD_CONTEXT -
-#             callers use it for PR metadata/body framing),
+#             PREFIX_TEXT (optional text prepended verbatim to THREAD_CONTEXT),
 #             CONTEXT_IGNORE_AUTHORS (optional), CONTEXT_FILTER_PATTERNS_JSON (optional)
 #   env out : appends THREAD_CONTEXT / PREVIOUS_BOT_REVIEWS / AGENT_REVIEW_HISTORY
 #             to $GITHUB_ENV with unguessable random delimiters; THREAD_CONTEXT
 #             ends with a one-line filtering summary
 #   exit    : 0 on success (empty-but-valid blocks on no data); 1 on fetch
 #             failure (callers treat as degraded context, not fatal)
-#
-# NOTE: per-thread comment fetch uses `last:` (newest N of each thread); a
-# thread longer than THREAD_COMMENT_FETCH_LIMIT drops its OLDEST replies
-# first (the thread ROOT survives unless the whole thread exceeds the
-# limit - keep the limit >= 10 for the elevated block's fidelity).
-# TODO(later): add a time-based or total-count cap for very long threads
-# (e.g. PRs with 200+ comments - fetch/keep only the last X). Out of scope
-# for now; the fetch limits bound the payload.
 set -uo pipefail
 
 PR_NUMBER="${1:?usage: fetch-pr-discussion.sh <pr_number>}"
@@ -59,19 +73,34 @@ PR_NUMBER="${1:?usage: fetch-pr-discussion.sh <pr_number>}"
 : "${GITHUB_REPOSITORY:?}"
 
 BOT_NAMES_JSON="${BOT_NAMES_JSON:-[\"mirrobot-agent\", \"mirrobot-agent[bot]\"]}"
-COMMENT_FETCH_LIMIT="${COMMENT_FETCH_LIMIT:-20}"
-REVIEW_FETCH_LIMIT="${REVIEW_FETCH_LIMIT:-30}"
-REVIEW_THREAD_FETCH_LIMIT="${REVIEW_THREAD_FETCH_LIMIT:-30}"
-THREAD_COMMENT_FETCH_LIMIT="${THREAD_COMMENT_FETCH_LIMIT:-10}"
 ELEVATED_COUNT="${PREVIOUS_BOT_REVIEWS_COUNT:-1}"
 EXCLUDE_COMMENT_IDS="${EXCLUDE_COMMENT_IDS:-}"
 PREFIX_TEXT="${PREFIX_TEXT:-}"
 
+# ---- Context budget: CONTEXT_LIMITS_JSON over per-key defaults -------------
+LIM_COMMENTS=30; LIM_REVIEWS=15; LIM_OWN=5
+LIM_THREADS_PER_REVIEW=25; LIM_THREAD_COMMENTS=10
+LIM_ORPHAN_THREADS=20; LIM_ORPHAN_THREAD_COMMENTS=10
+if [ -n "${CONTEXT_LIMITS_JSON:-}" ]; then
+  if printf '%s' "$CONTEXT_LIMITS_JSON" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    LIM_COMMENTS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '.comments // 30')
+    LIM_REVIEWS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '.reviews // 15')
+    LIM_OWN=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."own-reviews" // 5')
+    LIM_THREADS_PER_REVIEW=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."threads-per-review" // 25')
+    LIM_THREAD_COMMENTS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."thread-comments" // 10')
+    LIM_ORPHAN_THREADS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."orphan-threads" // 20')
+    LIM_ORPHAN_THREAD_COMMENTS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."orphan-thread-comments" // 10')
+  else
+    echo "::warning::CONTEXT_LIMITS_JSON is not a JSON object; using per-key defaults."
+  fi
+fi
+# Implementation fetch ceilings (see header).
+REVIEW_WINDOW=64
+THREAD_WINDOW=100
+THREAD_COMMENT_FETCH=$(( LIM_THREAD_COMMENTS > LIM_ORPHAN_THREAD_COMMENTS ? LIM_THREAD_COMMENTS : LIM_ORPHAN_THREAD_COMMENTS ))
+
 # Noise-filter configuration (repo variables; see header).
 CONTEXT_IGNORE_AUTHORS="${CONTEXT_IGNORE_AUTHORS:-}"
-# Baked defaults: the demonstrated noise classes of AI reviewers (coderabbit
-# rate-limit/skip posts, greptile status/skip posts). Substantive reviews -
-# walkthroughs, overviews, inline findings - NEVER match these.
 DEFAULT_FILTER_PATTERNS_JSON='["rate limited by coderabbit\\.ai","No actionable comments were generated","Review skipped","Too many files","<!-- greptile-status -->","Too many files changed for review"]'
 if [ -n "${CONTEXT_FILTER_PATTERNS_JSON:-}" ]; then
   if printf '%s' "$CONTEXT_FILTER_PATTERNS_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
@@ -129,6 +158,7 @@ GRAPHQL_QUERY='query($owner:String!, $name:String!, $number:Int!, $commentLimit:
               url
               isMinimized
               minimizedReason
+              outdated
               pullRequestReview {
                 databaseId
                 isMinimized
@@ -146,10 +176,10 @@ if ! discussion_data=$(gh api graphql \
   -F owner="$repo_owner" \
   -F name="$repo_name" \
   -F number="$PR_NUMBER" \
-  -F commentLimit="$COMMENT_FETCH_LIMIT" \
-  -F reviewLimit="$REVIEW_FETCH_LIMIT" \
-  -F threadLimit="$REVIEW_THREAD_FETCH_LIMIT" \
-  -F threadCommentLimit="$THREAD_COMMENT_FETCH_LIMIT" \
+  -F commentLimit="$LIM_COMMENTS" \
+  -F reviewLimit="$REVIEW_WINDOW" \
+  -F threadLimit="$THREAD_WINDOW" \
+  -F threadCommentLimit="$THREAD_COMMENT_FETCH" \
   -f query="$GRAPHQL_QUERY"); then
   echo "::warning::Discussion GraphQL fetch failed for PR #$PR_NUMBER"
   exit 1
@@ -176,69 +206,99 @@ thread_context=$(printf '%s' "$discussion_data" | jq -r \
     end
 ')
 
-# ---- Reviews + correlated inline comments (three-block separation) ----
+# ---- Reviews + allocated inline comments (three-block separation) ---------
+# Selection: newest LIM_REVIEWS reviews overall, PLUS this agent's own newest
+# LIM_OWN always included (the safeguard). Allocation: per selected review,
+# its newest LIM_THREADS_PER_REVIEW threads, each capped at LIM_THREAD_COMMENTS
+# replies; orphan threads (review-less) newest LIM_ORPHAN_THREADS with
+# LIM_ORPHAN_THREAD_COMMENTS replies. FILTER BEFORE CAP (hidden never counts;
+# resolved/outdated never counts outside the elevated block; per-comment
+# `outdated` drops stale anchors while fresh replies survive).
 if ! agent_blocks=$(printf '%s' "$discussion_data" | jq -r \
   --argjson agentbots "$BOT_NAMES_JSON" \
   --arg ignore_authors "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" \
   --argjson patterns "$FILTER_PATTERNS_JSON" \
-  --argjson count "$ELEVATED_COUNT" '
+  --argjson count "$ELEVATED_COUNT" \
+  --argjson limReviews "$LIM_REVIEWS" \
+  --argjson limOwn "$LIM_OWN" \
+  --argjson limThreadsPerReview "$LIM_THREADS_PER_REVIEW" \
+  --argjson limThreadComments "$LIM_THREAD_COMMENTS" \
+  --argjson limOrphanThreads "$LIM_ORPHAN_THREADS" \
+  --argjson limOrphanThreadComments "$LIM_ORPHAN_THREAD_COMMENTS" '
   ($ignore_authors | split(",") | map(select(length > 0))) as $ignored |
   def noisy: ((.body // "") as $b | [ $patterns[] | . as $p | select($b | test("(?i)" + $p)) ] | length > 0);
   (.data.repository.pullRequest) as $pr |
+  def is_own: ((.author.login? // "" | ascii_downcase) as $l | $agentbots | index($l)) != null;
+  # ---- flat comments with their thread context attached --------------------
   (($pr.reviewThreads.nodes // [])
-    | map(. as $th | (.comments.nodes // []) | map(. + {thResolved: ($th.isResolved == true), thOutdated: ($th.isOutdated == true)}))
+    | to_entries
+    | map(.key as $thId | .value as $th | (.value.comments.nodes // [])
+        | map(. + {thId: $thId, thResolved: ($th.isResolved == true), thOutdated: ($th.isOutdated == true)}))
     | flatten) as $allc |
-  def thread_ok: (.thResolved != true) and (.thOutdated != true);
   def cmt_ok: (.isMinimized != true) and ((.pullRequestReview.isMinimized // false) != true);
+  def thread_ok: (.thResolved != true) and (.thOutdated != true);
+  def cmt_fresh: ((.outdated // false) != true);
   def agent_cmt: ((.author.login? // "" | ascii_downcase) as $l | $agentbots | index($l)) != null;
   def markers:
     (if .thResolved then " [resolved]" else "" end)
     + (if .thOutdated then " [outdated]" else "" end)
     + (if .isMinimized then " [hidden]" else "" end);
   def fmt_c: ("- " + (.path // "Unknown file") + ":" + (((.line // .originalLine // "N/A")) | tostring) + " (" + (.createdAt // "N/A") + ") by " + (.author.login? // "unknown") + " - " + ((.body // "") | tostring) + markers + " <" + (.url // "") + ">");
-  def fmt_c_kept: (if (thread_ok and cmt_ok) then fmt_c else empty end);
-  def fmt_c_all: fmt_c;
+  # ---- review selection: newest limReviews + own-newest limOwn (safeguard) -
+  (($pr.reviews.nodes // []) | sort_by(.submittedAt) | reverse) as $reviews_new |
+  ([ $reviews_new[] | select(is_own and (.isMinimized != true)) ] | .[0:$limOwn]) as $own_sel |
+  ([ $reviews_new[] | select((is_own | not) and (.isMinimized != true) and (noisy | not) and (((.author.login? // "unknown" | ascii_downcase) as $login | $ignored | index($login)) | not)) ] | .[0:$limReviews]) as $other_sel |
+  (($own_sel + $other_sel) | unique_by(.databaseId) | sort_by(.submittedAt) | reverse) as $selected |
+  ([ $selected[] | select(is_own) ]) as $agent_reviews |
+  # ---- per-review thread allocation (newest threads, capped) ---------------
+  # Bucket the review'"'"'s comments by thread, newest THREADS first, cap
+  # threads-per-review; inside each thread newest comments first, cap
+  # thread-comments. FILTER BEFORE CAP outside the elevated block (hidden
+  # never counts anywhere; resolved/outdated/stale-anchors never count
+  # outside elevated). Elevated bypasses resolved/outdated - with markers -
+  # but never the hidden drop.
+  def rv_alloc($rid; $skipfilter):
+    [ $allc[] | select((.pullRequestReview.databaseId? // null) == $rid) ]
+    | group_by(.thId)
+    | map(sort_by(.createdAt) | reverse)
+    | sort_by((.[0].createdAt // "0")) | reverse
+    | .[0:$limThreadsPerReview]
+    | map(.[0:$limThreadComments]
+        | (if $skipfilter then map(select(cmt_ok)) else map(select(cmt_ok and thread_ok and cmt_fresh)) end))
+    | flatten;
   def review_block($skipfilter):
     . as $r |
-    [ ($allc | map(select((.pullRequestReview.databaseId? // null) == $r.databaseId)) | .[] | (if $skipfilter then fmt_c_all else fmt_c_kept end)) ] as $lines |
+    (rv_alloc($r.databaseId; $skipfilter)) as $lines |
     "## " + (.submittedAt // "N/A") + " - " + (.state // "UNKNOWN") + " - " + (.author.login? // "unknown") + " <" + (.url // "") + ">\n"
     + ((.body // "(No summary comment)") | tostring) + "\n"
-    + (if ($lines | length) > 0 then "Inline comments:\n" + ($lines | join("\n")) + "\n" else "Inline comments: (none)\n" end);
-  # (agent-reviews selection note: minimized stays hidden for the agent own
-  # reviews too - hidden is hidden from ANYONE; only resolved/outdated
-  # markers are bypassed, in the elevated block, on purpose)
-  (($pr.reviews.nodes // []) | sort_by(.submittedAt) | reverse
-    | map(select(((.author.login? // "" | ascii_downcase) as $l | $agentbots | index($l)) and (.isMinimized != true)))) as $agent_reviews |
-  # Section-level clarification: GitHub auto-dismisses APPROVED reviews on new
-  # pushes (CHANGES_REQUESTED/COMMENT survive); the state field loses the
-  # original verdict. One note per section, only when a DISMISSED review is in it.
+    + (if ($lines | length) > 0 then "Inline comments:\n" + ($lines | map(fmt_c) | join("\n")) + "\n" else "Inline comments: (none)\n" end);
   def dismissed_note: if any(.[]?; .state == "DISMISSED") then "\nNote: DISMISSED here usually means an APPROVED review auto-cleared by a later push - the Verdict line in the body holds the original verdict. Treat it as re-review-the-delta, not a wrong review.\n" else "" end;
-  # Human/other reviews with correlated active comments (agent reviews excluded)
-  (($pr.reviews.nodes // [])
-    | map(select(
-        (((.author.login? // "unknown" | ascii_downcase) as $login | $ignored | index($login)) | not)
-        and (((.author.login? // "unknown" | ascii_downcase) as $abot | $agentbots | index($abot)) | not)
-        and (.isMinimized != true)
-        and (noisy | not)))) as $other_reviews |
-  # ($other_reviews already carries these filters - never duplicate the
-  # predicate list; duplicated predicates drift apart on later edits.)
-  [ $other_reviews[]?
+  # ---- orphan threads: review-less, filtered, newest, capped ----------------
+  ([ $allc | group_by(.thId)[]
+      | select([.[] | select(.pullRequestReview != null)] | length == 0) ]
+    | map(sort_by(.createdAt) | reverse)
+    | sort_by((.[0].createdAt // "0")) | reverse
+    | .[0:$limOrphanThreads]
+    | map(.[0:$limOrphanThreadComments] | map(select(cmt_ok and thread_ok and cmt_fresh)))
+    | flatten) as $orphan_cmts |
+  [ $orphan_cmts[] | select(agent_cmt | not) | fmt_c ] as $unlinked |
+  # ---- other reviews render (selected only, filtered comments) -------------
+  [ $selected[]
+    | select(is_own | not)
     | . as $r
-    | [ ($allc | map(select((.pullRequestReview.databaseId? // null) == $r.databaseId)) | .[] | fmt_c_kept) ] as $lines
+    | (rv_alloc($r.databaseId; false)) as $lines
     | "- " + (.author.login? // "unknown") + " at " + (.submittedAt // "N/A") + " - " + (.state // "UNKNOWN") + " <" + (.url // "") + ">\n"
       + ((.body // "") | tostring | if length > 0 then "  " + . + "\n" else "" end)
-      + (if ($lines | length) > 0 then "  Inline comments:\n" + ($lines | map("  " + .) | join("\n")) + "\n" else "  (no active inline comments)\n" end)
+      + (if ($lines | length) > 0 then "  Inline comments:\n" + ($lines | map(fmt_c) | join("\n")) + "\n" else "  (no active inline comments)\n" end)
   ] | join("") as $othertext |
-  # Standalone (unlinked) active comments not by this agent
-  [ ($allc | .[] | select((.pullRequestReview == null) and thread_ok and cmt_ok and (agent_cmt | not))) | fmt_c ] as $unlinked |
-  ((if ($othertext | length) > 0 then $othertext else "No formal reviews." end)
-   + (if ($unlinked | length) > 0 then "\nStandalone inline comments:\n" + ($unlinked | join("\n")) + "\n" else "" end)) as $threadreviews |
-  ([ $allc[] | select((thread_ok and cmt_ok) | not) ] | length) as $n_filtered |
+  ([ $allc[] | select((cmt_ok and (thread_ok and cmt_fresh)) | not) ] | length) as $n_filtered |
   {
     elevated: ((([$agent_reviews[0:$count][] | review_block(true)] | join("\n")) | if length > 0 then . else "(No previous reviews by this agent yet.)" end) + ($agent_reviews[0:$count] | dismissed_note)),
     history: ((([$agent_reviews[$count:][] | review_block(false)] | join("\n")) | if length > 0 then . else "(No older reviews by this agent.)" end) + ($agent_reviews[$count:] | dismissed_note)),
-    threadreviews: ($threadreviews + ($other_reviews | dismissed_note)),
-    filter_summary: ("<filtering_summary>Context filtering applied: " + ($n_filtered | tostring) + " inline comment(s) excluded (resolved/outdated/hidden threads, or minimized comments in active threads); hidden (minimized) content excluded everywhere, own reviews included; AI-reviewer noise posts (rate-limit/skip notices) and ignored authors dropped. The elevated block bypasses only the resolved/outdated filter, on purpose.</filtering_summary>")
+    threadreviews: ((if ($othertext | length) > 0 then $othertext else "No formal reviews." end)
+   + (if ($unlinked | length) > 0 then "\nStandalone inline comments (no review):\n" + ($unlinked | join("\n")) + "\n" else "" end)
+   + (($selected | map(select(is_own | not))) | dismissed_note)),
+    filter_summary: ("<filtering_summary>Context filtering applied: " + ($n_filtered | tostring) + " inline comment(s) excluded (resolved/outdated/hidden threads, stale anchors, or minimized comments in active threads); hidden (minimized) content excluded everywhere, own reviews included; AI-reviewer noise posts (rate-limit/skip notices) and ignored authors dropped. The elevated block bypasses only the resolved/outdated filter, on purpose. Context budget (newest-first, filter-before-cap): " + ($limReviews | tostring) + " reviews + " + ($limOwn | tostring) + " own safeguard, " + ($limThreadsPerReview | tostring) + " threads/review, " + ($limThreadComments | tostring) + " replies/thread, " + ($limOrphanThreads | tostring) + " orphan threads.</filtering_summary>")
   }
 '); then
   echo "::warning::Discussion block formatting failed for PR #$PR_NUMBER"
@@ -279,5 +339,5 @@ HIST_DELIMITER="GH_AGENT_HISTORY_$(openssl rand -hex 8)"
   printf '%s\n' "$HIST_DELIMITER"
 } >> "$GITHUB_ENV"
 
-echo "Discussion context built for PR #$PR_NUMBER: elevated=${ELEVATED_COUNT} agent review(s), thread context ready."
+echo "Discussion context built for PR #$PR_NUMBER: budget reviews=$LIM_REVIEWS+own$LIM_OWN threads/review=$LIM_THREADS_PER_REVIEW thread-comments=$LIM_THREAD_COMMENTS orphans=${LIM_ORPHAN_THREADS}x${LIM_ORPHAN_THREAD_COMMENTS}; elevated=${ELEVATED_COUNT}."
 exit 0

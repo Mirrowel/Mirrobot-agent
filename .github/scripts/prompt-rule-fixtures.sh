@@ -118,8 +118,22 @@ for w in .github/workflows/bot-reply.yml .github/workflows/pr-review.yml .github
   if grep -q '\["mirrobot",' "$w" 2>/dev/null && grep -q 'BOT_NAMES_JSON' "$w"; then
     echo "FAIL: $w: BOT_NAMES_JSON contains bare mirrobot (name != identity)"; FAILED=1
   fi
-  grep -q 'mirrobot-agent\[bot\]' "$w" || { echo "FAIL: $w: BOT_NAMES_JSON missing app identity"; FAILED=1; }
+  # Identity is no longer hardcoded in workflows: it resolves via bot-config.sh
+  # (variable ∪ /user detection, stock fallback). The wiring contract:
+  grep -q 'BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON' "$w" || { echo "FAIL: $w: identity input passthrough missing"; FAILED=1; }
+  grep -q 'BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS' "$w" || { echo "FAIL: $w: trigger input passthrough missing"; FAILED=1; }
+  grep -q 'bot-config.sh' "$w" || { echo "FAIL: $w: bot-config resolution unwired"; FAILED=1; }
 done
+# The stock identity fallback lives in ONE place (bot-config.sh), with the
+# app variant; bare mirrobot is a TRIGGER stem, never an identity.
+grep -q "FALLBACK_IDENTITIES='\[\"mirrobot-agent\",\"mirrobot-agent\[bot\]\"\]'" .github/scripts/bot-config.sh || { echo "FAIL: bot-config.sh: identity fallback missing"; FAILED=1; }
+grep -q 'FALLBACK_TRIGGERS="mirrobot,mirrobot-agent"' .github/scripts/bot-config.sh || { echo "FAIL: bot-config.sh: trigger fallback missing"; FAILED=1; }
+for w in .github/workflows/bot-reply.yml .github/workflows/pr-review.yml .github/workflows/compliance-check.yml .github/workflows/issue-comment.yml; do
+  grep -q 'AGENT_PAUSED_PARTS_JSON' "$w" || { echo "FAIL: $w: part-pause guard missing"; FAILED=1; }
+done
+grep -q 'CONTEXT_LIMITS_JSON: ${{ vars.CONTEXT_LIMITS_JSON' .github/workflows/pr-review.yml || { echo "FAIL: pr-review context budget unwired"; FAILED=1; }
+grep -q 'CONTEXT_LIMITS_JSON: ${{ vars.CONTEXT_LIMITS_JSON' .github/workflows/bot-reply.yml || { echo "FAIL: bot-reply context budget unwired"; FAILED=1; }
+grep -q 'CONTEXT_LIMITS_JSON: ${{ vars.CONTEXT_LIMITS_JSON' .github/workflows/compliance-check.yml || { echo "FAIL: compliance context budget unwired"; FAILED=1; }
 for w in .github/workflows/bot-reply.yml .github/workflows/pr-review.yml .github/workflows/compliance-check.yml .github/workflows/issue-comment.yml; do
   grep -q 'CONTEXT_IGNORE_AUTHORS' "$w" || { echo "FAIL: $w: CONTEXT_IGNORE_AUTHORS unwired"; FAILED=1; }
   grep -q 'CONTEXT_FILTER_PATTERNS_JSON' "$w" || { echo "FAIL: $w: CONTEXT_FILTER_PATTERNS_JSON unwired"; FAILED=1; }

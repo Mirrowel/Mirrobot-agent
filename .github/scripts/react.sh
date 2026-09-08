@@ -52,17 +52,18 @@ add() { # content
 }
 
 remove_own() { # content — delete OUR bot's reactions of this type (idempotent)
-  # Match the whole identity family (app bot + account + legacy names), not
-  # just this run's login: a transition run may need to clean reactions an
+  # Match the whole RESOLVED identity family (BOT_NAMES_JSON, set by
+  # bot-config.sh: variable ∪ detected login, mirrobot fallback), not just
+  # this run's login: a transition run may need to clean reactions an
   # earlier run posted under the OTHER identity. Logins compare
   # case-insensitively (GitHub canonical casing follows renames).
   gh api -H "Accept: application/vnd.github+json" "$base" --paginate 2>/dev/null \
-    | jq -r --arg bot "$BOT_LOGIN" --arg content "$1" '
+    | jq -r --arg bot "$BOT_LOGIN" --arg content "$1" --argjson family "${BOT_NAMES_JSON:-[\"mirrobot-agent\",\"mirrobot-agent[bot]\"]}" '
       .[]?
       | select(.content == $content)
       | select((.user.login // "" | ascii_downcase) as $l
                | (($bot | ascii_downcase) == $l)
-                 or ((["mirrobot-agent[bot]", "mirrobot-agent", "mirrobot"] | index($l)) != null))
+                 or (($family | map(ascii_downcase) | index($l)) != null))
       | .id' \
     | while read -r rid; do
         [ -n "$rid" ] && gh api --method DELETE "$base/$rid" >/dev/null 2>&1 || true

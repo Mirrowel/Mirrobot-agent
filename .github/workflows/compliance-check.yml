@@ -92,6 +92,9 @@ jobs:
       # BASIC CONFIGURATION
       # -----------------------------------------------------------------------
       PR_NUMBER: ${{ inputs.pr_number }}
+      # Diff truncation ceiling (bytes) - oversized diffs are cut to protect
+      # the first prompt. 500000 = ~500KB.
+      DIFF_MAX_BYTES: '500000'
       # PR-TARGET context only ("is the base a maintained branch?" for the
       # trust-context line) — NOT the scrub anchor. Scrub trust is SPLIT:
       # .github taint anchors to MAIN alone; auto-load content trusts
@@ -101,7 +104,16 @@ jobs:
       # NOTE: bare "mirrobot" is the NAME, not an identity - a human user
       # named mirrobot is NOT the agent (name vs identity, like two people
       # sharing a name). Mention-routing still accepts @mirrobot.
-      BOT_NAMES_JSON: '["mirrobot-agent", "mirrobot-agent[bot]"]'
+      # Identity + triggers (resolved at runtime by bot-config.sh from these
+      # inputs, the repo variables, and account-mode /user detection):
+      #   identities = BOT_IDENTITIES_JSON variable (this agent + its [bot] app
+      #               form) (+) the /user-detected account login; fallback only
+      #               when both are absent.
+      #   trigger stems = BOT_TRIGGERS variable, else identity-derived
+      #               (@stem, /stem-review, /stem-check), else the mirrobot words.
+      BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
+      BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
+      AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
       # Noise filtering for thread context (see fetch-pr-discussion.sh):
       # CONTEXT_IGNORE_AUTHORS - comma logins dropped outright (repo variable)
       # CONTEXT_FILTER_PATTERNS_JSON - JSON array of body regexes dropping
@@ -117,10 +129,11 @@ jobs:
       # (secrets)". Deriving the boolean here (job env, where secrets IS
       # valid) and branching on env.X in step ifs is the sanctioned pattern.
       ACCOUNT_TOKEN_SET: ${{ secrets.ACCOUNT_GH_TOKEN != '' }}
-      COMMENT_FETCH_LIMIT: '20'
-      REVIEW_FETCH_LIMIT: '30'
-      REVIEW_THREAD_FETCH_LIMIT: '30'
-      THREAD_COMMENT_FETCH_LIMIT: '10'
+      # Context budget (CONTEXT_LIMITS_JSON variable, per-key defaults in
+      # fetch-pr-discussion.sh): comments/reviews/own-reviews/
+      # threads-per-review/thread-comments/orphan-threads/
+      # orphan-thread-comments. Newest-first, filter-before-cap.
+      CONTEXT_LIMITS_JSON: ${{ vars.CONTEXT_LIMITS_JSON || '' }}
       
       # -----------------------------------------------------------------------
       # FEATURE TOGGLES
@@ -175,6 +188,22 @@ jobs:
         env:
           PR_NUMBER_INPUT: ${{ inputs.pr_number }}
         run: |
+          # Per-part pause (AGENT_PAUSED_PARTS_JSON): true = this part is
+          # paused (visible green skip); missing key/variable = not paused;
+          # malformed = loud fail. Covers MANUAL dispatches too - the
+          # router checks before dispatching, this is the direct-entry
+          # backstop. AGENT_PAUSED stays the global kill above all parts.
+          _pp="${AGENT_PAUSED_PARTS_JSON:-}"
+          if [ -n "$_pp" ]; then
+            if ! printf '%s' "$_pp" | jq -e 'type == "object"' >/dev/null 2>&1; then
+              echo "::error::AGENT_PAUSED_PARTS_JSON is not a JSON object - fix the variable."
+              exit 1
+            fi
+            if printf '%s' "$_pp" | jq -e --arg k "compliance-check" '.[$k] == true' >/dev/null 2>&1; then
+              echo "::notice::compliance-check is paused (AGENT_PAUSED_PARTS_JSON) - skipping."
+              exit 0
+            fi
+          fi
           if [ -z "$PR_NUMBER_INPUT" ]; then
             echo "::error::pr_number dispatch input is required (got empty value)"
             exit 1
@@ -232,12 +261,13 @@ jobs:
           # Case-insensitive bot-loop guard (logins are case-insensitive;
           # canonical casing follows renames)
           author_lc=$(printf '%s' "$author" | tr 'A-Z' 'a-z')
-          case "$author_lc" in
-            *'[bot]'|mirrobot|mirrobot-agent)
+          # Bot/agent loop guard: generic [bot] suffix OR resolved identity
+          # membership (BOT_NAMES_JSON, case-insensitive - set by bot-config.sh).
+          if printf '%s' "$author_lc" | grep -q '\[bot\]$' \
+             || printf '%s' "$BOT_NAMES_JSON" | jq -e --arg a "$author_lc" 'map(ascii_downcase) | index($a) != null' >/dev/null 2>&1; then
               echo "::notice::Routed comment authored by ${author} (bot/agent); ignoring its identity."
               exit 0
-              ;;
-          esac
+          fi
           {
             echo "RESOLVED_COMMENT_AUTHOR=${author}"
             echo "RESOLVED_ASSOCIATION=${association}"
@@ -309,7 +339,6 @@ jobs:
         id: pr_info
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
-          EXTRA_TRUSTED_USERS: ${{ vars.TRUSTED_AGENT_USERS }}
         run: |
           set -euo pipefail   # a failed files fetch must be LOUD, not an empty audit scope
           # REST only (live-observed 2026-08-17): gh pr view goes through
@@ -449,9 +478,13 @@ jobs:
           cp .github/scripts/scrub-workspace.sh /tmp/scrub-workspace.sh
           cp .github/scripts/share-filter.sh /tmp/share-filter.sh
           cp .github/scripts/fetch-roster.sh /tmp/fetch-roster.sh
+          cp .github/scripts/bot-config.sh /tmp/bot-config.sh
           cp .github/scripts/react.sh /tmp/react.sh
-          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/react.sh /tmp/share-filter.sh
+          cp .github/scripts/opencode-cleanup.sh /tmp/opencode-cleanup.sh
+          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/react.sh /tmp/opencode-cleanup.sh /tmp/share-filter.sh
           bash /tmp/assemble-prompt.sh --verify
+          # Resolve identity + trigger stems (exports BOT_NAMES_JSON / BOT_TRIGGER_STEMS)
+          bash /tmp/bot-config.sh
 
       # NOW it's safe to checkout the PR code (untrusted)
       # The trusted artifacts are already secured in /tmp
@@ -507,7 +540,6 @@ jobs:
         id: diff
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
-          EXTRA_TRUSTED_USERS: ${{ vars.TRUSTED_AGENT_USERS }}
           HEAD_SHA_INPUT: ${{ steps.pr_info.outputs.head_sha }}
         run: |
           mkdir -p "$GITHUB_WORKSPACE/.mirrobot_files"
@@ -534,10 +566,10 @@ jobs:
                 echo "Generated PR diff: $DIFF_LINES lines, $DIFF_SIZE characters"
                 
                 # Truncate if too large (500KB limit)
-                if [ $DIFF_SIZE -gt 500000 ]; then
+                if [ $DIFF_SIZE -gt ${DIFF_MAX_BYTES:-500000} ]; then
                   echo "::warning::PR diff is very large ($DIFF_SIZE chars). Truncating to 500KB."
                   TRUNCATION_MSG=$'\n\n[DIFF TRUNCATED - PR is very large. Showing first 500KB only.]'
-                  DIFF_CONTENT="${DIFF_CONTENT:0:500000}${TRUNCATION_MSG}"
+                  DIFF_CONTENT="${DIFF_CONTENT:0:${DIFF_MAX_BYTES:-500000}}${TRUNCATION_MSG}"
                 fi
                 
                 echo "$DIFF_CONTENT" > "$GITHUB_WORKSPACE/.mirrobot_files/pr_diff.txt"
@@ -548,8 +580,8 @@ jobs:
                 if [ -n "$LAST_COMPLIANCE_SHA" ]; then
                   if INC_CONTENT=$(git diff --patch "$LAST_COMPLIANCE_SHA".."$CURRENT_SHA" 2>/dev/null); then
                     INC_SIZE=${#INC_CONTENT}
-                    if [ $INC_SIZE -gt 500000 ]; then
-                      INC_CONTENT="${INC_CONTENT:0:500000} [INCREMENTAL DIFF TRUNCATED - showing first 500KB only.]"
+                    if [ $INC_SIZE -gt ${DIFF_MAX_BYTES:-500000} ]; then
+                      INC_CONTENT="${INC_CONTENT:0:${DIFF_MAX_BYTES:-500000}} [INCREMENTAL DIFF TRUNCATED - showing first 500KB only.]"
                     fi
                     echo "$INC_CONTENT" > "$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt"
                     echo "incremental_diff_path=$GITHUB_WORKSPACE/.mirrobot_files/incremental_diff.txt" >> $GITHUB_OUTPUT
@@ -756,15 +788,11 @@ jobs:
           # sensitive files shortly after. Hard timeout so a hung boot
           # cannot pin them for the whole run; the post-run step is the
           # belt for fast exits and killed waiters.
-          ( for _ in $(seq 1 180); do [ -f /tmp/.oc-booted ] && break; sleep 1; done
-            sleep 2
-            rm -f /tmp/.oc-booted ~/.config/opencode/opencode.json
-            rm -rf ~/.mirrobot-plugins ) &
+          ( bash /tmp/opencode-cleanup.sh waiter ) &
           opencode run --share - < "$TMP_DIR/assembled_prompt.txt" 2>&1 | bash /tmp/share-filter.sh
           # Fast-exit belt (the step runs under -e; on failure the
           # always() post-run step below is the cleanup guarantee).
-          rm -f /tmp/.oc-booted ~/.config/opencode/opencode.json
-          rm -rf ~/.mirrobot-plugins
+          bash /tmp/opencode-cleanup.sh now
 
       - name: Post-run cleanup and usage stats
         # Guaranteed removal of the config/plugin files on every path plus
@@ -773,8 +801,7 @@ jobs:
         # expose model names).
         if: always()
         run: |
-          rm -f ~/.config/opencode/opencode.json /tmp/.oc-booted
-          rm -rf ~/.mirrobot-plugins
+          bash /tmp/opencode-cleanup.sh now
           OC="$(command -v opencode || true)"
           if [ -z "$OC" ] && [ -x "$HOME/.local/bin/opencode" ]; then OC="$HOME/.local/bin/opencode"; fi
           if [ -n "$OC" ]; then
@@ -824,7 +851,6 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
-          EXTRA_TRUSTED_USERS: ${{ vars.TRUSTED_AGENT_USERS }}
           BOT_NAMES_JSON: ${{ env.BOT_NAMES_JSON }}
           REVIEWER_MENTIONS: ${{ steps.pr_info.outputs.reviewer_mentions }}
           PR_AUTHOR: ${{ steps.pr_info.outputs.pr_author }}
@@ -871,7 +897,6 @@ jobs:
         # loudly (the no-candidate path above exits 0 softly).
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
-          EXTRA_TRUSTED_USERS: ${{ vars.TRUSTED_AGENT_USERS }}
           BOT_NAMES_JSON: ${{ env.BOT_NAMES_JSON }}
           PR_HEAD_SHA: ${{ steps.pr_info.outputs.head_sha }}
         run: |

@@ -52,7 +52,10 @@
 //   PLATFORM_REPO — "owner/name" of the repo running mention-poller.yml
 
 const GH = "https://api.github.com";
-const BOT_IDENTITIES = ["mirrobot-agent", "mirrobot-agent[bot]"];
+// Self/mention identity is DERIVED from the BOT_PAT's own /user (guest mode
+// is account-only, so /user answers) and cached in DO storage — no hardcoded
+// logins here, so an account rename needs no worker redeploy.
+const LOGIN_TTL_MS = 24 * 60 * 60_000;
 const REASONS = new Set(["mention", "review_requested", "subscribed", "comment"]);
 const ROSTER_TTL_MS = 10 * 60_000;
 const VAR_TTL_MS = 5 * 60_000;
@@ -131,6 +134,20 @@ async function getRoster(env, state) {
 }
 
 // ---- pre-filter for ONE notification. Deny-only, fail-open.
+async function getBotLogin(env, state) {
+  const cached = await state.storage.get("botLoginCache");
+  if (cached?.login && Date.now() - cached.ts < LOGIN_TTL_MS) return cached.login;
+  const res = await gh("/user", env.BOT_PAT);
+  if (!res.ok) {
+    // fail-open with the cache we have (may be null); a broken token fails
+    // loudly at the poll step anyway
+    return cached?.login || null;
+  }
+  const login = (await res.json()).login;
+  await state.storage.put("botLoginCache", { login, ts: Date.now() });
+  return login;
+}
+
 async function prefilter(env, state, n, roster) {
   try {
     // review_requested: authority = WHO clicked the button (timeline actor)
@@ -158,8 +175,12 @@ async function prefilter(env, state, n, roster) {
     const author = String(content.user?.login || "").toLowerCase();
     const body = String(content.body || "").toLowerCase();
 
-    if (BOT_IDENTITIES.includes(author)) return { decline: "self" };
-    if (!body.includes("@mirrobot-agent")) return { decline: "token" };
+    const botLogin = await getBotLogin(env, state);
+    const selfSet = new Set(
+      botLogin ? [botLogin.toLowerCase(), `${botLogin.toLowerCase()}[bot]`] : []
+    );
+    if (selfSet.has(author)) return { decline: "self" };
+    if (!botLogin || !body.includes(`@${botLogin.toLowerCase()}`)) return { decline: "token" };
     if (roster.ok && !roster.names.has(author)) return { decline: "allowlist" };
     return { pass: true };
   } catch (e) {

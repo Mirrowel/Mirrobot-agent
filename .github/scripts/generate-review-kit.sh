@@ -36,7 +36,7 @@ case "$PR" in ''|*[!0-9]*) echo "KIT ERROR: PR number must be numeric, got '$PR'
 # Lists are LOWERCASE by convention; every comparison downcases the login
 # side - GitHub logins are case-insensitive and the API returns canonical
 # casing (a rename rewrites history's casing too).
-BOT_NAMES_JSON="${BOT_NAMES_JSON:-[\"mirrobot-agent[bot]\",\"mirrobot\",\"mirrobot-agent\"]}"
+BOT_NAMES_JSON="${BOT_NAMES_JSON:-[\"mirrobot-agent\",\"mirrobot-agent[bot]\"]}"
 KIT_DIR="/tmp/kit/$PR"
 mkdir -p "$KIT_DIR" /tmp/instructions
 
@@ -68,7 +68,7 @@ LAST_REVIEWED_SHA=$(printf '%s' "$reviews_json" | jq -s -r \
   add
   | map(select((.user.login // "" | ascii_downcase) as $u | $bots | index($u)))
   | sort_by(.submitted_at)
-  | map(.body // "" | scan("last_reviewed_sha:[a-f0-9]+"))
+  | map(.body // "" | scan("last_reviewed_sha:[a-f0-9]{7,40}"))
   | flatten
   | last // ""
   | ltrimstr("last_reviewed_sha:")')
