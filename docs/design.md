@@ -1,6 +1,6 @@
-# Architecture
+# Design
 
-How the pieces fit, what executes where, and the reasoning behind both. This is the document to read before changing anything structural — every rule below exists because its absence hurt once.
+The principles — how the pieces fit, what executes where, and the reasoning behind both. This is the document to read before changing anything structural — every rule below exists because its absence hurt once. (The companion map of the code itself — layers, entry points, file inventory — is [`ARCHITECTURE.md`](../ARCHITECTURE.md); this file is the *why*, that one is the *what*.)
 
 ## The execution map
 

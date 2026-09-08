@@ -2,7 +2,7 @@
 
 This guide takes you from "I just found this repo" to "the agent is working in my repository" — and tells you exactly which parts are yours to change and which to leave alone. Budget about 10 minutes of clicking for the setup itself.
 
-If you want to understand *how* the platform works before installing it, read [architecture.md](architecture.md) first. If you know what you're doing and just want the knob reference, that's [configuration.md](configuration.md).
+If you want to understand *how* the platform works before installing it, read [design.md](design.md) first. If you know what you're doing and just want the knob reference, that's [configuration.md](configuration.md).
 
 ## What you end up with
 
@@ -100,7 +100,7 @@ Every agent session is one `opencode run` against your provider. Typical events 
 
 ## Where to go next
 
-- [architecture.md](architecture.md) — what executes where, the life of a PR, the trust model
+- [design.md](design.md) — what executes where, the life of a PR, the trust model
 - [configuration.md](configuration.md) — every variable and secret, with examples
 - [security.md](security.md) — the threat model this platform is built against (worth reading before you open it to strangers)
 - [workflows/](workflows/) — one page per workflow

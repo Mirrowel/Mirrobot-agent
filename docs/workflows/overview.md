@@ -17,13 +17,13 @@ One page per workflow. Each page covers: what triggers it, where it executes fro
 
 ## The shared lifecycle
 
-**Base-branch sync doctrine** (for the two workflows above that run from a PR's base branch): platform changes land on main; the integration branch ("dev" here — whatever yours is named) needs no per-batch sync, and when it *should* be current — the stub or gate changed — sync with `git merge main` into it, never copy-commits. Full story: [architecture.md](../architecture.md#the-update-doctrine).
+**Base-branch sync doctrine** (for the two workflows above that run from a PR's base branch): platform changes land on main; the integration branch ("dev" here — whatever yours is named) needs no per-batch sync, and when it *should* be current — the stub or gate changed — sync with `git merge main` into it, never copy-commits. Full story: [design.md](../design.md#the-update-doctrine).
 
 Several mechanics repeat across the agent workflows; documented once here, referenced everywhere:
 
 - **Bot setup** (composite action `.github/actions/bot-setup/`) resolves the identity (account PAT or App token), configures git, writes the OpenCode config, applies per-agent model overrides, materializes plugin files, registers credential-leaf masks, and installs opencode.
 - **Trusted artifacts** — prompts, scripts, the security brief — are copied to `/tmp` *before* any PR-head checkout. After a checkout, the workspace belongs to the PR; `/tmp` stays main's.
-- **The scrub** runs after every checkout (see [architecture.md](../architecture.md#the-trust-model-split-trust)).
+- **The scrub** runs after every checkout (see [design.md](../design.md#the-trust-model-split-trust)).
 - **Share-link capture** — every agent session runs with `--share` and its output is piped through `share-filter.sh`: the raw URL is masked and re-published encrypted. See [security.md](../security.md#encrypted-share-links).
 - **Config lifecycle** — config + plugins are deleted seconds after opencode boots; an `if: always()` step guarantees removal on every exit path. Each run's step summary carries a bare `opencode stats` usage block.
 - **Reactions** — comments get 👀 → 🚀/😕 (three-stage); PR/issue bodies get 👀 only. The agent may add its own tasteful reactions.
