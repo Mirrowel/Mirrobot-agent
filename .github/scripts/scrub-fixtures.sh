@@ -831,10 +831,10 @@ BC_OUT2=$(BOT_IDENTITIES_INPUT='a*' BOT_DETECTED_LOGIN='' BOT_TRIGGERS_INPUT='' 
 check "identity: glob-stem variable passes through for route escaping" \
   'export BOT_NAMES_JSON=\[\"a\*\"\]' \
   "$(printf '%s\n' "$BC_OUT2" | grep '^export BOT_NAMES_JSON=')"
-BC_OUT3=$(BOT_IDENTITIES_INPUT='["legacy"]' BOT_DETECTED_LOGIN='' BOT_TRIGGERS_INPUT='' bash "$SCRIPT_DIR/bot-config.sh" --export 2>"$TMP/bc3.err"; echo "rc=$?")
+BC_OUT3=$(BOT_IDENTITIES_INPUT='["legacy"]' BOT_DETECTED_LOGIN='' BOT_TRIGGERS_INPUT='' bash "$SCRIPT_DIR/bot-config.sh" --export 2>"$WORK/bc3.err"; echo "rc=$?")
 BC3_EVAL=$(eval "$(printf '%s\n' "$BC_OUT3" | grep '^export ')" 2>/dev/null; printf '%s' "$BOT_NAMES_JSON")
 check "identity: retired JSON-shaped value ignored (falls back, warns)" yes \
-  "$( [ "$BC3_EVAL" = '["mirrobot-agent","mirrobot-agent[bot]"]' ] && grep -q 'Migrate the variable' "$TMP/bc3.err" && echo yes || echo no)"
+  "$( [ "$BC3_EVAL" = '["mirrobot-agent","mirrobot-agent[bot]"]' ] && grep -q 'Migrate the variable' "$WORK/bc3.err" && echo yes || echo no)"
 
 # ---- runtime env pairing: a used $VAR must be defined upstream -------------
 # Regression class (live): an audit-fix commit deleted an env entry but kept
