@@ -87,9 +87,9 @@ flowchart TB
     REVIEW & BOT & COMPL & ISSUE --> engine
 ```
 
-**The core security principle: PR content is only ever data.** Privileged workflows always execute the default branch's copy of themselves; a malicious PR cannot redefine the pipeline that reviews it. Untrusted text never touches a shell except through environment variables. Everything the agent auto-loads from a checkout (instruction files, agent configs, skills) is kept only if byte-identical to your trusted branches — otherwise removed, logged, and quarantined for the agent to read as data.
+**The core security principle: PR content is only ever data.** Privileged workflows always execute the default branch's copy of themselves; a malicious PR cannot redefine the pipeline that reviews it. Untrusted text never touches a shell except through environment variables. Everything the agent auto-loads from a checkout (instruction files, agent configs, skills) survives only when its bytes match a state a trusted branch (`main`, or `dev` for repo doctrine) actually shipped — otherwise it's removed, logged, and quarantined for the agent to read as data. The details are worth understanding before you open this to strangers: [security](docs/security.md).
 
-And the platform checks itself: **52 security fixtures + 325 pinned prompt rules** run in CI on every change to `.github/`, so drift fails loudly instead of silently.
+And the platform checks itself: **193 security fixtures + 339 pinned prompt rules** run in CI on every change to `.github/`, so drift fails loudly instead of silently.
 
 ---
 
@@ -407,10 +407,10 @@ python decrypt_share_link.py setup          # keygen + push SHARE_LINK_PUBKEY se
 │   ├── security-brief.md             # read first in every agent session
 │   ├── parts/                        # 33 instruction parts (the prose)
 │   └── manifests/                    # 13 mode manifests (the assembly order)
-├── scripts/                          # 9 scripts: assembler, scrub, review kit,
+├── scripts/                          # 11 scripts: assembler, scrub, review kit,
 │                                     # discussion fetch, roster, router, reactions,
-│                                     # + the two CI batteries
-└── workflows/                        # the 8 workflows above
+│                                     # share filter, + the two CI batteries
+└── workflows/                        # the 10 workflows above
 
 minify_json_secret.py                 # JSON → single-line secret string
 ```
@@ -421,11 +421,24 @@ minify_json_secret.py                 # JSON → single-line secret string
 bash .github/scripts/assemble-prompt.sh --verify        # manifests resolve
 bash .github/scripts/assemble-prompt.sh --list          # see every mode
 bash .github/scripts/assemble-prompt.sh pr-review-first # read a full prompt
-bash .github/scripts/prompt-rule-fixtures.sh            # 325 pins green
-bash .github/scripts/scrub-fixtures.sh                  # 52 fixtures green
+bash .github/scripts/prompt-rule-fixtures.sh            # 339 pins green
+bash .github/scripts/scrub-fixtures.sh                  # 193 fixtures green
 ```
 
 **Contributing:** fork → branch → change → batteries green → PR. Your PR will get the full treatment — automated review and compliance check before merge.
+
+---
+
+## Documentation
+
+The README stays the overview. Everything deep lives in [`docs/`](docs/):
+
+- **[Getting started](docs/getting-started.md)** — the fork-and-adopt guide: identity, secrets, branch protection, first hello, what's yours vs. machinery
+- **[Architecture](docs/architecture.md)** — the execution map (what runs from where and why), the life of a PR, the split-trust model, the update doctrine
+- **[Configuration](docs/configuration.md)** — every variable and secret, with examples and interaction rules
+- **[Customization](docs/customization.md)** — prompts, the compliance watch-list, permission profile, renaming the agent, adding a mode
+- **[Security](docs/security.md)** — the threat model, defense by defense, including the honest residuals
+- **[Workflows](docs/workflows/)** — one page per workflow: triggers, knobs, failure meanings, how to test each
 
 ---
 
