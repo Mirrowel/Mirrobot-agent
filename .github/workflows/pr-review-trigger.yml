@@ -137,7 +137,7 @@ jobs:
           # Identity for the reviewer gate (the DECIDE step consumes it):
           # variable with the stock fallback (no bot token here to
           # /user-detect with).
-          BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES_JSON || '["mirrobot-agent", "mirrobot-agent[bot]"]' }}
+          BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES || 'mirrobot-agent, mirrobot-agent[bot]' }}
         run: |
           review=false
           if [ "$DRAFT" != "true" ]; then
@@ -147,10 +147,16 @@ jobs:
                 ;;
               review_requested)
                 # Fires for EVERY reviewer addition; act only when WE are
-                # the requested reviewer. Identity membership comes from
-                # BOT_NAMES_JSON (variable passthrough with the stock
-                # fallback; the stub holds no bot token so it cannot
-                # /user-detect - the variable is authoritative here).
+                # the requested reviewer.
+                # BOT_NAMES_JSON arrives as a FLAT comma list (variable and
+                # stock fallback; platform format doctrine). Normalize for
+                # the jq membership check below. The stub holds no bot
+                # token (no /user detection); the variable is
+                # authoritative here.
+                case "$BOT_NAMES_JSON" in
+                  '['*) ;;
+                  *) BOT_NAMES_JSON=$(printf '%s' "${BOT_IDENTITIES_INPUT:-$BOT_NAMES_JSON}" | tr ',;' '\n\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF' | jq -R . | jq -sc .) ;;
+                esac
                 rl=$(printf '%s' "$REQUESTED_LOGIN" | tr 'A-Z' 'a-z')
                 if printf '%s' "$BOT_NAMES_JSON" | jq -e --arg r "$rl" \
                      'map(ascii_downcase) | index($r) != null' >/dev/null 2>&1; then

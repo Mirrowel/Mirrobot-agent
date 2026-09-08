@@ -11,27 +11,27 @@
 #   IDENTITY ("is this content authored by ME?"): loop guards, review
 #   attribution, FIRST/FOLLOW-UP markers, footer verification, reaction
 #   cleanup. Resolution:
-#     identities = vars.BOT_IDENTITIES_JSON (if set/valid JSON array)
-#                ∪ BOT_DETECTED_LOGIN     (account mode: /user from
-#                                          bot-setup; absent otherwise)
-#     fallback ["mirrobot-agent", "mirrobot-agent[bot]"] applies ONLY when
+#     identities = vars.BOT_IDENTITIES (if set; comma-separated logins)
+#                ∪ BOT_DETECTED_LOGIN (account mode: /user from
+#                                      bot-setup; absent otherwise)
+#     fallback "mirrobot-agent, mirrobot-agent[bot]" applies ONLY when
 #     both sources are empty. Bare "mirrobot" is NEVER an identity (the
 #     username is taken; a spoofed account must never be treated as self).
 #     NO "[bot]" twin is EVER synthesized from a detected login: app slugs
 #     and usernames are separate GitHub namespaces, so name shape proves
-#     nothing — a twin is trusted ONLY when explicitly declared in the
-#     variable (operator controls that app) or shipped in the stock
-#     fallback (this project verifiably owns both stock identities).
+#     nothing (a twin is trusted ONLY when explicitly declared in the
+#     variable — operator controls that app — or shipped in the stock
+#     fallback, which this project verifiably owns).
 #
 #   TRIGGERS ("what text summons ME?"): routing words. Resolution:
 #     stems = vars.BOT_TRIGGERS (comma-separated raw names, if set)
 #           else derived from the resolved identity names (strips [bot])
 #     fallback "mirrobot, mirrobot-agent" only when nothing above yields.
 #     From every stem the router derives: @<stem> (mention), /<stem>-review,
-#     /<stem>_review, /<stem>-check, /<stem>_check. A stem is a RAW NAME —
+#     /<stem>_review, /<stem>-check, /<stem>_check. A stem is a RAW NAME:
 #     no @ or / prefix in the variable (the prefixes are the derivation).
 #
-# env in : BOT_IDENTITIES_INPUT (vars.BOT_IDENTITIES_JSON passthrough, may be '')
+# env in : BOT_IDENTITIES_INPUT (vars.BOT_IDENTITIES passthrough, may be '')
 #          BOT_DETECTED_LOGIN   (account-mode /user login, may be unset)
 #          BOT_TRIGGERS_INPUT   (vars.BOT_TRIGGERS passthrough, may be '')
 # env out: BOT_NAMES_JSON    resolved identity array (legacy-compatible name:
@@ -53,21 +53,31 @@ IN_TRIG="${BOT_TRIGGERS_INPUT:-}"
 
 # ---- identities: variable ∪ detection, fallback only when both empty -----
 # An identity set is ONLY ever: what the operator EXPLICITLY declared in
-# BOT_IDENTITIES_JSON (their claim of control — include an app's FULL login
-# like "name[bot]" there iff you registered that app) ∪ what a credential
-# we hold PROVES (the account /user login). NEVER a synthesized "[bot]"
-# twin of the detected login — GitHub app slugs and usernames are separate
+# BOT_IDENTITIES (their claim of control; include an app's FULL login like
+# "name[bot]" there iff you registered that app) ∪ what a credential we
+# hold PROVES (the account /user login). NEVER a synthesized "[bot]" twin
+# of the detected login — GitHub app slugs and usernames are separate
 # namespaces, so name shape proves nothing (an attacker can own the app
 # "name[bot]" while the operator owns the account "name").
+# Format: comma-separated logins (a token list; logins cannot contain
+# commas — the platform format doctrine for simple-token lists).
 ident_note="fallback"
 IDENT_RAW=""
-if [ -n "$(printf '%s' "$IN_IDENT" | tr -d '[:space:]')" ]; then
-  if jq -e 'type == "array" and all(.[]; type == "string")' <<< "$IN_IDENT" >/dev/null 2>&1; then
-    while IFS= read -r item; do IDENT_RAW="${IDENT_RAW}${item}"$'\n'; done < <(jq -r '.[]' <<< "$IN_IDENT")
-    ident_note="variable"
-  else
-    echo "::warning::bot-config: BOT_IDENTITIES_JSON variable is not a JSON array of strings — ignoring it (fix the variable)." >&2
-  fi
+if [ -n "$(printf '%s' "$IN_IDENT" | tr -d '[:space:],')" ]; then
+  case "$IN_IDENT" in
+    '['*|'{'*)
+      # Guard against the retired JSON-era value shape: treated as ABSENT
+      # (never parsed as one garbage token like ["Mirrobot-Agent"]).
+      echo "::warning::bot-config: BOT_IDENTITIES is a comma-separated list now (was JSON). Migrate the variable; e.g. 'mybot, mybot[bot]'. Ignoring the JSON-shaped value." >&2
+      ;;
+    *)
+      ident_tokens=$(printf '%s' "$IN_IDENT" | tr ',;' '\n\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF')
+      if [ -n "$ident_tokens" ]; then
+        while IFS= read -r item; do IDENT_RAW="${IDENT_RAW}${item}"$'\n'; done <<< "$ident_tokens"
+        ident_note="variable"
+      fi
+      ;;
+  esac
 fi
 if [ -n "$DETECTED" ]; then
   IDENT_RAW="${IDENT_RAW}${DETECTED}"$'\n'
@@ -96,7 +106,7 @@ else
   BOT_IDENTITY_LIST="mirrobot-agent,mirrobot-agent[bot]"
   BOT_IDENTITY_PRIMARY="mirrobot-agent"
   identity_sourced=0
-  ident_note="fallback (set BOT_IDENTITIES_JSON to override)"
+  ident_note="fallback (set BOT_IDENTITIES to override)"
 fi
 
 # ---- triggers: variable > identity-derived > fallback ---------------------

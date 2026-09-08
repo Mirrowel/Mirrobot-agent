@@ -820,15 +820,21 @@ check "identity: worker never synthesizes a [bot] twin (template form)" no \
 check "identity: worker never builds a [bot] twin (concat form)" no \
   "$(grep -qE '\+ *."[[]bot[]]"|"\[bot\]" *\) *\+|login *\+ *`\[bot\]`' "$WORKER" && echo yes || echo no)"
 check "identity: worker self set includes declared variable" yes \
-  "$(grep -q 'BOT_IDENTITIES_JSON' "$WORKER" && echo yes || echo no)"
+  "$(grep -q 'actions/variables/BOT_IDENTITIES' "$WORKER" && echo yes || echo no)"
+check "identity: worker reads the FLAT variable (no JSON endpoint)" no \
+  "$(grep -q 'actions/variables/BOT_IDENTITIES_JSON' "$WORKER" && echo yes || echo no)"
 BC_OUT=$(BOT_IDENTITIES_INPUT='' BOT_DETECTED_LOGIN='zeta-acct' BOT_TRIGGERS_INPUT='' bash "$SCRIPT_DIR/bot-config.sh" --export 2>/dev/null; echo "rc=$?")
 check "identity: bot-config detected-only set has NO twin" \
   'export BOT_NAMES_JSON=\[\"zeta-acct\"\]' \
   "$(printf '%s\n' "$BC_OUT" | grep '^export BOT_NAMES_JSON=')"
-BC_OUT2=$(BOT_IDENTITIES_INPUT='["a*"]' BOT_DETECTED_LOGIN='' BOT_TRIGGERS_INPUT='' bash "$SCRIPT_DIR/bot-config.sh" --export 2>/dev/null; echo "rc=$?")
+BC_OUT2=$(BOT_IDENTITIES_INPUT='a*' BOT_DETECTED_LOGIN='' BOT_TRIGGERS_INPUT='' bash "$SCRIPT_DIR/bot-config.sh" --export 2>/dev/null; echo "rc=$?")
 check "identity: glob-stem variable passes through for route escaping" \
   'export BOT_NAMES_JSON=\[\"a\*\"\]' \
   "$(printf '%s\n' "$BC_OUT2" | grep '^export BOT_NAMES_JSON=')"
+BC_OUT3=$(BOT_IDENTITIES_INPUT='["legacy"]' BOT_DETECTED_LOGIN='' BOT_TRIGGERS_INPUT='' bash "$SCRIPT_DIR/bot-config.sh" --export 2>"$TMP/bc3.err"; echo "rc=$?")
+BC3_EVAL=$(eval "$(printf '%s\n' "$BC_OUT3" | grep '^export ')" 2>/dev/null; printf '%s' "$BOT_NAMES_JSON")
+check "identity: retired JSON-shaped value ignored (falls back, warns)" yes \
+  "$( [ "$BC3_EVAL" = '["mirrobot-agent","mirrobot-agent[bot]"]' ] && grep -q 'Migrate the variable' "$TMP/bc3.err" && echo yes || echo no)"
 
 # ---- runtime env pairing: a used $VAR must be defined upstream -------------
 # Regression class (live): an audit-fix commit deleted an env entry but kept

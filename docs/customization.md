@@ -80,14 +80,14 @@ What you should **not** need to edit: the router mechanics, the scrub algorithm,
 
 If "mirrobot" isn't your bot's name, it's **two variables and a sweep**; the machinery derives itself:
 
-1. **`BOT_IDENTITIES_JSON`** (who the agent *is*: `["mybot", "mybot[bot]"]`, i.e. your account login and, **only if you registered that app**, its full `[bot]` login; the twin is never assumed; see [configuration](configuration.md#bot_identities_json)). Loop guards, review attribution, and footer verification match this set case-insensitively. In account mode the login is also detected live from the token, so renames take effect immediately; the variable covers the rest and app-mode installs.
+1. **`BOT_IDENTITIES`** (who the agent *is*: `mybot, mybot[bot]`, i.e. your account login and, **only if you registered that app**, its full `[bot]` login; the twin is never assumed; see [configuration](configuration.md#bot_identities)). Loop guards, review attribution, and footer verification match this set case-insensitively. In account mode the login is also detected live from the token, so renames take effect immediately; the variable covers the rest and app-mode installs.
 2. **`BOT_TRIGGERS`** (what *summons* it): raw stems like `mybot`; every stem derives `@mybot`, `/mybot-review`, `/mybot-check` automatically (see [configuration](configuration.md#bot_triggers)). Multiple stems are fine.
 3. **Prompt prose**: parts refer to the agent by name; a sweep of `mirrobot` → your name in `parts/` keeps the voice consistent.
 4. **The worker** (if guest mode) needs nothing; it derives the account login from its own token.
 
 That is the whole hard surface: Git attribution is derived from the account/App automatically. The battery pins reference `mirrobot-agent` as the stock fallback; if you're maintaining a fork of the platform itself, update the fallbacks in `bot-config.sh` and the fixture pins in the same commit.
 
-**One nuance:** cross-repo guest summons key off the *identities* (the account is what gets mentioned abroad), not the trigger stems; after a rename, set `BOT_IDENTITIES_JSON` even if your triggers differ.
+**One nuance:** cross-repo guest summons key off the *identities* (the account is what gets mentioned abroad), not the trigger stems; after a rename, set `BOT_IDENTITIES` even if your triggers differ.
 
 **Name vs identity, preserved everywhere:** a *name* is what people type (`@mirrobot` routes); an *identity* is a login the agent treats as itself. Bare `mirrobot` is a trigger word, never an identity; a user who registers that username is not the agent.
 

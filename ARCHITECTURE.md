@@ -12,7 +12,7 @@
 - **Split-trust workspace scrub**: auto-load content (e.g. `AGENTS.md`, `.claude/`) survives only when its bytes match a state a trust branch (`main` ∪ `dev`) shipped; `.github` platform changes trigger a taint alarm anchored to `main` alone
 - **Prompts are parts**: 33 instruction parts assembled per mode (13 manifests) by a fail-closed assembler; load-bearing wording is pinned by CI fixtures
 - **Dual identity, automatic**: `ACCOUNT_GH_TOKEN` present selects account mode; otherwise `BOT_APP_ID` + `BOT_PRIVATE_KEY` selects App mode; neither fails fast
-- **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES_JSON` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
+- **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
 - **Graceful pause ladder**: one kill switch (`AGENT_PAUSED`) plus per-part switches (`AGENT_PAUSED_PARTS_JSON`); the status stubs deliberately keep running so a paused agent never makes a PR mergeable
 - **Batteries in CI**: 193 security fixtures + 339 pinned prompt rules run on every `.github/` change, so drift turns CI red
 
@@ -113,7 +113,7 @@
 **Identity & trigger resolution (bot-config.sh):**
 - Purpose: One resolver for "who am I" and "what summons me", consumed by the router, the mention pipeline, the stub, and every loop guard
 - Location: `.github/scripts/bot-config.sh`
-- Pattern: Identities = `BOT_IDENTITIES_JSON` variable ∪ the live `/user` login (account mode), with the stock names as fallback only when both are absent; trigger stems = `BOT_TRIGGERS` variable, else identity-derived, else the stock words; each stem derives `@stem`, `/stem-review`, `/stem-check` forms. No identity or trigger word is hardcoded in workflows, scripts, or the worker; a renamed or forked bot changes one variable
+- Pattern: Identities = `BOT_IDENTITIES` variable (comma-separated logins) ∪ the live `/user` login (account mode), with the stock names as fallback only when both are absent; trigger stems = `BOT_TRIGGERS` variable, else identity-derived, else the stock words; each stem derives `@stem`, `/stem-review`, `/stem-check` forms. No identity or trigger word is hardcoded in workflows, scripts, or the worker; a renamed or forked bot changes one variable
 
 **Review kit:**
 - Purpose: Self-serve review context for ANY PR, from any thread, used both by `pr-review.yml` and by the agent itself on demand ("review PR #42" from an unrelated issue)

@@ -55,7 +55,7 @@ const GH = "https://api.github.com";
 // Self/mention identity: DERIVED from the BOT_PAT's own /user (guest mode
 // is account-only, so /user answers), cached in DO storage — plus any
 // identities the operator EXPLICITLY declared in the repo's
-// BOT_IDENTITIES_JSON variable (read via DISPATCH_PAT like
+// BOT_IDENTITIES variable (read via DISPATCH_PAT like
 // FOREIGN_MENTIONS_USERS). NO "[bot]" twin is ever synthesized: GitHub app
 // slugs and usernames are SEPARATE namespaces — anyone can register an app
 // named like the account — so a `login[bot]` actor is "us" only when the
@@ -156,7 +156,7 @@ async function getBotLogin(env, state) {
 
 // The self-identity set: the DETECTED account login (credential-proven —
 // it is whoever BOT_PAT authenticates as) ∪ every entry the operator
-// EXPLICITLY declared in BOT_IDENTITIES_JSON (their claim of control —
+// EXPLICITLY declared in BOT_IDENTITIES (their claim of control —
 // e.g. the app twin "name[bot]" they registered). Deliberately NO
 // synthesized twin: name shape proves nothing (separate namespaces —
 // an attacker can own `name[bot]` while the operator owns `name`).
@@ -173,20 +173,25 @@ async function getSelfSet(env, state) {
     return { set: new Set(names), login };
   }
   try {
-    const res = await gh(`/repos/${env.PLATFORM_REPO}/actions/variables/BOT_IDENTITIES_JSON`, env.DISPATCH_PAT);
+    const res = await gh(`/repos/${env.PLATFORM_REPO}/actions/variables/BOT_IDENTITIES`, env.DISPATCH_PAT);
     if (res.status === 404) {
       await state.storage.put("identVarCache", { value: [], ts: Date.now() });
     } else if (!res.ok) {
       console.log(`[poll] identity variable unreadable ${res.status} (fail-open, detection-only)`);
       await state.storage.put("identVarCache", { value: [], ts: Date.now() });
     } else {
-      const val = (await res.json()).value || "[]";
-      const parsed = JSON.parse(val); // throws on admin typo -> catch below
-      const clean = Array.isArray(parsed)
-        ? parsed.filter((n) => typeof n === "string" && n).map((n) => n.toLowerCase())
-        : [];
-      await state.storage.put("identVarCache", { value: clean, ts: Date.now() });
-      for (const n of clean) names.push(n);
+      const val = (await res.json()).value || "";
+      // Format doctrine: flat comma list of logins. A JSON-shaped value is
+      // the retired format: ignore loudly and cache empty (detection-only)
+      // rather than parsing garbage tokens like ["mybot"].
+      if (val.trim().startsWith("[") || val.trim().startsWith("{")) {
+        console.log("[poll] identity variable is JSON-shaped (retired format); migrate to a flat comma list. Caching empty (detection-only)");
+        await state.storage.put("identVarCache", { value: [], ts: Date.now() });
+      } else {
+        const clean = val.split(/[,;\s]+/).filter(Boolean).map((n) => n.toLowerCase());
+        await state.storage.put("identVarCache", { value: clean, ts: Date.now() });
+        for (const n of clean) names.push(n);
+      }
     }
   } catch (e) {
     console.log(`[poll] identity variable unreadable (fail-open, detection-only): ${e}`);

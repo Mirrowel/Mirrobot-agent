@@ -124,7 +124,7 @@ for w in .github/workflows/bot-reply.yml .github/workflows/pr-review.yml .github
   fi
   # Identity is no longer hardcoded in workflows: it resolves via bot-config.sh
   # (variable ∪ /user detection, stock fallback). The wiring contract:
-  grep -q 'BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON' "$w" || { echo "FAIL: $w: identity input passthrough missing"; FAILED=1; }
+  grep -q 'BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES' "$w" || { echo "FAIL: $w: identity input passthrough missing"; FAILED=1; }
   grep -q 'BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS' "$w" || { echo "FAIL: $w: trigger input passthrough missing"; FAILED=1; }
   grep -q 'bot-config.sh' "$w" || { echo "FAIL: $w: bot-config resolution unwired"; FAILED=1; }
 done

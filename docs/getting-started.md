@@ -91,7 +91,7 @@ If nothing happens, check `Actions` in order: **Agent Router** ran (comments) or
 | Agent behavior / personality / rules | `.github/prompts/parts/*.md` | All prompt prose lives here. See [customization.md](customization.md#prompts) |
 | Permission profile | inside your `OPENCODE_CONFIG_JSON` secret | What the agent may execute. Template in `permissions.example.json` |
 | Models per agent | `AGENT_MODELS_JSON` variable | [configuration.md](configuration.md#variables) |
-| Identity + trigger words | `BOT_IDENTITIES_JSON` + `BOT_TRIGGERS` variables | Only when renaming. [customization.md](customization.md#renaming-the-agent) |
+| Identity + trigger words | `BOT_IDENTITIES` + `BOT_TRIGGERS` variables | Only when renaming. [customization.md](customization.md#renaming-the-agent) |
 | Everything else | | Machinery. It's consistent across repos; resist forking it per-repo unless you mean to maintain that fork. |
 
 ## Cost expectations

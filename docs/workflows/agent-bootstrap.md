@@ -9,7 +9,7 @@ One-dispatch setup: makes the platform's control panel *exist*.
 
 Creates every documented **variable** with its safe-off default or prefilled template:
 
-`AGENT_PAUSED=false`, `AGENT_PAUSED_PARTS_JSON` (all four parts `false`), the empty `AGENT_MODELS_JSON` template, `BOT_IDENTITIES_JSON` (account mode: the /user-derived login; app mode: the stock fallback names), `BOT_TRIGGERS="mirrobot, mirrobot-agent"` (both stems, showing the multi-stem shape, so `/mirrobot-review` and `/mirrobot-agent-review` both work), `CONTEXT_LIMITS_JSON` (the full context-budget template), `CONTEXT_FILTER_PATTERNS_JSON=[]`, `FOREIGN_MENTIONS_ENABLED=false`, `OPENCODE_PLUGINS_JSON={}`, `PREVIOUS_BOT_REVIEWS_COUNT=1`.
+`AGENT_PAUSED=false`, `AGENT_PAUSED_PARTS_JSON` (all four parts `false`), the empty `AGENT_MODELS_JSON` template, `BOT_IDENTITIES` (account mode: the /user-derived login; app mode: the stock fallback names; a flat comma list), `BOT_TRIGGERS="mirrobot, mirrobot-agent"` (both stems, showing the multi-stem shape, so `/mirrobot-review` and `/mirrobot-agent-review` both work), `CONTEXT_LIMITS_JSON` (the full context-budget template), `CONTEXT_FILTER_PATTERNS_JSON=[]`, `FOREIGN_MENTIONS_ENABLED=false`, `OPENCODE_PLUGINS_JSON={}`, `PREVIOUS_BOT_REVIEWS_COUNT=1`.
 
 Then it writes a **static checklist** into the run summary: every variable with its meaning, every secret with where-to-get-it, and copy-paste `gh variable set` commands as the manual fallback.
 

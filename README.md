@@ -185,7 +185,7 @@ BOT_TRIGGERS = "mirrobot, mirrobot-agent"
 
 makes the agent answer to `@mirrobot` and `@mirrobot-agent`, run a review for `/mirrobot-review` *and* `/mirrobot-agent-review`, and run compliance for `/mirrobot-check` and `/mirrobot-agent-check`. Renaming works the same way: set `BOT_TRIGGERS="acme"` and the bot answers to `@acme`, `/acme-review`, `/acme-check`, and the mirrobot words stop routing (setting the variable replaces the defaults). When the variable is unset, the names come from the bot's own identity, so an account-mode install answers to its account name.
 
-**Identity, who the agent *is*.** When the agent asks "did I write this review?" (loop guards, review attribution, footer verification), it compares against its logins: whatever you put in the `BOT_IDENTITIES_JSON` variable, plus (in account mode) the account name it detects live from its token. If neither exists, the stock names apply. "mirrobot" is the agent's *name*, not an identity: a user who happens to be named `mirrobot` is never treated as the agent itself. Bootstrap seeds both variables.
+**Identity, who the agent *is*.** When the agent asks "did I write this review?" (loop guards, review attribution, footer verification), it compares against its logins: whatever you put in the `BOT_IDENTITIES` variable, plus (in account mode) the account name it detects live from its token. If neither exists, the stock names apply. "mirrobot" is the agent's *name*, not an identity: a user who happens to be named `mirrobot` is never treated as the agent itself. Bootstrap seeds both variables.
 
 Details: [configuration](docs/configuration.md) · [renaming](docs/customization.md#renaming-the-agent).
 
@@ -205,7 +205,7 @@ Full reference with worked examples lives in [docs/configuration.md](docs/config
 | `OPEN_TRIGGERING` | `true` | `false` = on-demand summons limited to collaborators + trusted roster (auto paths stay open) |
 | `AGENT_PAUSED_PARTS_JSON` | all `false` | Per-part pause, see [pause switches](#pause-switches) |
 | `AGENT_MODELS_JSON` | *(empty template)* | Per-agent models, see [docs](docs/configuration.md#agent_models_json) |
-| `BOT_IDENTITIES_JSON` | account login / stock names | Who the agent is (self-detection set) |
+| `BOT_IDENTITIES` | account login / stock names | Who the agent is (self-detection set) |
 | `BOT_TRIGGERS` | `mirrobot, mirrobot-agent` | What summons the agent (stems; commands derive) |
 | `CONTEXT_LIMITS_JSON` | *(full budget template)* | Context budget: how many comments/reviews/threads the agent reads, lower = smaller prompts. [Details](docs/configuration.md#context_limits_json) |
 | `CONTEXT_IGNORE_AUTHORS` | *(empty)* | Logins whose posts never enter agent context |

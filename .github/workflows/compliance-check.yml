@@ -107,16 +107,16 @@ jobs:
       # sharing a name). Mention-routing still accepts @mirrobot.
       # Identity + triggers (resolved at runtime by bot-config.sh from these
       # inputs, the repo variables, and account-mode /user detection):
-      #   identities = BOT_IDENTITIES_JSON variable (this agent + its [bot] app
+      #   identities = BOT_IDENTITIES variable (this agent + its [bot] app
       #               form) (+) the /user-detected account login; fallback only
       #               when both are absent.
       #   trigger stems = BOT_TRIGGERS variable, else identity-derived
       #               (@stem, /stem-review, /stem-check), else the mirrobot words.
-      BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
+      BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES || '' }}
       BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
       # Early-consumer fallback (bot-config.sh upgrades this with the
       # /user-detected login once it runs, post-artifacts):
-      BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES_JSON || '["mirrobot-agent", "mirrobot-agent[bot]"]' }}
+      BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES || 'mirrobot-agent, mirrobot-agent[bot]' }}
       AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
       # Noise filtering for thread context (see fetch-pr-discussion.sh):
       # CONTEXT_IGNORE_AUTHORS - comma logins dropped outright (repo variable)
@@ -260,6 +260,17 @@ jobs:
           fi
           author=$(printf '%s' "$comment_json" | jq -r '.user.login')
           association=$(printf '%s' "$comment_json" | jq -r '.author_association')
+          # BOT_NAMES_JSON arrives as a FLAT comma list (the variable and the
+          # stock fallback are both flat; platform format doctrine).
+          # Normalize to a JSON array once for every jq consumer this run;
+          # the artifacts step re-exports the authoritative array via
+          # bot-config.sh.
+          case "$BOT_NAMES_JSON" in
+            '['*) ;;
+            *) BOT_NAMES_JSON=$(printf '%s' "${BOT_IDENTITIES_INPUT:-$BOT_NAMES_JSON}" | tr ',;' '\n\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF' | jq -R . | jq -sc .)
+               printf 'BOT_NAMES_JSON=%s\n' "$BOT_NAMES_JSON" >> "$GITHUB_ENV" ;;
+          esac
+
           # Case-insensitive bot-loop guard (logins are case-insensitive;
           # canonical casing follows renames)
           author_lc=$(printf '%s' "$author" | tr 'A-Z' 'a-z')

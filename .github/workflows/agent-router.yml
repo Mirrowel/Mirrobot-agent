@@ -84,7 +84,7 @@ jobs:
           IS_PR: ${{ github.event.issue.pull_request != '' && 'true' || 'false' }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GITHUB_TOKEN: ${{ github.token }}
-          BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
+          BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES || '' }}
           BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
           AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
           OPEN_TRIGGERING: ${{ vars.OPEN_TRIGGERING || 'true' }}

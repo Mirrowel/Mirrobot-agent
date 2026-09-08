@@ -87,7 +87,7 @@ The bot speaks as exactly one identity per installation (a user account (account
 
 Two separate systems:
 
-- **Identity** ("is this content authored by me?") resolves per run: the `BOT_IDENTITIES_JSON` variable **∪** the account login detected live via the API (account mode; app tokens cannot self-discover). The stock fallback applies only when both are absent. Every self-detection point (bot-loop guards, review attribution, FIRST/FOLLOW-UP markers, footer verification, reaction cleanup) matches this resolved set, case-insensitively, so renames never silently break detection.
+- **Identity** ("is this content authored by me?") resolves per run: the `BOT_IDENTITIES` variable **∪** the account login detected live via the API (account mode; app tokens cannot self-discover). The stock fallback applies only when both are absent. Every self-detection point (bot-loop guards, review attribution, FIRST/FOLLOW-UP markers, footer verification, reaction cleanup) matches this resolved set, case-insensitively, so renames never silently break detection.
 - **Triggers** ("what text summons me?") resolve from the `BOT_TRIGGERS` variable (raw stems; each derives an `@stem` mention plus `/stem-review` and `/stem-check` commands), else from the resolved identity, else the stock mirrobot words.
 
 "mirrobot" is the agent's *name* (a trigger word), never an identity: a human user who happens to be named `mirrobot` is not treated as the agent.

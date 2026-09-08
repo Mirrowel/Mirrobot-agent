@@ -45,14 +45,14 @@ jobs:
       # If triggered by 'workflow_dispatch', it uses the number you provided in the form.
       ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issueNumber }}
       # Identity + triggers (resolved by bot-config.sh): identities =
-      # BOT_IDENTITIES_JSON variable (+) the /user-detected account login;
+      # BOT_IDENTITIES variable (+) the /user-detected account login;
       # fallback only when both are absent. Trigger stems = BOT_TRIGGERS
       # variable, else identity-derived, else the mirrobot words.
-      BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
+      BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES || '' }}
       BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
       # Early-consumer fallback (bot-config.sh upgrades this with the
       # /user-detected login once it runs, post-artifacts):
-      BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES_JSON || '["mirrobot-agent", "mirrobot-agent[bot]"]' }}
+      BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES || 'mirrobot-agent, mirrobot-agent[bot]' }}
       AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
       # Noise filtering for thread context (see fetch-pr-discussion.sh):
       # CONTEXT_IGNORE_AUTHORS - comma logins dropped outright (repo variable)

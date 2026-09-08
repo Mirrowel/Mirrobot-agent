@@ -10,6 +10,18 @@ Set under `Settings → Secrets and variables → Actions → Variables`:
 gh variable set AGENT_PAUSED -R <owner>/<repo> --body "true"
 ```
 
+**Variable formats follow one doctrine** (so every knob reads the way its data is shaped):
+
+| Data shape | Format | Examples |
+|---|---|---|
+| Lists of simple tokens (logins, stems) | comma-separated | `BOT_IDENTITIES`, `BOT_TRIGGERS`, `TRUSTED_AGENT_USERS`, `FOREIGN_MENTIONS_USERS`, `CONTEXT_IGNORE_AUTHORS` |
+| Lists whose elements can contain commas or quotes (regex) | JSON array | `CONTEXT_FILTER_PATTERNS_JSON` |
+| Maps (key to value, nested) | JSON object | `CONTEXT_LIMITS_JSON`, `AGENT_MODELS_JSON` |
+| Prefilled editable menus (flip, don't construct) | JSON object, seeded by Bootstrap | `AGENT_PAUSED_PARTS_JSON` |
+| Scalars | plain string | booleans like `AGENT_PAUSED`, integers like `PREVIOUS_BOT_REVIEWS_COUNT` |
+
+A `_JSON` suffix appears only on variables that actually are JSON.
+
 ### `AGENT_PAUSED`
 **Default:** `false` (seeded). **Type:** kill switch.
 
@@ -33,18 +45,18 @@ By default any GitHub user may summon the agent on demand (mentions, `/review`, 
 
 *When to use it:* public repos where you want the agent reviewing PRs but not answering strangers' questions; incident mode alongside `AGENT_PAUSED` (which silences everything, this only gates the front door).
 
-### `BOT_IDENTITIES_JSON`
-**Default:** seeded by Bootstrap, the account login in account mode, the stock names in app mode. **Type:** identity array.
+### `BOT_IDENTITIES`
+**Default:** seeded by Bootstrap, the account login in account mode, the stock names in app mode. **Type:** comma-separated logins.
 
-**Who the agent is**: the logins treated as *self* by loop guards, review attribution, FIRST/FOLLOW-UP markers, and footer verification. List **only identities you control**: an account login, plus an app login *only if you registered that app*:
+**Who the agent is**: the logins treated as *self* by loop guards, review attribution, FIRST/FOLLOW-UP markers, and footer verification. A comma-separated list. List **only identities you control**: an account login, plus an app login *only if you registered that app*:
 
-```json
-["mybot", "mybot[bot]"]
+```
+mybot, mybot[bot]
 ```
 
 **The `[bot]` twin is never assumed.** GitHub app slugs and usernames are *separate namespaces*: someone else can register an app named exactly like your account. The platform therefore never synthesizes a `name[bot]` twin from your account name: an app identity is trusted only when you list its **full name including `[bot]`** in this variable (that listing is your explicit claim that you control that app). A wrong twin here would make the agent adopt a stranger's reviews as its own previous work; it is the most dangerous silent misconfiguration there is.
 
-Resolution at runtime: this variable **∪** the account login detected live via the API (account mode, credential-proven, so a rename self-heals instantly). The stock fallback (`mirrobot-agent`, `mirrobot-agent[bot]`) applies only when both are absent; both are identities this project verifiably controls. Bare `mirrobot` is *not* an identity (the username is taken; a spoofed account must never be treated as self); it remains a trigger word.
+Resolution at runtime: this variable (comma-separated; logins cannot contain commas, which is why this one is a plain list) **∪** the account login detected live via the API (account mode, credential-proven, so a rename self-heals instantly). The stock fallback (`mirrobot-agent, mirrobot-agent[bot]`) applies only when both are absent; both are identities this project verifiably controls. Bare `mirrobot` is *not* an identity (the username is taken; a spoofed account must never be treated as self); it remains a trigger word.
 
 ### `BOT_TRIGGERS`
 **Default:** `mirrobot, mirrobot-agent` (seeded). **Type:** comma-separated raw stems.
@@ -219,6 +231,6 @@ RSA **public** key (PEM) for encrypted session share links. Without it, share UR
 | Drop a recurring noise post | `CONTEXT_FILTER_PATTERNS_JSON` (remember: replaces defaults) |
 | Stop everything safely | `AGENT_PAUSED=true` |
 | Stop just one part (e.g. reviews) | `AGENT_PAUSED_PARTS_JSON` |
-| Rename the bot | `BOT_IDENTITIES_JSON` + `BOT_TRIGGERS` |
+| Rename the bot | `BOT_IDENTITIES` + `BOT_TRIGGERS` |
 | Private plugin | `OPENCODE_PLUGINS_JSON` + `plugin` path in the config |
 | Agent follows me into other repos | `FOREIGN_MENTIONS_ENABLED` + `FOREIGN_MENTIONS_USERS` + PAT scopes + the worker |
