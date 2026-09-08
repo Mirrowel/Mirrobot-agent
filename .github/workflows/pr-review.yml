@@ -74,7 +74,7 @@ jobs:
     # paused runs skip entirely (visible gray skip); the stub and
     # compliance-gate keep posting the pending status so merges stay
     # blocked while paused.
-    if: github.event_name == 'workflow_dispatch' && vars.AGENT_PAUSED != 'true'
+    if: github.event_name == 'workflow_dispatch' && vars.AGENT_PAUSED != 'true' && !fromJSON(vars.AGENT_PAUSED_PARTS_JSON || '{}')['pr-review']
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -109,6 +109,9 @@ jobs:
       #               (@stem, /stem-review, /stem-check), else the mirrobot words.
       BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
       BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
+      # Early-consumer fallback (bot-config.sh upgrades this with the
+      # /user-detected login once it runs, post-artifacts):
+      BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES_JSON || '["mirrobot-agent", "mirrobot-agent[bot]"]' }}
       AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
       # Noise filtering for thread context (see fetch-pr-discussion.sh):
       # CONTEXT_IGNORE_AUTHORS - comma logins dropped outright (repo variable)
@@ -139,22 +142,6 @@ jobs:
         env:
           PR_NUMBER_INPUT: ${{ inputs.prNumber }}
         run: |
-          # Per-part pause (AGENT_PAUSED_PARTS_JSON): true = this part is
-          # paused (visible green skip); missing key/variable = not paused;
-          # malformed = loud fail. Covers MANUAL dispatches too - the
-          # router checks before dispatching, this is the direct-entry
-          # backstop. AGENT_PAUSED stays the global kill above all parts.
-          _pp="${AGENT_PAUSED_PARTS_JSON:-}"
-          if [ -n "$_pp" ]; then
-            if ! printf '%s' "$_pp" | jq -e 'type == "object"' >/dev/null 2>&1; then
-              echo "::error::AGENT_PAUSED_PARTS_JSON is not a JSON object - fix the variable."
-              exit 1
-            fi
-            if printf '%s' "$_pp" | jq -e --arg k "pr-review" '.[$k] == true' >/dev/null 2>&1; then
-              echo "::notice::pr-review is paused (AGENT_PAUSED_PARTS_JSON) - skipping."
-              exit 0
-            fi
-          fi
           if [ -z "$PR_NUMBER_INPUT" ]; then
             echo "::error::prNumber dispatch input is required (got empty value)"
             exit 1
@@ -536,7 +523,7 @@ jobs:
             echo "Latest summary lacks marker; attempting commit_id from latest bot review..."
             reviews_rest=$(gh api "/repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" || echo '[]')
             resolved_sha=$(echo "$reviews_rest" | jq -r --argjson bots "$BOT_NAMES_JSON" '
-              map(select((.user.login // "" | ascii_downcase) as $u | $bots | index($u))))
+              map(select((.user.login // "" | ascii_downcase) as $u | $bots | index($u)))
               | sort_by(.submitted_at)
               | last
               | .commit_id // ""

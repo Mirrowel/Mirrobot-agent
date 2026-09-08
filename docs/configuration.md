@@ -75,7 +75,9 @@ How much thread context the agent reads, per fetch:
 | `orphan-threads` | Review-less threads ("Add single comment" notes), newest first |
 | `orphan-thread-comments` | Replies per orphaned thread |
 
-Everything is *up to*, newest-first, deduped. **Filter before cap:** hidden (minimized) content never consumes budget anywhere; resolved/outdated content never consumes budget outside the elevated block (the agent's unfiltered memory of its own newest reviews — sized by `PREVIOUS_BOT_REVIEWS_COUNT`). Lower the numbers on noisy repos for smaller first prompts — this is the primary cost knob alongside per-agent models. Malformed JSON: warning + per-key defaults (a broken knob is visible, not fatal).
+Everything is *up to*, newest-first, deduped. **Filter before cap:** hidden (minimized) content never consumes the allocation budget; resolved/outdated content never does outside the elevated block. (One edge: the flat conversation window is capped at fetch time and filtered after, so hidden posts inside it can consume fetch slots.) Lower the numbers on noisy repos for smaller first prompts — this is the primary cost knob alongside per-agent models. Malformed JSON: warning + per-key defaults (a broken knob is visible, not fatal).
+
+**Two knobs that sound alike, one distinction:** `own-reviews` (here) is how many of the agent's own reviews are *fetched at all* — the always-include safeguard. `PREVIOUS_BOT_REVIEWS_COUNT` is how many of those render *unfiltered* (the elevated block). Fetch more, elevate fewer.
 
 ### `AGENT_MODELS_JSON`
 **Default:** empty template (seeded). **Type:** per-agent model overrides.

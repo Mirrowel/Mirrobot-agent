@@ -5,7 +5,7 @@ Two files, one pipeline: a zero-secret stub that reacts to PR events, and the re
 ## PR Review Trigger (the stub) — `.github/workflows/pr-review-trigger.yml`
 
 **Triggers:** `pull_request_target` — `opened`, `synchronize`, `ready_for_review`, `reopened`, `review_requested`.
-**Executes from:** the **PR's base branch** (GitHub rule for `pull_request_target`). On PRs targeting dev, dev's copy runs — keep dev merge-synced when this file changes.
+**Executes from:** the **PR's base branch** (GitHub rule for `pull_request_target`). On PRs targeting your integration branch, that branch's copy runs — keep it merge-synced when this file changes.
 **Permissions:** `statuses: write` (the pending marker), `actions: write` (the dispatch). **Zero secrets.**
 
 What it does, in order:
@@ -46,7 +46,7 @@ Pipeline: bot-setup → metadata fetch (fail-closed on bogus numbers before any 
 - First reviews post a living ack (progress-edited); follow-ups post only the review — no announcement noise.
 - Every posted review ends with footer markers carrying the reviewed head SHA; follow-up runs and the verify step both key off them.
 
-**Knobs:** `AGENT_MODELS_JSON["pr-review"]`, `AGENT_MODELS_JSON["review-*"]` is not a thing — mode-level routing is via the manifest; the knobs block in the workflow env carries `BOT_NAMES_JSON`, noise filters, `PREVIOUS_BOT_REVIEWS_COUNT`. The stub's label gate is the literal string `Agent Monitored`.
+**Knobs:** `AGENT_MODELS_JSON["pr-review"]`, `AGENT_MODELS_JSON["review-*"]` is not a thing — mode-level routing is via the manifest; the knobs block in the workflow env carries the noise filters and `PREVIOUS_BOT_REVIEWS_COUNT`; identity resolves at runtime via `bot-config.sh` (the `BOT_IDENTITIES_JSON` variable + `/user` detection). The stub's label gate is the literal string `Agent Monitored`.
 
 **Concurrency:** group `PR Review-<N>`, serialized, no cancel — concurrent reviews of one PR are structurally impossible.
 

@@ -160,7 +160,13 @@ async function prefilter(env, state, n, roster) {
       for (const ev of events) if (ev.event === "review_requested") actor = ev.actor?.login;
       if (!actor) return { pass: true };
       const a = String(actor).toLowerCase();
-      if (BOT_IDENTITIES.includes(a)) return { decline: "self" };
+      // Self-decline via the DERIVED login (the worker's own token identity);
+      // fail-open when detection is unavailable (pass: true lets the in-repo
+      // gauntlet re-verify).
+      const botLogin = await getBotLogin(env, state);
+      if (botLogin && (a === botLogin.toLowerCase() || a === `${botLogin.toLowerCase()}[bot]`)) {
+        return { decline: "self" };
+      }
       if (roster.ok && !roster.names.has(a)) return { decline: "allowlist" };
       return { pass: true };
     }

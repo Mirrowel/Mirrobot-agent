@@ -64,7 +64,7 @@ The agent loads content from the repository it's pointed at. Some of that conten
 
 | Surface | Trusted from | Rule |
 |---|---|---|
-| **Auto-load files** — `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, harness rule files, `.claude/`, `.agents/`, `.opencode/`, `.cursor/`, `.windsurf/`, `.devin/` | **main ∪ dev** | A file survives only when its bytes match a state a trust branch shipped **at-or-after that branch's fork point** with the PR (each branch gets its own floor). |
+| **Auto-load files** — `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, harness rule files, `.claude/`, `.agents/`, `.opencode/`, `.cursor/`, `.windsurf/`, `.devin/` | **main ∪ your integration branch** (the `AUTOLOAD_BRANCHES` list) | A file survives only when its bytes match a state a trust branch shipped **at-or-after that branch's fork point** with the PR (each branch gets its own floor). |
 | **`.github/` platform files** | **main only** | Never removed (the reviewer must see them), but any branch-side change is a taint alarm at maximum scrutiny; content provably synced from post-fork main states downgrades to an explained note. |
 
 Why the split: auto-load content *describes the code it ships with* — when you evolve your repo's conventions on dev, the AGENTS.md that documents those conventions evolves with it, and it must be trusted there before it merges up. Platform wiring has no such coupling — it executes from main, so main alone vouches for it.
@@ -96,7 +96,7 @@ Cross-repo guest mode adds a third identity context: the *guest* — the same ac
 
 ## Where the batteries live
 
-Every rule in this document that can rot is pinned: `.github/scripts/scrub-fixtures.sh` (193 checks — scrub semantics, routing matrix, workflow contracts, YAML strictness) and `.github/scripts/prompt-rule-fixtures.sh` (339 pins — prompt rules and assembly contracts). They run in CI on every change to `.github/**`. If you change behavior, change the pin in the same commit — the suite failing is the system working.
+Every rule in this document that can rot is pinned: `.github/scripts/scrub-fixtures.sh` (scrub semantics, routing matrix, workflow contracts, YAML strictness) and `.github/scripts/prompt-rule-fixtures.sh` (prompt rules and assembly contracts). They run in CI on every change to `.github/**`. If you change behavior, change the pin in the same commit — the suite failing is the system working.
 
 ## Design axioms
 

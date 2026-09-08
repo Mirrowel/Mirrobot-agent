@@ -32,6 +32,7 @@ with genuine judgment, in its own voice, on infrastructure you already have.
 - [The workflows](#the-workflows)
 - [Security](#security)
 - [Development](#development)
+- [Documentation](#documentation)
 - [FAQ](#faq)
 
 ---
@@ -77,7 +78,7 @@ flowchart TB
     C --> ROUTER["<b>Agent Router</b><br/>one comment → one run<br/>(dispatches by comment id)"]
     I --> ISSUE["<b>Issue Analysis</b>"]
     P --> STUB["<b>PR Review Trigger</b><br/>zero-secret stub: decide +<br/>pending merge-blocker status"]
-    P --> GATE["<b>Compliance Gate</b><br/>status insurance"]
+    P --> GATE["<b>Compliance Gate</b><br/>redundant pending-status poster"]
     STUB -->|review wanted only| REVIEW
 
     subgraph agent["Agent workflows — privileged, run from the default branch"]
@@ -105,7 +106,7 @@ flowchart TB
 
 **The core security principle: PR content is only ever data.** Privileged workflows always execute the default branch's copy of themselves; a malicious PR cannot redefine the pipeline that reviews it. Untrusted text never touches a shell except through environment variables. Everything the agent auto-loads from a checkout (instruction files, agent configs, skills) survives only when its bytes match a state a trusted branch shipped — otherwise it's removed, logged, and quarantined for the agent to read as data. The details are worth understanding before you open this to strangers: [security](docs/security.md).
 
-And the platform checks itself: a fixture suite and prompt-rule pins run in CI on every change to `.github/`, so drift fails loudly instead of silently.
+And the platform checks itself: a fixture suite and prompt-rule pins run in CI on every change to `.github/`, so drift shows up as a red build instead of a silent change.
 
 ---
 
@@ -141,12 +142,24 @@ Both work identically downstream; presence of the account token selects account 
 | + identity | `ACCOUNT_GH_TOKEN` (account mode), or `BOT_APP_ID` + `BOT_PRIVATE_KEY` (App mode) |
 
 ```bash
+# minify the template (or your own config) to one line first:
+python minify_json_secret.py .github/actions/bot-setup/permissions.example.json > config.min.json
+
 gh secret set OPENCODE_MODEL       -R <owner>/<repo> --body "anthropic/claude-sonnet-4"
 gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < config.min.json
 gh secret set ACCOUNT_GH_TOKEN     -R <owner>/<repo>   # paste the PAT when prompted
 ```
 
-Then run **Agent Bootstrap** once (`Actions → Agent Bootstrap → Run workflow`, admin): it creates every tuning variable with its safe default (never overwrites) and prints the full secrets checklist into the run summary. Full reference with where-to-get-everything: [Configuration](#configuration).
+For orientation, a minimal config looks like:
+
+```json
+{
+  "provider": { "anthropic": { "options": { "apiKey": "sk-ant-..." } } },
+  "permission": { "...": "the block from permissions.example.json" }
+}
+```
+
+Then run **Agent Bootstrap** once (`Actions → Agent Bootstrap → Run workflow`, needs repo write access): it creates every tuning variable with its safe default (never overwrites) and prints the full secrets checklist into the run summary. Full reference with where-to-get-everything: [Configuration](#configuration).
 
 ### 4. Gate merges (recommended)
 
@@ -162,13 +175,19 @@ Open an issue, open a PR, or comment `@mirrobot-agent hello` — within about a 
 
 ## Trigger words & identity
 
-Two separate systems, deliberately:
+Two systems with two different jobs:
 
-**Triggers — what summons the agent.** Default words: `@mirrobot`, `@mirrobot-agent`, and the commands `/mirrobot-review`, `/mirrobot-check`. All of it is one variable: `BOT_TRIGGERS` holds raw names (no `@` or `/` prefixes), and every name derives the full set — `BOT_TRIGGERS="mirrobot, mirrobot-agent"` gives you both mentions *and* both command families (`/mirrobot-review` and `/mirrobot-agent-review` both work). Rename the bot by setting this variable; when unset, stems derive from the resolved identity (so an account-mode install answers to its own account name).
+**Triggers — what summons the agent.** The default words are `@mirrobot`, `@mirrobot-agent`, `/mirrobot-review`, and `/mirrobot-check`. They all come from one variable. `BOT_TRIGGERS` holds plain names, and each name expands into a mention plus two commands. Concretely, the default value:
 
-**Identity — who the agent *is*.** Loop guards, review attribution, and footer verification match the resolved identity set: the `BOT_IDENTITIES_JSON` variable (your bot's logins) ∪ the account login detected live via the API in account mode. The stock fallback (`mirrobot-agent`, `mirrobot-agent[bot]`) applies only when both are absent. "mirrobot" is the agent's *name*, not an identity — a user who happens to be named `mirrobot` is never treated as the agent itself. Bootstrap seeds both variables.
+```
+BOT_TRIGGERS = "mirrobot, mirrobot-agent"
+```
 
-Details and examples: [configuration](docs/configuration.md) · [customization](docs/customization.md#renaming-the-agent).
+makes the agent answer to `@mirrobot` and `@mirrobot-agent`, run a review for `/mirrobot-review` *and* `/mirrobot-agent-review`, and run compliance for `/mirrobot-check` and `/mirrobot-agent-check`. Renaming works the same way: set `BOT_TRIGGERS="acme"` and the bot answers to `@acme`, `/acme-review`, `/acme-check` — and the mirrobot words stop routing (setting the variable replaces the defaults). When the variable is unset, the names come from the bot's own identity, so an account-mode install answers to its account name.
+
+**Identity — who the agent *is*.** When the agent asks "did I write this review?" (loop guards, review attribution, footer verification), it compares against its logins: whatever you put in the `BOT_IDENTITIES_JSON` variable, plus — in account mode — the account name it detects live from its token. If neither exists, the stock names apply. "mirrobot" is the agent's *name*, not an identity: a user who happens to be named `mirrobot` is never treated as the agent itself. Bootstrap seeds both variables.
+
+Details: [configuration](docs/configuration.md) · [renaming](docs/customization.md#renaming-the-agent).
 
 ---
 
@@ -187,19 +206,19 @@ Full reference with worked examples lives in [docs/configuration.md](docs/config
 | `AGENT_MODELS_JSON` | *(empty template)* | Per-agent models — see [docs](docs/configuration.md#agent_models_json) |
 | `BOT_IDENTITIES_JSON` | account login / stock names | Who the agent is (self-detection set) |
 | `BOT_TRIGGERS` | `mirrobot, mirrobot-agent` | What summons the agent (stems; commands derive) |
-| `CONTEXT_LIMITS_JSON` | *(full budget template)* | Context budget: how many comments/reviews/threads the agent reads — lower = smaller prompts |
+| `CONTEXT_LIMITS_JSON` | *(full budget template)* | Context budget: how many comments/reviews/threads the agent reads — lower = smaller prompts. [Details](docs/configuration.md#context_limits_json) |
 | `CONTEXT_IGNORE_AUTHORS` | *(empty)* | Logins whose posts never enter agent context |
 | `CONTEXT_FILTER_PATTERNS_JSON` | baked AI-noise defaults | Regex patterns dropping matching posts — **replaces** the defaults |
 | `TRUSTED_AGENT_USERS` | *(empty)* | Extra friendly users beyond collaborators (collaborators already count) |
 | `PREVIOUS_BOT_REVIEWS_COUNT` | `1` | How many of the agent's own newest reviews are *elevated* (unfiltered memory). Older ones still appear, filtered, in the history block |
-| `OPENCODE_PLUGINS_JSON` (+`_1`..`_5`) | *(empty)* | Plugin files without committing them — see [docs](docs/configuration.md#opencode_plugins_json) |
+| `OPENCODE_PLUGINS_JSON` (+`_1`..`_5`) | *(empty)* | Plugin files without committing them — see [docs](docs/configuration.md) |
 | `FOREIGN_MENTIONS_ENABLED` / `FOREIGN_MENTIONS_USERS` | `false` / *(empty)* | Cross-repo guest mode — see below |
 
 Notes worth knowing:
 
 - Model strings are `provider/model`; the provider can be a built-in (when `OPENCODE_API_KEY` supplies its key) or an entry in your `OPENCODE_CONFIG_JSON`.
 - The runtime protects the config secret: every credential leaf inside it is masked, and the file (plus materialized plugins) is deleted right after opencode reads it. [Details](docs/security.md#config-and-credential-lifecycle).
-- Thread context is filtered before it's capped: hidden (minimized) content never reaches the agent — its own posts included — and the built-in defaults drop known AI-reviewer noise (rate-limit notices, skip posts) while keeping those tools' substantive reviews. Other AI reviewers are input, not authority.
+- Thread context is filtered before it's allocated: hidden (minimized) content never reaches the agent — its own posts included — and the built-in defaults drop known AI-reviewer noise (rate-limit notices, skip posts) while keeping those tools' substantive reviews. Other AI reviewers are input, not authority.
 
 ---
 
@@ -221,7 +240,7 @@ Paused parts skip visibly; the router stops dispatching them; missing keys (or t
 
 The agent can answer **wherever its account is mentioned** — any public repo, even ones it's not installed in. Mentions of a bot *account* become account notifications; an external [Cloudflare worker](tools/mention-worker/README.md) relays them to the `mention-poller` workflow, which re-verifies everything (allowlist, genuine-mention token, reason) before spawning a guest session under strict [guest rules](docs/security.md) — read-only by default, authority pinned to the allowlist.
 
-Enable (account mode only): add `notifications` scope to the PAT, set `FOREIGN_MENTIONS_ENABLED=true`, optionally `FOREIGN_MENTIONS_USERS` (who may summon it abroad; collaborators already can), and deploy the worker (~10 minutes, free tier). End-to-end latency is about a minute and a half. Full story: [docs/workflows/mention-poller.md](docs/workflows/mention-poller.md).
+Enable (account mode only): add `notifications` scope to the PAT, set `FOREIGN_MENTIONS_ENABLED=true`, optionally `FOREIGN_MENTIONS_USERS` (who may summon it abroad; collaborators already can), and deploy the worker (~10 minutes, free tier). End-to-end latency is about a minute and a half (the home-repo path in the quick start answers in under a minute — the guest path adds the worker relay). Full story: [docs/workflows/mention-poller.md](docs/workflows/mention-poller.md).
 
 ---
 
@@ -236,11 +255,11 @@ Enable (account mode only): add `notifications` scope to the PAT, set `FOREIGN_M
 | **Compliance Check** | `/mirrobot-check` | main | End-of-life merge audit; posts the compliance status + report |
 | **Compliance Gate** | PR events | **PR's base branch** | Redundant poster of the pending status — fails loudly rather than letting a transient error make a PR look mergeable |
 | **Bot Reply on Mention** | dispatch only | main | The general agent: conversations, investigations, on-demand reviews, contributions |
-| **Agent Bootstrap** | admin dispatch only | main | One-time setup: seeds every variable, prints the secrets checklist; state-silent by design |
+| **Agent Bootstrap** | dispatch (write access) | main | One-time setup: seeds every variable, prints the secrets checklist; state-silent by design |
 | **Mention Poller** | dispatch only | main | Cross-repo guest mode entry (see [the worker](tools/mention-worker/README.md)) |
-| **Scrub Fixture Suite** | `.github/` changes | main | The batteries: security fixtures + prompt-rule pins + strict YAML validation |
+| **Scrub Fixture Suite** | `.github/` changes | the branch under test | The batteries: security fixtures + prompt-rule pins + strict YAML validation (run against the pushed branch's own copy) |
 
-**The "Runs from" column is the platform's spine:** everything that *thinks* — agents, prompts, scrub, routing — always executes from `main`, on every PR. Only the two zero-secret marker/dispatcher workflows execute from the PR's base branch (a GitHub rule for `pull_request[_target]` triggers), and their downstream dispatches always target `main`. Platform updates therefore land on `main`; your integration branch ("dev" here — whatever yours is named) needs no per-batch sync, and when it *should* be current, sync with a merge (`git merge main`), never copy-commits. The one deliberate exception: auto-load content (AGENTS.md and friends) evolves **on the integration branch** with the work it describes — the scrub's `AUTOLOAD_BRANCHES` list is the knob.
+**The "Runs from" column is the platform's spine:** everything that *thinks* — agents, prompts, scrub, routing — always executes from `main`, on every PR (the fixture suite is the one deliberate exception: it's CI, and it tests whatever copy it runs on). Only the two zero-secret marker/dispatcher workflows execute from the PR's base branch (a GitHub rule for `pull_request[_target]` triggers), and their downstream dispatches always target `main`. Platform updates land on `main`; your integration branch needs no per-batch sync. The one exception to that: auto-load content (AGENTS.md and friends) evolves **on the integration branch** with the work it describes. The full sync doctrine lives in [architecture.md](docs/architecture.md#the-update-doctrine).
 
 Per-workflow docs — triggers, knobs, failure meanings, test recipes: [docs/workflows/](docs/workflows/).
 
@@ -284,9 +303,10 @@ The full threat model, defense by defense, with the honest residuals: [docs/secu
 │   ├── security-brief.md             # read first in every agent session
 │   ├── parts/                        # 33 instruction parts (the prose)
 │   └── manifests/                    # 13 mode manifests (the assembly order)
-├── scripts/                          # 12 scripts: assembler, scrub, review kit,
-│                                     # identity config, discussion fetch, roster,
-│                                     # router, reactions, share filter,
+├── scripts/                          # 13 scripts: assembler, scrub, identity
+│                                     # config, discussion fetch, roster, review
+│                                     # kit, mention gauntlet, router, reactions,
+│                                     # share filter, boot cleanup,
 │                                     # + the two CI batteries
 └── workflows/                        # the 10 workflows above
 

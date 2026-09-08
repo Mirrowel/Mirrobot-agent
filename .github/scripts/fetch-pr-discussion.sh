@@ -29,8 +29,9 @@
 #     "orphan-thread-comments": 10  // replies per orphaned thread
 #   }
 #   Everything is "up to", newest first, deduped. FILTER BEFORE CAP: hidden
-#   (minimized) content never consumes budget anywhere; resolved/outdated
-#   content never consumes budget outside the elevated block (the elevated
+#   (minimized) content never consumes the allocation budget; resolved/outdated
+#   content never does outside the elevated block (one edge: the flat
+#   conversation window is capped at fetch time and filtered after) (the elevated
 #   block alone bypasses resolved/outdated - with markers - because it IS the
 #   agent's memory of its own findings). Per-comment `outdated` gives mixed
 #   threads precise treatment in filtered blocks: a fresh reply on a moved
@@ -251,20 +252,22 @@ if ! agent_blocks=$(printf '%s' "$discussion_data" | jq -r \
   (($own_sel + $other_sel) | unique_by(.databaseId) | sort_by(.submittedAt) | reverse) as $selected |
   ([ $selected[] | select(is_own) ]) as $agent_reviews |
   # ---- per-review thread allocation (newest threads, capped) ---------------
-  # Bucket the review'"'"'s comments by thread, newest THREADS first, cap
-  # threads-per-review; inside each thread newest comments first, cap
-  # thread-comments. FILTER BEFORE CAP outside the elevated block (hidden
-  # never counts anywhere; resolved/outdated/stale-anchors never count
-  # outside elevated). Elevated bypasses resolved/outdated - with markers -
-  # but never the hidden drop.
+  # FILTER BEFORE CAP, strictly: inside each thread, filter comments FIRST
+  # (hidden never counts; resolved/outdated/stale-anchors never count outside
+  # the elevated block - the elevated block alone bypasses resolved/outdated,
+  # with markers, but never the hidden drop), drop threads left with zero
+  # survivors so they consume no slot, THEN take the newest
+  # threads-per-review threads, and only then the newest thread-comments
+  # replies per surviving thread.
   def rv_alloc($rid; $skipfilter):
     [ $allc[] | select((.pullRequestReview.databaseId? // null) == $rid) ]
     | group_by(.thId)
-    | map(sort_by(.createdAt) | reverse)
+    | map(sort_by(.createdAt) | reverse
+        | (if $skipfilter then map(select(cmt_ok)) else map(select(cmt_ok and thread_ok and cmt_fresh)) end))
+    | map(select(length > 0))
     | sort_by((.[0].createdAt // "0")) | reverse
     | .[0:$limThreadsPerReview]
-    | map(.[0:$limThreadComments]
-        | (if $skipfilter then map(select(cmt_ok)) else map(select(cmt_ok and thread_ok and cmt_fresh)) end))
+    | map(.[0:$limThreadComments])
     | flatten;
   def review_block($skipfilter):
     . as $r |
@@ -274,12 +277,17 @@ if ! agent_blocks=$(printf '%s' "$discussion_data" | jq -r \
     + (if ($lines | length) > 0 then "Inline comments:\n" + ($lines | map(fmt_c) | join("\n")) + "\n" else "Inline comments: (none)\n" end);
   def dismissed_note: if any(.[]?; .state == "DISMISSED") then "\nNote: DISMISSED here usually means an APPROVED review auto-cleared by a later push - the Verdict line in the body holds the original verdict. Treat it as re-review-the-delta, not a wrong review.\n" else "" end;
   # ---- orphan threads: review-less, filtered, newest, capped ----------------
+  # Same filter-before-cap discipline: filter the comments of each thread
+  # first, drop emptied threads (no slot consumed), then cap the newest
+  # orphan threads and their replies.
   ([ $allc | group_by(.thId)[]
       | select([.[] | select(.pullRequestReview != null)] | length == 0) ]
-    | map(sort_by(.createdAt) | reverse)
+    | map(sort_by(.createdAt) | reverse
+        | map(select(cmt_ok and thread_ok and cmt_fresh)))
+    | map(select(length > 0))
     | sort_by((.[0].createdAt // "0")) | reverse
     | .[0:$limOrphanThreads]
-    | map(.[0:$limOrphanThreadComments] | map(select(cmt_ok and thread_ok and cmt_fresh)))
+    | map(.[0:$limOrphanThreadComments])
     | flatten) as $orphan_cmts |
   [ $orphan_cmts[] | select(agent_cmt | not) | fmt_c ] as $unlinked |
   # ---- other reviews render (selected only, filtered comments) -------------

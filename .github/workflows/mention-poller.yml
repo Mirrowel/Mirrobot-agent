@@ -123,6 +123,7 @@ jobs:
           # variable, else identity-derived, else the mirrobot words.
           BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
           BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
+          BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES_JSON || '["mirrobot-agent", "mirrobot-agent[bot]"]' }}
           MAX_DISPATCH: '3'
         run: |
           set -euo pipefail

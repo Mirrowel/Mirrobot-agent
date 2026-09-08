@@ -3,7 +3,7 @@
 Pending-marker insurance. The smallest workflow in the platform, and the reason a GitHub API outage can never make a PR silently mergeable.
 
 **Triggers:** `pull_request` — `opened`, `synchronize`, `ready_for_review`, `reopened`.
-**Executes from:** the PR's base branch (GitHub rule for `pull_request`) — same caveat as the stub: keep dev merge-synced when this file changes.
+**Executes from:** the PR's base branch (GitHub rule for `pull_request`) — same caveat as the stub: keep your integration branch merge-synced when this file changes.
 **Permissions:** `statuses: write`. **Zero secrets, no checkout.**
 
 ## Why it exists

@@ -61,7 +61,7 @@ gh secret set ACCOUNT_GH_TOKEN     -R <owner>/<repo>   # paste when prompted
 
 Every optional secret — fast model, share-link key, and the full identity rules (PAT scope requirements, why the `workflow` scope is forbidden) — is documented in [configuration.md](configuration.md#secrets).
 
-**Or skip the next step's lookup entirely:** run **Agent Bootstrap** once (`Actions → Agent Bootstrap → Run workflow` — admin only). It creates every tuning variable with a safe default and prints the full secrets checklist into the run summary. It never overwrites anything, and its logs can't reveal what exists (see [workflows/agent-bootstrap.md](workflows/agent-bootstrap.md)).
+**Or skip the next step's lookup entirely:** run **Agent Bootstrap** once (`Actions → Agent Bootstrap → Run workflow` — needs repo write access). It creates every tuning variable with a safe default and prints the full secrets checklist into the run summary. It never overwrites anything, and its logs can't reveal what exists (see [workflows/agent-bootstrap.md](workflows/agent-bootstrap.md)).
 
 ## Step 3 — gate merges (recommended)
 
@@ -91,7 +91,7 @@ If nothing happens, check `Actions` in order: **Agent Router** ran (comments) or
 | Agent behavior / personality / rules | `.github/prompts/parts/*.md` | All prompt prose lives here. See [customization.md](customization.md#prompts) |
 | Permission profile | inside your `OPENCODE_CONFIG_JSON` secret | What the agent may execute. Template in `permissions.example.json` |
 | Models per agent | `AGENT_MODELS_JSON` variable | [configuration.md](configuration.md#variables) |
-| Identity strings | `BOT_NAMES_JSON` in each workflow env block | Only when renaming. [customization.md](customization.md#renaming-the-agent) |
+| Identity + trigger words | `BOT_IDENTITIES_JSON` + `BOT_TRIGGERS` variables | Only when renaming. [customization.md](customization.md#renaming-the-agent) |
 | Everything else | — | Machinery. It's consistent across repos on purpose — resist forking it per-repo unless you mean to maintain that fork. |
 
 ## Cost expectations

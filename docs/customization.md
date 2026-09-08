@@ -69,6 +69,8 @@ If "mirrobot" isn't your bot's name, it's **two variables and a sweep** — the 
 
 That's the whole hard surface. Git attribution is derived from the account/App automatically. The battery pins reference `mirrobot-agent` as the stock fallback — if you're maintaining a fork of the platform itself (not just deploying it), update the fallbacks in `bot-config.sh` and the fixture pins in the same commit.
 
+**One nuance:** cross-repo guest summons key off the *identities* (the account is what gets mentioned abroad), not the trigger stems — after a rename, set `BOT_IDENTITIES_JSON` even if your triggers differ.
+
 **Name vs identity, preserved by design:** a *name* is what people type (`@mirrobot` routes); an *identity* is a login the agent treats as itself. Bare `mirrobot` is a trigger word, never an identity — a user who registers that username is not the agent.
 
 ## Trigger words

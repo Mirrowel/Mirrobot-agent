@@ -26,7 +26,8 @@ jobs:
     # AGENT_PAUSED variable: kill switch - paused runs skip entirely
     # (visible gray skip); the stub and compliance-gate keep the pending
     # status posted so merges stay blocked while paused.
-    if: vars.AGENT_PAUSED != 'true'
+    # Per-part pause (job-level; malformed variable = loud fail; missing = runs).
+    if: vars.AGENT_PAUSED != 'true' && !fromJSON(vars.AGENT_PAUSED_PARTS_JSON || '{}')['issue-analysis']
     runs-on: ubuntu-latest
     # Least privilege for the built-in GITHUB_TOKEN: only the initial
     # actions/checkout uses it. The reaction, comments, and all bot operations
@@ -49,6 +50,9 @@ jobs:
       # variable, else identity-derived, else the mirrobot words.
       BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
       BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
+      # Early-consumer fallback (bot-config.sh upgrades this with the
+      # /user-detected login once it runs, post-artifacts):
+      BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES_JSON || '["mirrobot-agent", "mirrobot-agent[bot]"]' }}
       AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
       # Noise filtering for thread context (see fetch-pr-discussion.sh):
       # CONTEXT_IGNORE_AUTHORS - comma logins dropped outright (repo variable)
@@ -102,22 +106,6 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
         run: |
-          # Per-part pause (AGENT_PAUSED_PARTS_JSON): true = this part is
-          # paused (visible green skip); missing key/variable = not paused;
-          # malformed = loud fail. Covers MANUAL dispatches too - the
-          # router checks before dispatching, this is the direct-entry
-          # backstop. AGENT_PAUSED stays the global kill above all parts.
-          _pp="${AGENT_PAUSED_PARTS_JSON:-}"
-          if [ -n "$_pp" ]; then
-            if ! printf '%s' "$_pp" | jq -e 'type == "object"' >/dev/null 2>&1; then
-              echo "::error::AGENT_PAUSED_PARTS_JSON is not a JSON object - fix the variable."
-              exit 1
-            fi
-            if printf '%s' "$_pp" | jq -e --arg k "issue-analysis" '.[$k] == true' >/dev/null 2>&1; then
-              echo "::notice::issue-analysis is paused (AGENT_PAUSED_PARTS_JSON) - skipping."
-              exit 0
-            fi
-          fi
           gh api \
             --method POST \
             -H "Accept: application/vnd.github+json" \

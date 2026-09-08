@@ -7,7 +7,7 @@ The batteries. CI enforcement of every contract the rest of these docs describe 
 
 ## What runs
 
-1. **`scrub-fixtures.sh`** (193 checks) —
+1. **`scrub-fixtures.sh`** —
    - a real fixture repository built from scratch (branches: stale, evil, evil-merge, sync-content, sync-rollback, dev, autoload variants) with the actual scrub script run against each;
    - the full taint matrix: direct modify → alarm, modify-then-revert → alarm, evil merge → alarm, stale base → explained note, platform-sync content → explained, rollback-below-fork → alarm;
    - the split-trust autoload matrix: dev-tip doctrine kept silently, dev-intermediate kept with era note, pre-fork rollback removed + quarantined, hostile skills/configs removed, trusted siblings kept, out-of-repo symlink targets never staged into quarantine;
@@ -15,7 +15,7 @@ The batteries. CI enforcement of every contract the rest of these docs describe 
    - workflow contracts: pipefail, pause gates, config-lifecycle waiters, stats discipline (no `--models`), plugin wiring, drift-check scope, bootstrap state-silence, share-filter sentinel, the YAML `#`-comment trap class, the stub-dispatch tripwires;
    - routing matrix, roster transforms, permission jq-env deny patterns;
    - strict YAML (duplicate-key-rejecting loader) over every workflow and action file.
-2. **`prompt-rule-fixtures.sh`** (339 pins) — every behavioral rule in the prompt parts, pinned as greps over the *assembled* prompts; assembly contracts (every part referenced by a manifest, no orphans); the envsubst variable sets per mode.
+2. **`prompt-rule-fixtures.sh`** — every behavioral rule in the prompt parts, pinned as greps over the *assembled* prompts; assembly contracts (every part referenced by a manifest, no orphans); the envsubst variable sets per mode.
 3. **`assemble-prompt.sh --verify`** — manifest integrity.
 
 ## The rule

@@ -72,7 +72,8 @@ jobs:
     # AGENT_PAUSED variable: kill switch - paused runs skip entirely
     # (visible gray skip); the compliance-gate workflow keeps the pending
     # status posted so merges stay blocked while paused.
-    if: github.event_name == 'workflow_dispatch' && vars.AGENT_PAUSED != 'true'
+    # Per-part pause (job-level; malformed variable = loud fail; missing = runs).
+    if: github.event_name == 'workflow_dispatch' && vars.AGENT_PAUSED != 'true' && !fromJSON(vars.AGENT_PAUSED_PARTS_JSON || '{}')['compliance-check']
     runs-on: ubuntu-latest
     
     # Minimal permissions following principle of least privilege
@@ -113,6 +114,9 @@ jobs:
       #               (@stem, /stem-review, /stem-check), else the mirrobot words.
       BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES_JSON || '' }}
       BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
+      # Early-consumer fallback (bot-config.sh upgrades this with the
+      # /user-detected login once it runs, post-artifacts):
+      BOT_NAMES_JSON: ${{ vars.BOT_IDENTITIES_JSON || '["mirrobot-agent", "mirrobot-agent[bot]"]' }}
       AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
       # Noise filtering for thread context (see fetch-pr-discussion.sh):
       # CONTEXT_IGNORE_AUTHORS - comma logins dropped outright (repo variable)
@@ -188,22 +192,6 @@ jobs:
         env:
           PR_NUMBER_INPUT: ${{ inputs.pr_number }}
         run: |
-          # Per-part pause (AGENT_PAUSED_PARTS_JSON): true = this part is
-          # paused (visible green skip); missing key/variable = not paused;
-          # malformed = loud fail. Covers MANUAL dispatches too - the
-          # router checks before dispatching, this is the direct-entry
-          # backstop. AGENT_PAUSED stays the global kill above all parts.
-          _pp="${AGENT_PAUSED_PARTS_JSON:-}"
-          if [ -n "$_pp" ]; then
-            if ! printf '%s' "$_pp" | jq -e 'type == "object"' >/dev/null 2>&1; then
-              echo "::error::AGENT_PAUSED_PARTS_JSON is not a JSON object - fix the variable."
-              exit 1
-            fi
-            if printf '%s' "$_pp" | jq -e --arg k "compliance-check" '.[$k] == true' >/dev/null 2>&1; then
-              echo "::notice::compliance-check is paused (AGENT_PAUSED_PARTS_JSON) - skipping."
-              exit 0
-            fi
-          fi
           if [ -z "$PR_NUMBER_INPUT" ]; then
             echo "::error::pr_number dispatch input is required (got empty value)"
             exit 1
