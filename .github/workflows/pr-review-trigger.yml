@@ -168,13 +168,22 @@ jobs:
         # guarantee workflow_run used to provide). Retries absorb transient
         # API errors; if all attempts fail the step FAILS LOUDLY - a lost
         # review is a real failure worth a red run, not a silent skip.
+        # PAUSE EXCEPTION: while AGENT_PAUSED=true this step still runs but
+        # suppresses the dispatch with a visible notice (the agent's brain
+        # is off) - the stub itself is NOT paused: it owns the pending
+        # compliance status, which must keep blocking merges.
         if: steps.decide.outputs.review_wanted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ACTION: ${{ github.event.action }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          AGENT_PAUSED: ${{ vars.AGENT_PAUSED }}
         run: |
+          if [ "$AGENT_PAUSED" = "true" ]; then
+            echo "::notice::Agent is paused (AGENT_PAUSED=true) - review dispatch suppressed; pending compliance status keeps blocking merges."
+            exit 0
+          fi
           for attempt in 1 2 3; do
             if gh workflow run pr-review.yml \
               --repo "$GITHUB_REPOSITORY" \

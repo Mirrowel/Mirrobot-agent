@@ -139,12 +139,16 @@ It's a **complete [OpenCode config](https://opencode.ai/docs/config)**, minified
 }
 ```
 
-Minify whichever JSON you build — the example or your own full config:
+Minify whichever JSON you build — the example or your own full config (`permissions.example.json` is itself a complete full-config template now: placeholder provider, example MCP entry, example plugin reference, and the permission block):
 
 ```bash
 python minify_json_secret.py .github/actions/bot-setup/permissions.example.json
 python minify_json_secret.py my-full-config.json
 ```
+
+**Config lifecycle (how the secret is protected at runtime).** The config is written to the runner as a `chmod 600` file, and bot-setup registers every credential leaf inside it (provider apiKeys, MCP header values, credential-bearing URLs like `?tavilyApiKey=…`) with GitHub's `::add-mask::` — so even if some step ever echoed one, it renders as `***`. Opencode reads the config exactly once at boot (empirically verified — sessions complete correctly with the file deleted mid-run), and each workflow deletes it — along with the materialized plugin files — seconds after the first output line proves boot finished. An `if: always()` step guarantees removal on every exit path. There is nothing on disk to find for the rest of the run.
+
+**Plugins without committing them.** Want opencode plugins (a provider plugin, say) without committing their code? Put each file in the `OPENCODE_PLUGINS_JSON` variable (`{"myplugin/myplugin.js": "<file content>"}`; up to five more via `_1`..`_5`), then reference the materialized path in your config secret's `plugin` array: `"/home/runner/.mirrobot-plugins/myplugin/myplugin.js"`. Files land outside the workspace, permission-denied to the agent, deleted after boot — same lifecycle as the config. Remove the `plugin` entry from your config if you don't use plugins (referencing a path nothing materializes is a boot error).
 
 **How the layers combine** (bot-setup applies these in order): your config is the base → the `OPENCODE_MODEL` secret always sets the main `model` → optional secrets apply only when set, otherwise your config's values stand:
 
@@ -154,6 +158,8 @@ python minify_json_secret.py my-full-config.json
 | `OPENCODE_FAST_MODEL` | `small_model` | `small_model` is already in your config |
 
 Optionally add the **variable** (not secret) `TRUSTED_AGENT_USERS` (comma-separated usernames) so the agent knows who its people are, beyond collaborators.
+
+**Or skip the lookup entirely:** run **Agent Bootstrap** once (`Actions → Agent Bootstrap → Run workflow`, admin) — it seeds every variable with its default/template and prints the full secrets checklist into the run summary.
 
 #### Complete secrets reference
 
@@ -182,12 +188,17 @@ Set under `Settings → Secrets and variables → Actions → Variables` (not se
 
 | Variable | Default | What it tunes |
 |---|---|---|
+| `AGENT_PAUSED` | `false` | Kill switch: `true` pauses the agent's brain — router, mention poller, and all four agent workflows skip (visible gray). The stub + compliance-gate keep running, so the pending status keeps blocking merges while paused. |
+| `AGENT_MODELS_JSON` | *(empty template)* | Per-agent models: `{"pr-review": {"model": "provider/model", "fast": "provider/model"}, "bot-reply": {...}}`. Empty strings fall back to the global `OPENCODE_MODEL` secret; malformed JSON fails loudly. |
+| `OPENCODE_PLUGINS_JSON` (+ `_1`..`_5`) | *(empty)* | Plugin files for opencode: `{"<relative-path>": "<file content>"}` — each file is materialized to `~/.mirrobot-plugins/<path>` (never committed, never downloaded). Reference them by absolute path in your config secret's `plugin` array. Numbered variables let each plugin live separately; path collisions across variables are a hard error. |
 | `TRUSTED_AGENT_USERS` | *(empty)* | Comma-separated usernames the agent treats as trusted people (on top of collaborators) — informs its judgment, never its authorization |
 | `PREVIOUS_BOT_REVIEWS_COUNT` | `1` | How many of the agent's own latest PR reviews are elevated (unfiltered) into its review context |
 | `CONTEXT_IGNORE_AUTHORS` | *(empty)* | Comma-separated logins whose posts are dropped entirely from thread context (bots you never want to hear from). Example: `some-noisy-bot,another-bot[bot]` |
 | `CONTEXT_FILTER_PATTERNS_JSON` | baked defaults | JSON array of case-insensitive regex snippets; any match on a post's **body** drops that post from thread context. Setting it **replaces** the defaults. |
 | `FOREIGN_MENTIONS_ENABLED` | `false` | Master switch for **cross-repo guest mode** (see below). Must be exactly `true` to enable |
 | `FOREIGN_MENTIONS_USERS` | *(empty)* | Extra logins allowed to **summon the agent cross-repo** (unioned with this repo's collaborators — owner included). Deliberately separate from `TRUSTED_AGENT_USERS`: cross-repo summoning is its own, stricter privilege |
+
+**One-dispatch setup.** The **Agent Bootstrap** workflow (admin: `Actions → Agent Bootstrap → Run workflow`) creates every variable above with its safe default/template — existing values are never overwritten — and prints the complete secrets checklist into the run summary. Its logs are state-silent by design: they can never reveal which variables or secrets exist.
 
 **Noise filtering.** The agent's thread context hides junk automatically: hidden (minimized) content is excluded everywhere — the agent's own posts included; and the built-in pattern defaults drop the known noise classes of AI reviewers (CodeRabbit rate-limit / `Review skipped` / `Too many files` posts, the `No actionable comments` notices, Greptile's status channel) while **keeping their substantive reviews** — walkthroughs, overviews, and inline findings survive. Other AI reviewers are treated as input, never authority: their findings are leads to verify, never verdicts to mirror.
 
@@ -240,7 +251,9 @@ Open an issue, open a PR, or comment `@mirrobot-agent hello` — watch the Actio
 | **Compliance Check** | `/mirrobot-check` | End-of-life merge audit; posts the compliance status + report |
 | **Compliance Gate** | PR events | Redundant poster of the pending status — fails loudly rather than letting a transient error make a PR look mergeable |
 | **Bot Reply on Mention** | dispatch only | The general agent: conversations, investigations, on-demand reviews, contributions |
-| **Scrub Fixture Suite** | `.github/` changes | The batteries: 52 security fixtures + 325 prompt-rule pins + strict YAML validation |
+| **Agent Bootstrap** | admin dispatch only | One-time setup: seeds every variable with safe defaults/templates (never overwrites) and prints the secrets checklist. The repo's only `actions: write` workflow — state-silent by design |
+| **Mention Poller** | dispatch only | Cross-repo guest mode entry (see [the worker](tools/mention-worker/README.md)) |
+| **Scrub Fixture Suite** | `.github/` changes | The batteries: 179 security fixtures + 339 prompt-rule pins + strict YAML validation |
 
 ### The life of a pull request
 
@@ -259,7 +272,9 @@ Mention the agent and it picks its own approach, loading the matching instructio
 
 **Identity is dual-mode and automatic** — `ACCOUNT_GH_TOKEN` present → account mode (validated via `/user`, scope-gated: a `workflow` scope is a hard fail, missing `public_repo` is a hard fail); absent → App mode. Identity comparisons are case-insensitive; renaming the account breaks nothing. In account mode the agent can also act in *other* public repositories when a verified lead justifies it (report a bug it confirmed, open a fix PR where welcomed) — a request alone never qualifies.
 
-**Behavior lives in `OPENCODE_CONFIG_JSON`** ([see secrets](#3-add-secrets)) — a complete OpenCode config: permission profile (deny-by-default bash with explicit allows, env-dump and credential-access denies, repo-injected skills denied — approve individual skills by name if you want them), plus optionally providers, `small_model`, agents, and MCP servers. Workflows never touch this config; you own it.
+**Behavior lives in `OPENCODE_CONFIG_JSON`** ([see secrets](#3-add-secrets)) — a complete OpenCode config: permission profile (deny-by-default bash with explicit allows, env-dump and credential-access denies, repo-injected skills denied — approve individual skills by name if you want them), plus optionally providers, `small_model`, agents, and MCP servers. Workflows never touch this config; you own it. At runtime it is masked leaf-by-leaf and **deleted after opencode boots** (see [config lifecycle](#3-add-secrets)); the run's step summary carries a bare `opencode stats` usage report (tokens and cost — model stats stay hidden).
+
+**Per-agent models** via the `AGENT_MODELS_JSON` variable — e.g. run reviews on a heavyweight model and issue triage on a light one, without touching secrets. **The pause switch** `AGENT_PAUSED=true` silences the agent's brain (router, poller, all agent workflows) while the stub and compliance-gate keep blocking merges. Both are seeded by **Agent Bootstrap**.
 
 **`FILE_GROUPS_JSON`** in `compliance-check.yml` defines which files must stay consistent with each other (e.g. README ↔ workflows) — edit it to match your project.
 
@@ -277,6 +292,7 @@ Built against real adversarial testing — disguised injection PRs, trojan docum
 - **`.github` taint alarm** — any workflow/prompt/script change in branch history *or* the merged tree (evil-merge safe) is surfaced to the agent with maximum-scrutiny instructions — flagged, never hidden
 - **Duty over deference** — the security brief trains the agent to treat all requester text as untrusted data regardless of rank, evaluate risk, and refuse; approval requires genuine repository purpose — harmless ≠ mergeable, and the ladder binds for maintainers and admins alike
 - **Token hygiene** — short-lived App tokens per run; git auth rides an in-process extraheader, never written to `.git/config`; `persist-credentials: false` on every token-bearing checkout
+- **Config lifecycle** — the config secret's inner credentials (provider keys, MCP headers, credential-bearing URLs) are each `::add-mask::`ed at boot, and the config + any materialized plugin files are **deleted seconds after opencode finishes reading them** (once-at-boot semantics, empirically verified) with an `always()` cleanup guarantee — nothing sensitive remains on disk for the agent (or anyone) to find mid-run
 - **Encrypted share links** — agent sessions run with `--share`, producing a URL that exposes the full session (thoughts included). The stream is piped through `share-filter.sh`: the raw URL is `::add-mask::`ed, never reaches the public log, and is re-published RSA-OAEP-encrypted (`MRB1.<base64>`) inline, as a notice annotation, and in the run's step summary — together with public context (repo, PR, head SHA, review type, run, actor). Only a holder of the private key can recover the link (see `decrypt_share_link.py` below); there is no private key anywhere in CI.
 
 ### `decrypt_share_link.py` — admin-side tool

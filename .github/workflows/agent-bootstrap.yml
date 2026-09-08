@@ -1,0 +1,124 @@
+# Agent Bootstrap - one-time setup of the agent's control panel.
+#
+# WHY THIS EXISTS: the agent's tunables live in Actions VARIABLES (easy
+# editing, no re-encryption) - but they do not exist until someone creates
+# them. This workflow seeds every documented variable with a safe-off
+# default/template so the panel is simply THERE after one admin dispatch.
+# Fill values in repo settings afterwards; nothing else to look up.
+#
+# SECURITY SHAPE:
+# - workflow_dispatch ONLY: summoning requires write access to the repo
+#   (admins/maintainers) - arbitrary users cannot invoke it.
+# - This is the ONLY workflow in the repository with actions:write; that
+#   grant is used solely to create the variables listed below.
+# - STATE-SILENT BY DESIGN: logs and summary must never reveal which
+#   variables or secrets exist, are missing, or hold what values. Per-
+#   variable outcomes are never printed; the summary is STATIC content,
+#   identical on every repository (it probes nothing - and cannot: the
+#   secrets API needs a user token, which no workflow here holds).
+# - NEVER OVERWRITES: existing variables are left byte-for-byte intact;
+#   only absent ones are created.
+# - GITHUB_TOKEN suffices (no PAT/App credentials needed): the ephemeral
+#   runner token with actions:write drives the variables API natively.
+
+name: Agent Bootstrap
+run-name: "Agent Bootstrap - seed defaults"
+
+on:
+  workflow_dispatch: {}
+
+# The entire and only grant this workflow needs. Deliberately the sole
+# holder of actions:write in the repository.
+permissions:
+  actions: write
+
+concurrency:
+  group: agent-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Seed documented variables (state-silent)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -u
+          # Safe-off defaults / prefilled templates. Values are committed
+          # repo content = public and trusted; nothing secret ever passes
+          # through this workflow.
+          declare -A DEFAULTS=(
+            [AGENT_PAUSED]="false"
+            [AGENT_MODELS_JSON]='{"pr-review":{"model":"","fast":""},"bot-reply":{"model":"","fast":""},"compliance-check":{"model":"","fast":""},"issue-comment":{"model":"","fast":""}}'
+            [CONTEXT_IGNORE_AUTHORS]=""
+            [CONTEXT_FILTER_PATTERNS_JSON]="[]"
+            [TRUSTED_AGENT_USERS]=""
+            [FOREIGN_MENTIONS_ENABLED]="false"
+            [FOREIGN_MENTIONS_USERS]=""
+            [OPENCODE_PLUGINS_JSON]="{}"
+            [PREVIOUS_BOT_REVIEWS_COUNT]="1"
+          )
+          FAILED=0
+          for name in "${!DEFAULTS[@]}"; do
+            # Exists already? Leave untouched and say NOTHING about it.
+            if gh api "/repos/$REPO/actions/variables/$name" >/dev/null 2>&1; then
+              continue
+            fi
+            if ! gh api --method POST "/repos/$REPO/actions/variables" \
+                 -f name="$name" -f value="${DEFAULTS[$name]}" >/dev/null 2>&1; then
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" = "1" ]; then
+            echo "::error::Bootstrap could not complete. No existing values were modified. Verify this workflow's actions:write grant and rerun."
+            exit 1
+          fi
+          echo "Bootstrap complete."
+
+      - name: Static configuration checklist
+        # STATIC documentation only - identical output on every repo, every
+        # run. Reveals nothing about actual state (by design AND by
+        # impossibility: the secrets API requires a user token no workflow
+        # here holds, so presence cannot be probed even if we wanted to).
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Agent Bootstrap complete
+
+          Every documented variable now exists (existing values were left untouched). Fill in what you want to use:
+
+          ### Variables (Settings → Secrets and variables → Actions → Variables)
+
+          | Variable | Default | What it does |
+          |---|---|---|
+          | `AGENT_PAUSED` | `false` | Kill switch: `true` pauses the agent's brain (router, poller, all agent workflows). The stub + compliance-gate keep blocking merges while paused. |
+          | `AGENT_MODELS_JSON` | empty template | Per-agent models: `{"pr-review": {"model": "provider/model", "fast": "provider/model"}, ...}`. Empty strings fall back to the global `OPENCODE_MODEL` secret. |
+          | `CONTEXT_IGNORE_AUTHORS` | empty | Comma-separated authors whose posts are filtered from agent context (AI-reviewer noise, bots). |
+          | `CONTEXT_FILTER_PATTERNS_JSON` | `[]` | JSON array of regex patterns; matching posts are filtered from context. |
+          | `TRUSTED_AGENT_USERS` | empty | Extra trusted users (comma-separated) beyond direct collaborators. |
+          | `FOREIGN_MENTIONS_ENABLED` | `false` | Cross-repo guest mode master switch. |
+          | `FOREIGN_MENTIONS_USERS` | empty | Allowlist for cross-repo summons (comma-separated logins). |
+          | `OPENCODE_PLUGINS_JSON` | `{}` | Plugin files: `{"<relative-path>": "<file content>"}` materialized to `~/.mirrobot-plugins/`. Reference by absolute path in the config secret's `plugin` array. For multiple plugins use `OPENCODE_PLUGINS_JSON_1` .. `_5`. |
+          | `PREVIOUS_BOT_REVIEWS_COUNT` | `1` | How many of the agent's own past reviews to include as review memory. |
+
+          ### Secrets (Settings → Secrets and variables → Actions → Secrets)
+
+          | Secret | Required? | What it does |
+          |---|---|---|
+          | `ACCOUNT_GH_TOKEN` | identity A (pick A or B) | Bot account classic PAT, `public_repo` scope ONLY (the `workflow` scope is rejected - it would remove the workflow-push backstop). |
+          | `BOT_APP_ID` + `BOT_PRIVATE_KEY` | identity B (pick A or B) | GitHub App credentials (fallback identity when no account token). |
+          | `OPENCODE_MODEL` | yes | Global model in `provider/model` format; used by every agent without a per-agent override. |
+          | `OPENCODE_CONFIG_JSON` | strongly recommended | Complete opencode config (providers with API keys, mcp, plugins, permission block). Template: `.github/actions/bot-setup/permissions.example.json`. The permission block is the agent's security profile - without it the agent runs on permissive defaults. |
+          | `OPENCODE_FAST_MODEL` | optional | Global fast/small model. |
+          | `OPENCODE_API_KEY` | optional | API key applied to the main model's provider (redundant when keys live inside `OPENCODE_CONFIG_JSON`). |
+          | `SHARE_LINK_PUBKEY` | optional | RSA public key enabling encrypted session share links (see `decrypt_share_link.py`). |
+
+          Quick fill (run from a machine with `gh` authenticated as an admin):
+          ```bash
+          gh secret set OPENCODE_MODEL        -R <owner>/<repo> --body "provider/model"
+          gh secret set OPENCODE_CONFIG_JSON  -R <owner>/<repo> < config.min.json
+          ```
+          EOF
+          echo "Checklist written to the run summary."
