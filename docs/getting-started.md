@@ -16,7 +16,14 @@ After setup, your repository has an agent that:
 
 ## Step 0 — copy the platform in
 
-Copy this repo's `.github/` directory, `decrypt_share_link.py`, and `tools/mention-worker/` into your repository, on the default branch. That is the whole platform: workflows, prompts, scripts, and the composite action that assembles everything per run.
+Copy this repo's `.github/` directory into your repository, on the default branch. That is the whole platform: workflows, prompts, scripts, and the composite action that assembles everything per run.
+
+Two optional companions, each unlocking one feature:
+
+| Also copy | Unlocks |
+|---|---|
+| `decrypt_share_link.py` | Decrypting the agent's encrypted session share links locally (without it, links are captured and masked but not recoverable) |
+| `tools/mention-worker/` | Cross-repo guest mode — the agent answering mentions in repos it's not installed in |
 
 > Forking the whole repository works too — but don't carry this repo's docs and plans into yours; you only need the paths above.
 
@@ -68,7 +75,9 @@ For the compliance audit to actually *block* merges, make it a required status c
 
 Open an issue or PR and write:
 
-> `@mirrobot what does this repository do?`
+> `@mirrobot-agent what does this repository do?`
+
+(The short `@mirrobot` works too — both are stock trigger stems.)
 
 Within about a minute you should see a 👀 reaction, then a reply. On a PR, the review chain fires on its own — you'll see `PR Review Trigger` decide, `PR Review` run, and a pending `compliance-check` status appear.
 

@@ -17,6 +17,66 @@ gh variable set AGENT_PAUSED -R <owner>/<repo> --body "true"
 
 *When to use it:* incidents, migrations, "the bot is being weird and I want it quiet while I look." Flip back to `false` (or delete the variable) to resume.
 
+### `AGENT_PAUSED_PARTS_JSON`
+**Default:** all `false` (seeded). **Type:** per-part pause.
+
+```json
+{ "pr-review": false, "bot-reply": false, "compliance-check": false, "issue-analysis": false }
+```
+
+Pause one agent part: `true` = that part skips visibly (gray), the router stops dispatching it, and its manual dispatches skip too. Missing keys — or the whole variable — mean *not* paused. Malformed JSON fails the run loudly: a broken kill switch must be visible, not silently ignored. `AGENT_PAUSED` stays the global kill above all parts.
+
+### `BOT_IDENTITIES_JSON`
+**Default:** seeded by Bootstrap — the account login in account mode, the stock names in app mode. **Type:** identity array.
+
+**Who the agent is**: the logins treated as *self* by loop guards, review attribution, FIRST/FOLLOW-UP markers, and footer verification:
+
+```json
+["mybot", "mybot[bot]"]
+```
+
+Resolution at runtime: this variable **∪** the account login detected live via the API (account mode). The stock fallback (`mirrobot-agent`, `mirrobot-agent[bot]`) applies only when both are absent — so a fork that sets the variable never matches `mirrobot` as itself. Bare `mirrobot` is deliberately *not* an identity (the username is taken; a spoofed account must never be treated as self) — it remains a trigger word. Renames in account mode are picked up instantly via detection; the variable catches up whenever you edit it.
+
+### `BOT_TRIGGERS`
+**Default:** `mirrobot, mirrobot-agent` (seeded). **Type:** comma-separated raw stems.
+
+**What summons the agent.** Raw names, no `@` or `/` prefixes — the prefixes are the derivation. Every stem yields:
+
+- `@<stem>` — mention routing
+- `/<stem>-review` and `/<stem>_review` — review command
+- `/<stem>-check` and `/<stem>_check` — compliance command
+
+So the default value gives you `@mirrobot`, `@mirrobot-agent`, `/mirrobot-review`, `/mirrobot-agent-review`, `/mirrobot-check`, `/mirrobot-agent-check` — all working. Setting the variable **replaces** the set: rename your bot by setting `BOT_TRIGGERS="mybot"` and the mirrobot words stop routing. When unset, stems derive from the resolved identity (account mode answers to its account name); when nothing is set anywhere, the mirrobot words apply.
+
+### `CONTEXT_LIMITS_JSON`
+**Default:** *(full budget template, seeded)*. **Type:** context budget.
+
+```json
+{
+  "comments": 30,
+  "reviews": 15,
+  "own-reviews": 5,
+  "threads-per-review": 25,
+  "thread-comments": 10,
+  "orphan-threads": 20,
+  "orphan-thread-comments": 10
+}
+```
+
+How much thread context the agent reads, per fetch:
+
+| Key | Controls |
+|---|---|
+| `comments` | Conversation comments (the flat PR/issue discussion), newest first |
+| `reviews` | Review objects (verdict submissions), newest first |
+| `own-reviews` | **Safeguard:** the agent's own newest reviews are *always* included, even beyond the `reviews` window — its memory of its own findings never falls out |
+| `threads-per-review` | Inline (code-anchored) threads allocated per fetched review |
+| `thread-comments` | Replies per fetched thread (oldest dropped) |
+| `orphan-threads` | Review-less threads ("Add single comment" notes), newest first |
+| `orphan-thread-comments` | Replies per orphaned thread |
+
+Everything is *up to*, newest-first, deduped. **Filter before cap:** hidden (minimized) content never consumes budget anywhere; resolved/outdated content never consumes budget outside the elevated block (the agent's unfiltered memory of its own newest reviews — sized by `PREVIOUS_BOT_REVIEWS_COUNT`). Lower the numbers on noisy repos for smaller first prompts — this is the primary cost knob alongside per-agent models. Malformed JSON: warning + per-key defaults (a broken knob is visible, not fatal).
+
 ### `AGENT_MODELS_JSON`
 **Default:** empty template (seeded). **Type:** per-agent model overrides.
 
@@ -31,12 +91,12 @@ gh variable set AGENT_PAUSED -R <owner>/<repo> --body "true"
 
 Rules:
 - Empty string = not set → falls back to the global `OPENCODE_MODEL` secret. Missing keys: same fallback. Fill what you want, leave the rest.
-- `"fast"` (optional) sets that agent's `small_model` (what opencode uses for its own sub-agents).
+- `"fast"` (optional) sets that agent's `small_model`. Honest note: opencode uses `small_model` for session-title generation — the override exists for completeness, not performance.
 - Malformed JSON **fails the run loudly** — never a silent global fallback.
 - Model names never appear in any log; the run only says the override is active.
-- Format is `provider/model`, and the provider must exist in your `OPENCODE_CONFIG_JSON`.
+- Format is `provider/model`; the provider can be a **built-in** (anthropic, openai, …) when `OPENCODE_API_KEY` supplies its key, or an entry in your `OPENCODE_CONFIG_JSON`.
 
-*When to use it:* one heavyweight reviewer + cheap triage is the classic split; also cost control after watching the per-run `opencode stats` summaries.
+*When to use it:* one heavyweight reviewer + cheap triage is the classic split; also cost control after watching the per-run usage summaries.
 
 ### `OPENCODE_PLUGINS_JSON` (+ `_1` … `_5`)
 **Default:** `{}` (seeded). **Type:** plugin files, without committing them.
@@ -65,7 +125,7 @@ Each variable may hold one plugin or several entries; `_1`..`_5` hold more. All 
 ### `TRUSTED_AGENT_USERS`
 **Default:** absent (= empty). **Type:** comma-separated logins.
 
-People — beyond collaborators — whose asks carry friendly context in the agent's judgment. A trust *signal*: the agent still evaluates risk on its own; this never bypasses its judgment.
+Everyone who is a direct collaborator **already counts as friendly** — this variable only *adds* to that list: people who don't have write access but whose asks should carry friendly context in the agent's judgment. A trust *signal*: the agent still evaluates risk on its own; this never bypasses its judgment.
 
 ```bash
 gh variable set TRUSTED_AGENT_USERS -R <owner>/<repo> --body "alice,bob"
@@ -90,7 +150,7 @@ Regex metacharacters work; backslashes double as JSON escapes. Malformed JSON fa
 ### `PREVIOUS_BOT_REVIEWS_COUNT`
 **Default:** `1` (seeded). **Type:** integer.
 
-How many of the agent's own newest PR reviews are elevated (unfiltered) into its review context. Raise to `3` for long-lived PRs with many rounds — deeper memory of its own prior findings.
+How many of the agent's own **newest** PR reviews are *elevated* — included unfiltered (only resolved/outdated markers are bypassed; hidden content stays hidden even here). This is the agent's sharp memory of its latest findings. Older own reviews are **not lost**: they still appear in the filtered history block (resolved/outdated/hidden threads dropped). Raise to `3` on long-lived PRs with many rounds — deeper unfiltered memory of its own feedback.
 
 ### `FOREIGN_MENTIONS_ENABLED`
 **Default:** `false` (seeded). **Type:** cross-repo master switch.
@@ -123,7 +183,7 @@ Runtime lifecycle: written `chmod 600`, every credential leaf inside it (provide
 API key for the main model's provider — injected as `provider.<main>.options.apiKey`. Redundant when the key lives inside your config (recommended).
 
 ### `OPENCODE_FAST_MODEL` (optional)
-Global `small_model`. Per-agent `"fast"` overrides beat this.
+Global `small_model` — used for session-title generation. Per-agent `"fast"` overrides beat this.
 
 ### Identity pair — exactly one of:
 
@@ -143,8 +203,11 @@ RSA **public** key (PEM) for encrypted session share links. Without it, share UR
 |---|---|
 | Different model per agent | `AGENT_MODELS_JSON` |
 | Quieter/cheaper triage | `issue-comment` entry in the same variable |
+| Smaller first prompts on noisy repos | `CONTEXT_LIMITS_JSON` |
 | Mute another bot entirely | `CONTEXT_IGNORE_AUTHORS` |
 | Drop a recurring noise post | `CONTEXT_FILTER_PATTERNS_JSON` (remember: replaces defaults) |
 | Stop everything safely | `AGENT_PAUSED=true` |
+| Stop just one part (e.g. reviews) | `AGENT_PAUSED_PARTS_JSON` |
+| Rename the bot | `BOT_IDENTITIES_JSON` + `BOT_TRIGGERS` |
 | Private plugin | `OPENCODE_PLUGINS_JSON` + `plugin` path in the config |
 | Agent follows me into other repos | `FOREIGN_MENTIONS_ENABLED` + `FOREIGN_MENTIONS_USERS` + PAT scopes + the worker |

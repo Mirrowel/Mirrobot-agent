@@ -60,19 +60,20 @@ bot-setup warns when your secret's permission block drifts from the example — 
 
 ## Renaming the agent
 
-If "mirrobot" isn't your bot's name, change exactly these:
+If "mirrobot" isn't your bot's name, it's **two variables and a sweep** — the machinery derives itself:
 
-1. **`BOT_NAMES_JSON`** in every workflow's env block — the two identity strings: your account login and your App bot login (`["mybot", "mybot[bot]"]`). Case-insensitively matched everywhere downstream.
-2. **Mention routing** — `.github/scripts/route-comment.sh` matches `@mirrobot(-agent)?`; change to your name(s).
-3. **The worker** (if guest mode) — its mention-regex and allowlist docs: [tools/mention-worker/](../tools/mention-worker/README.md).
-4. **Prompt prose** — parts refer to the agent by name; a sweep of `mirrobot` → your name in `parts/` keeps the voice consistent. The *name vs identity* distinction (a name is a name; identities are the two logins) survives any rename as long as `BOT_NAMES_JSON` holds the real logins.
-5. Commit footer attribution (git identity) is derived from the account/App automatically — nothing to edit.
+1. **`BOT_IDENTITIES_JSON`** — who the agent *is*: `["mybot", "mybot[bot]"]` (your account login and, if you have one, the App bot login). Loop guards, review attribution, and footer verification match this set case-insensitively. In account mode the login is also detected live from the token, so renames take effect immediately; the variable covers the rest and app-mode installs.
+2. **`BOT_TRIGGERS`** — what *summons* it: raw stems like `mybot` — every stem derives `@mybot`, `/mybot-review`, `/mybot-check` automatically (see [configuration](configuration.md#bot_triggers)). Multiple stems are fine.
+3. **Prompt prose** — parts refer to the agent by name; a sweep of `mirrobot` → your name in `parts/` keeps the voice consistent.
+4. **The worker** (if guest mode) needs nothing — it derives the account login from its own token.
 
-The battery pins reference `mirrobot-agent` — update `prompt-rule-fixtures.sh`/`scrub-fixtures.sh` pins in the same commit (they exist to catch exactly this kind of missed sweep).
+That's the whole hard surface. Git attribution is derived from the account/App automatically. The battery pins reference `mirrobot-agent` as the stock fallback — if you're maintaining a fork of the platform itself (not just deploying it), update the fallbacks in `bot-config.sh` and the fixture pins in the same commit.
+
+**Name vs identity, preserved by design:** a *name* is what people type (`@mirrobot` routes); an *identity* is a login the agent treats as itself. Bare `mirrobot` is a trigger word, never an identity — a user who registers that username is not the agent.
 
 ## Trigger words
 
-Routing lives in one place — `.github/scripts/route-comment.sh` — and the stub's label gate is the literal `Agent Monitored` in `pr-review-trigger.yml`. Changing `/mirrobot-review` to `/review` is a one-file edit plus its fixture pins (the routing matrix is pinned). The `@name` mention matching is deliberately loose (substring, same as the original guards) — tighten it in `route-comment.sh` if you'd rather.
+All trigger words derive from the `BOT_TRIGGERS` variable (see [renaming](#renaming-the-agent) and [configuration](configuration.md#bot_triggers)) — routing itself lives in one place, `.github/scripts/route-comment.sh`, which builds the match matrix from the stems. The stub's label gate is the literal `Agent Monitored` in `pr-review-trigger.yml`. The mention matching is deliberately loose (substring) — tighten it in `route-comment.sh` if you'd rather, at the cost of stricter typo tolerance.
 
 ## Adding a whole new mode
 

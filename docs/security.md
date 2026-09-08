@@ -19,8 +19,8 @@ Before any agent boots, every checkout is scrubbed (`.github/scripts/scrub-works
 
 | Surface | Trusted from | Why |
 |---|---|---|
-| Auto-load files (`AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.opencode/`, harness rule files, skill dirs) | **main ∪ dev**, each branch floored at its merge-base with the PR | This content describes the code it ships with — it legitimately evolves on dev before merging up |
-| `.github/` platform files | **main only** (taint alarm, never removal) | Platform wiring executes from main; dev never vouches for it |
+| Auto-load files (`AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.opencode/`, harness rule files, skill dirs) | **main ∪ dev** (your integration branches — the `AUTOLOAD_BRANCHES` list in the scrub), each branch floored at its merge-base with the PR | This content describes the code it ships with — it legitimately evolves on the integration branch before merging up |
+| `.github/` platform files | **main only** (taint alarm, never removal) | Platform wiring executes from main; no other branch vouches for it |
 
 Accepted states: bytes a trust branch shipped at-or-after its floor (the fork state included). Rejected: anything older (a deliberate rollback — resurrecting content a trust branch already abandoned — or novel bytes no trust branch ever had). Removed files are **quarantined** to `/tmp/scrub-quarantine/` (resolved content, in-repo targets only): readable as data, never auto-loaded as instructions. Kept-but-not-current states carry an era note so the agent treats them as dated context.
 

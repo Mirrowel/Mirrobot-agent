@@ -17,10 +17,12 @@ That's also why platform updates land on **main** — the default branch *is* th
 
 ### The update doctrine
 
+Throughout, "dev" means *your integration branch, whatever it's named* — the branch that carries work ahead of main. The scrub's `AUTOLOAD_BRANCHES` list (in `scrub-workspace.sh`) names the branches whose auto-load content is trusted; set it to your branch names if they differ.
+
 - **Platform changes (anything under `.github/`) go to main first.** Always. A platform change on any other branch is inert for real runs until it reaches main.
-- **`dev` needs no per-batch sync.** At the next dev→main merge, agent files (changed only on main's side) auto-merge cleanly.
-- **When dev *should* be current** (the stub or gate changed): `git merge main` into dev. Merges share commit objects, so those commits dedupe to nothing when dev later merges into main. **Never** replicate the same change as separate commits on both branches — copies are the history pollution that shows up in main's log later.
-- **Auto-load content is the deliberate exception** — it evolves on dev (see the trust model below).
+- **The integration branch needs no per-batch sync.** At its next merge into main, agent files (changed only on main's side) auto-merge cleanly.
+- **When it *should* be current** (the stub or gate changed): `git merge main` into it. Merges share commit objects, so those commits dedupe to nothing at the later merge into main. **Never** replicate the same change as separate commits on both branches — copies are the history pollution that shows up in main's log later.
+- **Auto-load content is the deliberate exception** — it evolves on the integration branch (see the trust model below).
 
 ## The life of a pull request
 
@@ -81,7 +83,14 @@ Full authoring guide: [customization.md](customization.md#prompts).
 
 ## The identity model
 
-The bot speaks as exactly one identity per installation — a user account (account mode) or a GitHub App bot (app mode) — selected by which secrets exist. Both modes flow through the same machinery; every self-detection point (bot-loop guards, review attribution, footer verification) matches a JSON list of identity logins, case-insensitively, so renaming never silently breaks detection. "mirrobot" is the agent's *name* — mention-routing accepts it — but it is never an *identity*: a human user who happens to be named `mirrobot` is not treated as the agent.
+The bot speaks as exactly one identity per installation — a user account (account mode) or a GitHub App bot (app mode) — selected by which secrets exist. Both modes flow through the same machinery.
+
+Two systems, deliberately separate:
+
+- **Identity** ("is this content authored by me?") resolves per run: the `BOT_IDENTITIES_JSON` variable **∪** the account login detected live via the API (account mode; app tokens cannot self-discover). The stock fallback applies only when both are absent. Every self-detection point — bot-loop guards, review attribution, FIRST/FOLLOW-UP markers, footer verification, reaction cleanup — matches this resolved set, case-insensitively, so renames never silently break detection.
+- **Triggers** ("what text summons me?") resolve from the `BOT_TRIGGERS` variable (raw stems; each derives an `@stem` mention plus `/stem-review` and `/stem-check` commands), else from the resolved identity, else the stock mirrobot words.
+
+"mirrobot" is the agent's *name* — a trigger word — never an identity: a human user who happens to be named `mirrobot` is not treated as the agent.
 
 Cross-repo guest mode adds a third identity context: the *guest* — the same account, summoned into a repository it doesn't know, running under stricter rules (read-only by default, authority pinned to an allowlist, never to thread participation). See [workflows/mention-poller.md](workflows/mention-poller.md).
 

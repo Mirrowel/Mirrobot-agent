@@ -17,6 +17,8 @@ One page per workflow. Each page covers: what triggers it, where it executes fro
 
 ## The shared lifecycle
 
+**Base-branch sync doctrine** (for the two workflows above that run from a PR's base branch): platform changes land on main; the integration branch ("dev" here — whatever yours is named) needs no per-batch sync, and when it *should* be current — the stub or gate changed — sync with `git merge main` into it, never copy-commits. Full story: [architecture.md](../architecture.md#the-update-doctrine).
+
 Several mechanics repeat across the agent workflows; documented once here, referenced everywhere:
 
 - **Bot setup** (composite action `.github/actions/bot-setup/`) resolves the identity (account PAT or App token), configures git, writes the OpenCode config, applies per-agent model overrides, materializes plugin files, registers credential-leaf masks, and installs opencode.
