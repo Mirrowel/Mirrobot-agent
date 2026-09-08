@@ -1,9 +1,10 @@
-.github/workflows/opencode.yml
-custom_providers.json
 
 # Locally rendered assembled agent prompts (generated, not source)
-.github/prompts/rendered/
-__pycache__/
-
 # wrangler local state
+.cortexkit/
+.github/prompts/rendered/
+.github/workflows/opencode.yml
+__pycache__/
+__pycache__/
+custom_providers.json
 tools/mention-worker/.wrangler/
