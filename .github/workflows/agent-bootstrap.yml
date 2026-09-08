@@ -84,15 +84,15 @@ jobs:
           fi
           # Safe-off defaults / prefilled templates. Values are committed
           # repo content = public and trusted; nothing secret ever passes
-          # through this workflow.
+          # through this workflow. EMPTY-DEFAULT VARIABLES ARE DELIBERATELY
+          # NOT SEEDED: the API rejects empty values ("Variable value cannot
+          # be empty", live-verified 422) and absence already IS the empty
+          # state for every consumer - set them only when you have content.
           declare -A DEFAULTS=(
             [AGENT_PAUSED]="false"
             [AGENT_MODELS_JSON]='{"pr-review":{"model":"","fast":""},"bot-reply":{"model":"","fast":""},"compliance-check":{"model":"","fast":""},"issue-comment":{"model":"","fast":""}}'
-            [CONTEXT_IGNORE_AUTHORS]=""
             [CONTEXT_FILTER_PATTERNS_JSON]="[]"
-            [TRUSTED_AGENT_USERS]=""
             [FOREIGN_MENTIONS_ENABLED]="false"
-            [FOREIGN_MENTIONS_USERS]=""
             [OPENCODE_PLUGINS_JSON]="{}"
             [PREVIOUS_BOT_REVIEWS_COUNT]="1"
           )
@@ -159,14 +159,13 @@ jobs:
 
           ### Manual variable seeding (if the seeding step could not run)
 
+          Variables that default to empty (`CONTEXT_IGNORE_AUTHORS`, `TRUSTED_AGENT_USERS`, `FOREIGN_MENTIONS_USERS`) are intentionally NOT created - GitHub variables cannot hold empty values, and absence already means empty. Create them only when you have content.
+
           ```bash
           gh variable set AGENT_PAUSED -R <owner>/<repo> --body "false"
           gh variable set AGENT_MODELS_JSON -R <owner>/<repo> --body '{"pr-review":{"model":"","fast":""},"bot-reply":{"model":"","fast":""},"compliance-check":{"model":"","fast":""},"issue-comment":{"model":"","fast":""}}'
-          gh variable set CONTEXT_IGNORE_AUTHORS -R <owner>/<repo> --body ""
           gh variable set CONTEXT_FILTER_PATTERNS_JSON -R <owner>/<repo> --body "[]"
-          gh variable set TRUSTED_AGENT_USERS -R <owner>/<repo> --body ""
           gh variable set FOREIGN_MENTIONS_ENABLED -R <owner>/<repo> --body "false"
-          gh variable set FOREIGN_MENTIONS_USERS -R <owner>/<repo> --body ""
           gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo> --body "{}"
           gh variable set PREVIOUS_BOT_REVIEWS_COUNT -R <owner>/<repo> --body "1"
           ```

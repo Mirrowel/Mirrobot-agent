@@ -268,6 +268,9 @@ check "bootstrap: no GITHUB_TOKEN grant (variables need user tokens)" no  "$(gre
 check "bootstrap: resolves bot identity token"        yes "$(grep -q 'mode=account' "$BOOT" && grep -q 'mode=app' "$BOOT" && grep -q 'create-github-app-token' "$BOOT" && echo yes || echo no)"
 check "bootstrap: manual fallback when tokenless"     yes "$(grep -q 'mode=manual' "$BOOT" && grep -q 'gh variable set' "$BOOT" && echo yes || echo no)"
 check "bootstrap: seeds AGENT_PAUSED default"      yes "$(grep -q '\[AGENT_PAUSED\]="false"' "$BOOT" && echo yes || echo no)"
+# GitHub variables reject empty values (live-verified 422) - empty-default
+# variables must NOT be seeded (absence is the empty state for consumers).
+check "bootstrap: no empty-value seeds (422 trap)"  no  "$(grep -q '\]="\""' "$BOOT" && echo yes || echo no)"
 check "bootstrap: models template prefilled"       yes "$(grep -q '{\"pr-review\":{\"model\":\"\",\"fast\":\"\"}' "$BOOT" && echo yes || echo no)"
 check "bootstrap: exists-check never overwrites"   yes "$(grep -q 'actions/variables/\$name' "$BOOT" && grep -q 'continue' "$BOOT" && echo yes || echo no)"
 # State-silence: no per-variable outcome lines anywhere in the seed step.
