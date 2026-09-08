@@ -1,5 +1,10 @@
 name: Bot Reply on Mention
 
+# EXECUTES FROM: THE DEFAULT BRANCH, always (dispatched by the agent router
+# on the default branch; issue_comment-family triggers are default-branch
+# by GitHub rule). Platform updates land on main - see
+# docs/workflows/overview.md for the execution map and update doctrine.
+
 on:
   # Anti-phantom: an explicit never-matching push trigger. Dispatch-only
   # workflows otherwise get dead push-event runs (red X, 0 jobs) whenever
@@ -75,6 +80,10 @@ jobs:
       contents: read
 
     env:
+      # ─── EDITABLE KNOBS ──────────────────────────────────────────────────
+      # Everything a fork tunes in THIS file lives near this block (the rest
+      # is machinery). Full reference: docs/configuration.md and
+      # docs/workflows/bot-reply.md.
       THREAD_NUMBER: ${{ inputs.threadNumber }}
       # Cross-repo guest mode: empty = home. Set by mention-poller dispatch.
       TARGET_REPO: ${{ inputs.targetRepo || '' }}

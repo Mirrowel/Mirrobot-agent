@@ -323,18 +323,20 @@ Open an issue, open a PR, or comment `@mirrobot-agent hello` — watch the Actio
 
 ## The workflows
 
-| Workflow | Trigger | What it does |
-|---|---|---|
-| **Agent Router** | any comment | Parses once, dispatches exactly one target by comment id — one visible run per comment, no fan-out |
-| **PR Review Trigger** | PR events | Zero-secret stub (no checkout, no secrets): decides if a review is wanted, posts the pending merge-blocker status, dispatches PR Review — declined events dispatch nothing |
-| **PR Review** | dispatch only | The reviewer: FIRST/FOLLOW-UP protocols, severity-graded findings, verdicts, footer verification and repair |
-| **Issue Analysis** | issue opened | Duplicate hunt, root cause, labels, suggested fix |
-| **Compliance Check** | `/mirrobot-check` | End-of-life merge audit; posts the compliance status + report |
-| **Compliance Gate** | PR events | Redundant poster of the pending status — fails loudly rather than letting a transient error make a PR look mergeable |
-| **Bot Reply on Mention** | dispatch only | The general agent: conversations, investigations, on-demand reviews, contributions |
-| **Agent Bootstrap** | admin dispatch only | One-time setup: seeds every variable with safe defaults/templates (never overwrites) and prints the secrets checklist — using the repo's bot identity token, with a manual-instructions fallback; state-silent by design |
-| **Mention Poller** | dispatch only | Cross-repo guest mode entry (see [the worker](tools/mention-worker/README.md)) |
-| **Scrub Fixture Suite** | `.github/` changes | The batteries: 179 security fixtures + 339 prompt-rule pins + strict YAML validation |
+| Workflow | Trigger | Runs from | What it does |
+|---|---|---|---|
+| **Agent Router** | any comment | main | Parses once, dispatches exactly one target by comment id — one visible run per comment, no fan-out |
+| **PR Review Trigger** | PR events | **PR's base branch** | Zero-secret stub (no checkout, no secrets): decides if a review is wanted, posts the pending merge-blocker status, dispatches PR Review — declined events dispatch nothing |
+| **PR Review** | dispatch only | main | The reviewer: FIRST/FOLLOW-UP protocols, severity-graded findings, verdicts, footer verification and repair |
+| **Issue Analysis** | issue opened | main | Duplicate hunt, root cause, labels, suggested fix |
+| **Compliance Check** | `/mirrobot-check` | main | End-of-life merge audit; posts the compliance status + report |
+| **Compliance Gate** | PR events | **PR's base branch** | Redundant poster of the pending status — fails loudly rather than letting a transient error make a PR look mergeable |
+| **Bot Reply on Mention** | dispatch only | main | The general agent: conversations, investigations, on-demand reviews, contributions |
+| **Agent Bootstrap** | admin dispatch only | main | One-time setup: seeds every variable with safe defaults/templates (never overwrites) and prints the secrets checklist — using the repo's bot identity token, with a manual-instructions fallback; state-silent by design |
+| **Mention Poller** | dispatch only | main | Cross-repo guest mode entry (see [the worker](tools/mention-worker/README.md)) |
+| **Scrub Fixture Suite** | `.github/` changes | main | The batteries: 193 security fixtures + 339 prompt-rule pins + strict YAML validation |
+
+**The "Runs from" column is the platform's spine:** everything that *thinks* — agents, prompts, scrub, routing — always executes from `main`, on every PR, no exceptions. Only the two zero-secret marker/dispatcher workflows (PR Review Trigger, Compliance Gate) execute from the PR's base branch, because GitHub runs `pull_request[_target]` workflows from there; their downstream dispatches always target `main`, so nothing that thinks ever runs from a PR base. **Update doctrine:** platform changes land on `main` (the sanctioned direct push). `dev` needs no per-batch sync — agent files only-main-touched merge cleanly at the next dev→main merge — and when dev *should* be current (the two base-branch workflows changed), sync with `git merge main` into dev, never copy-commits (merges share commit objects; copies duplicate history into main later). Auto-load content (AGENTS.md and friends) is the deliberate exception: it evolves **on dev** with the work it describes — see [Security](#security).
 
 ### The life of a pull request
 
@@ -369,8 +371,8 @@ Built against real adversarial testing — disguised injection PRs, trojan docum
 
 - **No untrusted interpolation** — comment bodies, PR titles, file contents reach shells only as environment variables; a pinned audit proves it
 - **Privileged execution from the default branch only** — the single `pull_request_target` workflow is a zero-secret, no-checkout stub: a tampered copy of it is powerless by construction
-- **Workspace scrub** — auto-load surfaces (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursorrules` and siblings; `.claude/`, `.agents/`, `.opencode/`, `.cursor/`, `.windsurf/`, `.devin/` directories) survive only if byte-identical to trusted branches; symlinked configs compared by *resolved* content; removals logged **and quarantined** to `/tmp/scrub-quarantine/` so the agent can still read them as data
-- **`.github` taint alarm** — any workflow/prompt/script change in branch history *or* the merged tree (evil-merge safe) is surfaced to the agent with maximum-scrutiny instructions — flagged, never hidden
+- **Workspace scrub, split trust** — auto-load surfaces (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursorrules` and siblings; `.claude/`, `.agents/`, `.opencode/`, `.cursor/`, `.windsurf/`, `.devin/` directories) survive only when their bytes match a state a **trust branch** (`main` or `dev`) shipped at-or-after that branch's fork point with the PR — each branch gets its own floor. This is deliberately two different rules for two different surfaces: **auto-load content is trusted from main ∪ dev** because it describes the code it ships with and legitimately evolves on dev before merging up; **`.github` platform wiring is anchored to main alone** because that's what actually executes. Older-than-every-floor content is a deliberate rollback (resurrecting something a trust branch already abandoned) and is removed; novel content is removed. Non-tip trusted keeps stay, marked with an era note so the agent treats them as dated context. An optional trust branch that doesn't exist (a deployment without a dev) degrades gracefully to main-only — only a missing `main` fails closed (everything removed). Symlinked configs compare by *resolved* content; removals logged **and quarantined** to `/tmp/scrub-quarantine/` so the agent can still read them as data
+- **`.github` taint alarm** — any workflow/prompt/script change in branch history *or* the merged tree (evil-merge safe) is surfaced to the agent with maximum-scrutiny instructions — flagged, never hidden; synced-from-main platform content is recognized (blob-matched against post-fork main states) and explained instead of alarmed
 - **Duty over deference** — the security brief trains the agent to treat all requester text as untrusted data regardless of rank, evaluate risk, and refuse; approval requires genuine repository purpose — harmless ≠ mergeable, and the ladder binds for maintainers and admins alike
 - **Token hygiene** — short-lived App tokens per run; git auth rides an in-process extraheader, never written to `.git/config`; `persist-credentials: false` on every token-bearing checkout
 - **Config lifecycle** — the config secret's inner credentials (provider keys, MCP headers, credential-bearing URLs) are each `::add-mask::`ed at boot, and the config + any materialized plugin files are **deleted seconds after opencode finishes reading them** (once-at-boot semantics, empirically verified) with an `always()` cleanup guarantee — nothing sensitive remains on disk for the agent (or anyone) to find mid-run

@@ -70,6 +70,28 @@ git ls-files -s AGENTS.md | grep -q '^120000' || { echo "FAIL: AGENTS.md fixture
 git commit -qm 'autoload: hostile additions + modifications + out-of-repo symlink'
 git checkout -q main
 
+# dev-trust fixtures (SPLIT TRUST): auto-load doctrine legitimately evolves
+# ON DEV with the work it describes, before merging up. CLAUDE.md gives main
+# a two-state history (v1 abandoned -> v2) BEFORE any fork, so a branch
+# resurrecting v1 is a pre-fork rollback under every branch's floor.
+printf 'claude v1\n' > CLAUDE.md; git add -A; git commit -qm 'main: claude v1'
+printf 'claude v2\n' > CLAUDE.md; git add -A; git commit -qm 'main: claude v2 (v1 abandoned)'
+git checkout -q -b dev main
+printf 'gemini v2 dev doctrine\n' > GEMINI.md
+printf 'agents doctrine dev\n' > AGENTS.md
+git add -A; git commit -qm 'dev: autoload doctrine evolves with dev work'
+# dev matures again — its first GEMINI.md becomes an INTERMEDIATE state
+# (kept with an era note when a branch carries it; dev's own tip stays the
+# current doctrine and keeps silently).
+printf 'gemini v3 dev doctrine\n' > GEMINI.md
+git add -A; git commit -qm 'dev: doctrine matures further'
+git checkout -q -b autoload-dev main
+printf 'gemini v2 dev doctrine\n' > GEMINI.md
+printf 'agents doctrine dev\n' > AGENTS.md
+printf 'claude v1\n' > CLAUDE.md
+git add -A; git commit -qm 'branch: adopt dev doctrine (v2 intermediate) + resurrect abandoned claude v1'
+git checkout -q main
+
 # parity fixtures: platform-sync carve-out matrix (see scrub-workspace.sh
 # "Post-fork platform parity"). main evolves AFTER the fork points — D
 # (deletion) and E (addition) — so branches syncing that content carry
@@ -154,7 +176,38 @@ if [ "$SYMLINKS_REAL" = yes ]; then
 else
   echo "SKIP: out-of-repo symlink staging checks (120000 blobs materialize as text files on this platform; the mode precondition above already failed loudly if the fixture itself degraded)"
 fi
+
+# ---- autoload split-trust matrix (main ∪ dev, per-branch floors) ------------
+# Dev-tip doctrine keeps SILENTLY (dev is a maintained branch — its tip is
+# current doctrine); an INTERMEDIATE dev state keeps with an era note; a
+# pre-fork rollback (content every trust branch abandoned before the fork)
+# is removed + quarantined.
+git checkout -q --detach origin/autoload-dev
+rm -f /tmp/scrub-taint.txt /tmp/scrub-removals.txt
+rm -rf /tmp/scrub-quarantine
+bash "$SCRUB" --anchor main >/tmp/scrub-fix.log 2>&1
+check "autoload: dev-tip AGENTS.md kept (current dev doctrine)"  yes "$(survives AGENTS.md)"
+check "autoload: dev intermediate GEMINI.md kept (era state)"    yes "$(survives GEMINI.md)"
+check "autoload: pre-fork CLAUDE.md rollback removed"            no  "$(survives CLAUDE.md)"
+check "autoload: rollback quarantined as data"                   yes "$(quarantined CLAUDE.md)"
+check "autoload: era note recorded for intermediate keep"        yes "$(grep -q 'pre-tip state' /tmp/scrub-taint.txt && echo yes || echo no)"
+check "autoload: era note names dated-context stance"            yes "$(grep -q 'Dated context' /tmp/scrub-taint.txt && echo yes || echo no)"
+check "autoload: rollback reason names the floor"                yes "$(grep -q 'rollback of abandoned content' /tmp/scrub-removals.txt && echo yes || echo no)"
 git checkout -q --detach origin/main
+
+# ---- graceful degradation: deployment without a dev branch ------------------
+# A bare clone with dev stripped simulates a deployment that has no dev:
+# the optional trust branch's ref AND its fetch both fail -> notice, never
+# fail-closed; main-only trust keeps working.
+git clone -q --bare "$SRC" "$WORK/bare-nodev" >/dev/null 2>&1
+git -C "$WORK/bare-nodev" branch -D dev >/dev/null 2>&1
+git clone -q "$WORK/bare-nodev" "$WORK/nodev" --branch main >/dev/null 2>&1
+( cd "$WORK/nodev" && bash "$SCRUB" --anchor main >/tmp/scrub-nodev.log 2>&1 )
+check "graceful: absent optional trust branch noticed"              yes "$(grep -q "'dev' not present" /tmp/scrub-nodev.log && echo yes || echo no)"
+check "graceful: no fail-closed when only the optional branch is missing" no "$(grep -q 'fail closed' /tmp/scrub-nodev.log && echo yes || echo no)"
+check "graceful: main-tip content still kept without dev"           yes "$( [ -e "$WORK/nodev/GEMINI.md" ] && echo yes || echo no)"
+check "graceful: main-tip CLAUDE.md v2 still kept without dev"      yes "$( [ -e "$WORK/nodev/CLAUDE.md" ] && echo yes || echo no)"
+rm -rf "$WORK/bare-nodev" "$WORK/nodev"
 
 # ---- stub->review dispatch contract (drift tripwire) --------------------------
 # The stub dispatches PR Review directly (dispatch IS the decision: declined

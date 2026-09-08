@@ -5,6 +5,11 @@
 #          by checking file group consistency, documentation updates, and
 #          enforcing project-specific merge requirements.
 #
+# EXECUTES FROM: THE DEFAULT BRANCH, always (dispatched by the agent router
+#          on the default branch). Platform updates land on main - see
+#          docs/workflows/overview.md for the execution map and update
+#          doctrine.
+#
 # Triggers (deliberately manual — compliance runs ONCE at the end of a PR's
 # life, when a maintainer is ready to merge; PR Review runs throughout):
 #   - Comment with '/mirrobot-check' or '/mirrobot_check'
@@ -78,10 +83,19 @@ jobs:
       issues: write           # Post issue comments
 
     env:
+      # ─── EDITABLE KNOBS ──────────────────────────────────────────────────
+      # Everything a fork tunes in THIS file lives in this env block (the
+      # rest is machinery) - especially FILE_GROUPS_JSON below, the
+      # repo-specific compliance watch-list. Full reference:
+      # docs/configuration.md and docs/workflows/compliance-check.md.
       # -----------------------------------------------------------------------
       # BASIC CONFIGURATION
       # -----------------------------------------------------------------------
       PR_NUMBER: ${{ inputs.pr_number }}
+      # PR-TARGET context only ("is the base a maintained branch?" for the
+      # trust-context line) — NOT the scrub anchor. Scrub trust is SPLIT:
+      # .github taint anchors to MAIN alone; auto-load content trusts
+      # main+dev (see scrub-workspace.sh TRUST CONFIGURATION).
       MAINTAINED_BASE_BRANCHES: 'main dev'
       # Identities of THIS agent only (case-insensitive comparisons).
       # NOTE: bare "mirrobot" is the NAME, not an identity - a human user

@@ -5,6 +5,18 @@
 #          pull_request_target secret-exposure hole that the old PR Review
 #          workflow had.
 #
+# EXECUTES FROM: THE PR's BASE BRANCH (pull_request_target semantics — GitHub
+#   runs the workflow file version found on the branch the PR targets).
+#   Practical consequences for MAINTAINERS:
+#     - On PRs targeting main, main's copy of this file runs (the norm).
+#     - On PRs targeting dev, DEV's copy runs — changes to this file only
+#       take effect there after `git merge main` into dev. Keep dev
+#       merge-synced when this stub changes (see docs/workflows/overview.md).
+#     - Everything this stub DISPATCHES always targets the default branch
+#       (--ref), so no downstream code ever executes from a PR base.
+#   UPDATE DOCTRINE: platform files (.github) are maintained main-first;
+#   never patch this file on a feature branch and expect it to run.
+#
 # SECURITY MODEL — READ BEFORE EDITING:
 #   pull_request_target executes THIS FILE from the PR's BASE branch. Any
 #   branch can be a base (including bot-created feature branches), so assume

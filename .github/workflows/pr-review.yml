@@ -1,5 +1,10 @@
 name: PR Review
 
+# EXECUTES FROM: THE DEFAULT BRANCH, always (workflow_dispatch with
+# --ref <default-branch>; issue_comment-family triggers are default-branch
+# by GitHub rule). Platform updates land on main - see
+# docs/workflows/overview.md for the full execution map and update doctrine.
+
 # SECURITY MODEL:
 #   Runs arrive as workflow_dispatch only (router / stub / manual). The
 #   honest dispatchers target --ref <default-branch>, so the workflow file,
@@ -76,9 +81,17 @@ jobs:
       pull-requests: write
 
     env:
+      # ─── EDITABLE KNOBS ──────────────────────────────────────────────────
+      # Everything a fork tunes in THIS file lives in this env block (the
+      # rest is machinery). Full reference: docs/configuration.md and
+      # docs/workflows/pr-review.md.
       # Every run is a dispatch carrying prNumber explicitly (router, stub,
       # or manual) - no event-payload parsing needed.
       PR_NUMBER: ${{ inputs.prNumber }}
+      # PR-TARGET context only ("is the base a maintained branch?" for the
+      # trust-context line) — NOT the scrub anchor. Scrub trust is SPLIT:
+      # .github taint anchors to MAIN alone; auto-load content trusts
+      # main+dev (see scrub-workspace.sh TRUST CONFIGURATION).
       MAINTAINED_BASE_BRANCHES: 'main dev'
       # Identities of THIS agent only (case-insensitive comparisons).
       # NOTE: bare "mirrobot" is the NAME, not an identity - a human user

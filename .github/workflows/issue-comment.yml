@@ -1,5 +1,9 @@
 name: Issue Analysis
 
+# EXECUTES FROM: THE DEFAULT BRANCH, always (issues[opened] events are
+# default-branch by GitHub rule). Platform updates land on main - see
+# docs/workflows/overview.md for the execution map and update doctrine.
+
 on:
   # Anti-phantom: an explicit never-matching push trigger. Dispatch-only
   # workflows otherwise get dead push-event runs (red X, 0 jobs) whenever
@@ -32,6 +36,10 @@ jobs:
       contents: read
 
     env:
+      # ─── EDITABLE KNOBS ──────────────────────────────────────────────────
+      # Everything a fork tunes in THIS file lives in this env block (the
+      # rest is machinery). Full reference: docs/configuration.md and
+      # docs/workflows/issue-comment.md.
       # If triggered by 'issues', it uses github.event.issue.number.
       # If triggered by 'workflow_dispatch', it uses the number you provided in the form.
       ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issueNumber }}
