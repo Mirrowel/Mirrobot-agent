@@ -58,11 +58,29 @@ Lives inside your `OPENCODE_CONFIG_JSON` (the committed `permissions.example.jso
 
 bot-setup warns when your secret's permission block drifts from the example — refresh consciously.
 
+**Honest limit:** substring permission rules are advisory whenever an *interpreter* is allowed. This deployment allows `python`/`python3` (the platform's home repos are Python) — a determined session could construct forbidden strings inside a `python -c` one-liner. The interpreter is a deliberate per-repo tradeoff (see below); the profile closes the cheap paths, the security brief's refusal rules and the deny-is-a-signal doctrine carry the rest.
+
+## Adapting the platform to your repo
+
+The platform is configurable **and** universal, but it is not zero-edit for every repo: some surfaces are *repo adaptations* you make by editing committed code, not variables. That is just how it is — variables tune behavior; the surfaces below define what your repo *is*.
+
+| Surface | File(s) you edit | What adapts |
+|---|---|---|
+| **Language toolchain** | `permissions.example.json` → your `OPENCODE_CONFIG_JSON` | The `bash` allows. Stock allows `python`/`python3`/`pytest`/`uv`/`pip` because this platform's home repos are Python. A Node repo wants `node`/`npm`/`npx`/`yarn`; Go wants `go`/`gofmt`; swap accordingly, keeping the deny-catch-all and targeted denies intact. |
+| **Compliance watch-list** | `FILE_GROUPS_JSON` env in `compliance-check.yml` | Which file groups must stay mutually consistent (docs vs code vs config). |
+| **Diff budgets** | `DIFF_MAX_BYTES` env in the diff-generating steps | How much diff the agent is fed. |
+| **Scrub trust branches** | `AUTOLOAD_BRANCHES` in `scrub-workspace.sh` | Which branches vouch for auto-load content — `main dev` by default; the taint anchor is deliberately main-only. |
+| **Maintained base branches** | `MAINTAINED_BASE_BRANCHES` env in `pr-review.yml` | Which PR targets count as "maintained" for trust-context wording. |
+| **CI integration** | `scrub-fixtures.yml` paths filter | Which paths trigger the battery. |
+| **Prompt voice** | `parts/*.md` | The agent's tone and procedures — per-repo flavor is expected, pinned wording is not. |
+
+What you should **not** need to edit: the router mechanics, the scrub algorithm, the share filter, bot-setup's identity logic, the fixture suite (except pins that reference renamed stock identities). Per [What NOT to customize per-repo](#what-not-to-customize-per-repo), a per-repo fork of the security boundary rots.
+
 ## Renaming the agent
 
 If "mirrobot" isn't your bot's name, it's **two variables and a sweep** — the machinery derives itself:
 
-1. **`BOT_IDENTITIES_JSON`** — who the agent *is*: `["mybot", "mybot[bot]"]` (your account login and, if you have one, the App bot login). Loop guards, review attribution, and footer verification match this set case-insensitively. In account mode the login is also detected live from the token, so renames take effect immediately; the variable covers the rest and app-mode installs.
+1. **`BOT_IDENTITIES_JSON`** — who the agent *is*: `["mybot", "mybot[bot]"]` (your account login and — **only if you registered that app** — its full `[bot]` login; the twin is never assumed, see [configuration](configuration.md#bot_identities_json)). Loop guards, review attribution, and footer verification match this set case-insensitively. In account mode the login is also detected live from the token, so renames take effect immediately; the variable covers the rest and app-mode installs.
 2. **`BOT_TRIGGERS`** — what *summons* it: raw stems like `mybot` — every stem derives `@mybot`, `/mybot-review`, `/mybot-check` automatically (see [configuration](configuration.md#bot_triggers)). Multiple stems are fine.
 3. **Prompt prose** — parts refer to the agent by name; a sweep of `mirrobot` → your name in `parts/` keeps the voice consistent.
 4. **The worker** (if guest mode) needs nothing — it derives the account login from its own token.

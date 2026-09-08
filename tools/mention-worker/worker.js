@@ -52,9 +52,15 @@
 //   PLATFORM_REPO — "owner/name" of the repo running mention-poller.yml
 
 const GH = "https://api.github.com";
-// Self/mention identity is DERIVED from the BOT_PAT's own /user (guest mode
-// is account-only, so /user answers) and cached in DO storage — no hardcoded
-// logins here, so an account rename needs no worker redeploy.
+// Self/mention identity: DERIVED from the BOT_PAT's own /user (guest mode
+// is account-only, so /user answers), cached in DO storage — plus any
+// identities the operator EXPLICITLY declared in the repo's
+// BOT_IDENTITIES_JSON variable (read via DISPATCH_PAT like
+// FOREIGN_MENTIONS_USERS). NO "[bot]" twin is ever synthesized: GitHub app
+// slugs and usernames are SEPARATE namespaces — anyone can register an app
+// named like the account — so a `login[bot]` actor is "us" only when the
+// operator declared that exact identity (they control that app). A rename
+// of the account needs no worker redeploy (detection self-heals).
 const LOGIN_TTL_MS = 24 * 60 * 60_000;
 const REASONS = new Set(["mention", "review_requested", "subscribed", "comment"]);
 const ROSTER_TTL_MS = 10 * 60_000;
@@ -148,8 +154,64 @@ async function getBotLogin(env, state) {
   return login;
 }
 
+// The self-identity set: the DETECTED account login (credential-proven —
+// it is whoever BOT_PAT authenticates as) ∪ every entry the operator
+// EXPLICITLY declared in BOT_IDENTITIES_JSON (their claim of control —
+// e.g. the app twin "name[bot]" they registered). Deliberately NO
+// synthesized twin: name shape proves nothing (separate namespaces —
+// an attacker can own `name[bot]` while the operator owns `name`).
+// Variable unreadable (403/5xx/parse error): declared set unknown this
+// cycle — proceed detection-only, LOUDLY (fail-open); 404 = absent =
+// legitimate silence. Failures are also cached (empty, short TTL) so a
+// broken variable cannot turn into one API call per notification.
+async function getSelfSet(env, state) {
+  const login = await getBotLogin(env, state);
+  const names = login ? [String(login).toLowerCase()] : [];
+  const cached = await state.storage.get("identVarCache");
+  if (cached?.value && Date.now() - cached.ts < VAR_TTL_MS) {
+    for (const n of cached.value) names.push(n);
+    return { set: new Set(names), login };
+  }
+  try {
+    const res = await gh(`/repos/${env.PLATFORM_REPO}/actions/variables/BOT_IDENTITIES_JSON`, env.DISPATCH_PAT);
+    if (res.status === 404) {
+      await state.storage.put("identVarCache", { value: [], ts: Date.now() });
+    } else if (!res.ok) {
+      console.log(`[poll] identity variable unreadable ${res.status} (fail-open, detection-only)`);
+      await state.storage.put("identVarCache", { value: [], ts: Date.now() });
+    } else {
+      const val = (await res.json()).value || "[]";
+      const parsed = JSON.parse(val); // throws on admin typo -> catch below
+      const clean = Array.isArray(parsed)
+        ? parsed.filter((n) => typeof n === "string" && n).map((n) => n.toLowerCase())
+        : [];
+      await state.storage.put("identVarCache", { value: clean, ts: Date.now() });
+      for (const n of clean) names.push(n);
+    }
+  } catch (e) {
+    console.log(`[poll] identity variable unreadable (fail-open, detection-only): ${e}`);
+    await state.storage.put("identVarCache", { value: [], ts: Date.now() }).catch(() => {});
+  }
+  return { set: new Set(names), login };
+}
+
+// Mention tokens from the WHOLE self set (detected ∪ declared), dual-form
+// like the in-repo gates: full @<login> for every identity, plus the bare
+// @<name-without-[bot]> spelling for app forms. A declared app identity
+// must be summonable in its app form too — a token check limited to the
+// detected login would silently decline genuine declared-identity mentions.
+function mentionTokens(selfSet) {
+  const tokens = [];
+  for (const n of selfSet) {
+    tokens.push(`@${n}`);
+    if (n.endsWith("[bot]")) tokens.push(`@${n.slice(0, -5)}`);
+  }
+  return tokens;
+}
+
 async function prefilter(env, state, n, roster) {
   try {
+    const { set: selfSet, login: botLogin } = await getSelfSet(env, state);
     // review_requested: authority = WHO clicked the button (timeline actor)
     if (n.reason === "review_requested") {
       const prUrl = n.subject?.url || "";
@@ -160,11 +222,11 @@ async function prefilter(env, state, n, roster) {
       for (const ev of events) if (ev.event === "review_requested") actor = ev.actor?.login;
       if (!actor) return { pass: true };
       const a = String(actor).toLowerCase();
-      // Self-decline via the DERIVED login (the worker's own token identity);
-      // fail-open when detection is unavailable (pass: true lets the in-repo
-      // gauntlet re-verify).
-      const botLogin = await getBotLogin(env, state);
-      if (botLogin && (a === botLogin.toLowerCase() || a === `${botLogin.toLowerCase()}[bot]`)) {
+      // Self-decline only on POSITIVE evidence: the actor must literally be
+      // in the self set (detected login or an explicitly-declared identity —
+      // never a synthesized `[bot]` twin). Unknown self set → pass through;
+      // the in-repo gauntlet re-verifies authoritatively.
+      if (selfSet.has(a)) {
         return { decline: "self" };
       }
       if (roster.ok && !roster.names.has(a)) return { decline: "allowlist" };
@@ -181,12 +243,14 @@ async function prefilter(env, state, n, roster) {
     const author = String(content.user?.login || "").toLowerCase();
     const body = String(content.body || "").toLowerCase();
 
-    const botLogin = await getBotLogin(env, state);
-    const selfSet = new Set(
-      botLogin ? [botLogin.toLowerCase(), `${botLogin.toLowerCase()}[bot]`] : []
-    );
     if (selfSet.has(author)) return { decline: "self" };
-    if (!botLogin || !body.includes(`@${botLogin.toLowerCase()}`)) return { decline: "token" };
+    // Identity detection unavailable → UNCERTAINTY MUST FAIL OPEN (this is
+    // a deny-only pre-filter; the in-repo gauntlet re-verifies). Decline
+    // only on positive evidence: a resolvable login whose body carries no
+    // genuine mention token of ANY self identity (dual-form).
+    if (!botLogin && selfSet.size === 0) return { pass: true };
+    const tokens = mentionTokens(selfSet);
+    if (tokens.length > 0 && !tokens.some((t) => body.includes(t))) return { decline: "token" };
     if (roster.ok && !roster.names.has(author)) return { decline: "allowlist" };
     return { pass: true };
   } catch (e) {

@@ -136,6 +136,20 @@ jobs:
       CONTEXT_LIMITS_JSON: ${{ vars.CONTEXT_LIMITS_JSON || '' }}
 
     steps:
+      # Kill-switch shape validation: job-level if-expressions cannot
+      # type-check (fromJSON of a VALID-but-wrong-shape value — e.g. `[]`,
+      # `3` — silently evaluates the part as not-paused). This step makes
+      # a broken AGENT_PAUSED_PARTS_JSON fail LOUDLY, matching the
+      # router/stub gates: a kill switch you cannot see working is a
+      # kill switch you cannot trust.
+      - name: Validate pause config
+        env:
+          PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '{}' }}
+        run: |
+          printf '%s' "$PARTS_JSON" | jq -e 'type == "object"' >/dev/null || {
+            echo "::error::AGENT_PAUSED_PARTS_JSON must be a JSON object like {\"pr-review\": true} — got a different shape. Refusing to run with a broken kill switch (fix or delete the variable)."
+            exit 1
+          }
       # Runtime enforcement of the dispatch contract (schema-required is
       # impossible - see the inputs comment for the platform bug).
       - name: Validate dispatch inputs
@@ -631,10 +645,23 @@ jobs:
             # scrub). Never flatten the whole file: the per-commit bullets
             # below line 1 are what /tmp/scrub-taint.txt exists for.
             taint_summary=$(head -1 /tmp/scrub-taint.txt)
+            TAINT_DELIM="TAINT_EOF_$(openssl rand -hex 8)"
             {
-              echo "TRUST_CONTEXT_WARNING<<TAINT_EOF"
+              echo "TRUST_CONTEXT_WARNING<<$TAINT_DELIM"
               echo "$taint_summary"
-              echo "TAINT_EOF"
+              echo "$TAINT_DELIM"
+            } >> "$GITHUB_ENV"
+          fi
+          if [ -s /tmp/scrub-era.txt ]; then
+            # Dated-context notes surface independently of taint line 1 —
+            # trusted-era auto-load keeps must stay visible to the agent
+            # even when a TAINT alert occupies the taint summary. Unguessable
+            # delimiter: era content embeds file paths from PR-adjacent trees.
+            ERA_DELIM="ERA_EOF_$(openssl rand -hex 8)"
+            {
+              echo "TRUST_CONTEXT_ERA<<$ERA_DELIM"
+              cat /tmp/scrub-era.txt
+              echo "$ERA_DELIM"
             } >> "$GITHUB_ENV"
           fi
 
@@ -778,6 +805,7 @@ jobs:
           REQUESTER_CONTEXT: ${{ steps.requester.outputs.requester_context }}
           TRUST_CONTEXT: ${{ env.TRUST_CONTEXT }}
           TRUST_CONTEXT_WARNING: ${{ env.TRUST_CONTEXT_WARNING }}
+          TRUST_CONTEXT_ERA: ${{ env.TRUST_CONTEXT_ERA }}
           TRUSTED_PEOPLE: ${{ env.TRUSTED_PEOPLE }}
         run: |
           # Build DIFF_FILE_PATH pointing to the generated diff in the repository
@@ -795,7 +823,7 @@ jobs:
           TMP_DIR="${RUNNER_TEMP:-/tmp}"
           VARS='${REVIEW_TYPE} ${PR_AUTHOR} ${PR_NUMBER} ${GITHUB_REPOSITORY} ${PR_HEAD_SHA} ${PULL_REQUEST_CONTEXT} ${DIFF_FILE_PATH} ${TRIGGER_MESSAGE} ${PREVIOUS_BOT_REVIEWS} ${AGENT_REVIEW_HISTORY} ${THREAD_CONTEXT}'
           # Prepend the security brief (with the verified requester + trust context lines)
-          { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $TRUSTED_PEOPLE' < /tmp/security-brief.md; bash /tmp/assemble-prompt.sh "$MANIFEST" | DIFF_FILE_PATH="$DIFF_FILE_PATH" envsubst "$VARS"; } > "$TMP_DIR/assembled_prompt.txt"
+          { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $TRUST_CONTEXT_ERA $TRUSTED_PEOPLE' < /tmp/security-brief.md; bash /tmp/assemble-prompt.sh "$MANIFEST" | DIFF_FILE_PATH="$DIFF_FILE_PATH" envsubst "$VARS"; } > "$TMP_DIR/assembled_prompt.txt"
           # Immediately clear large env after use
           echo "PULL_REQUEST_CONTEXT=" >> "$GITHUB_ENV"
 

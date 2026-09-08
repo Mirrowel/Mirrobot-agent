@@ -63,6 +63,8 @@ The agent's write boundaries (prompt-enforced, brief-carried):
 
 Permission-level (not prompt-level — these can't be talked around): push workflow changes (no `workflow` scope/PAT rejection + edit denies), read the token env or config paths, execute uninspected PR code as itself, fetch with `webfetch`, load repository-defined skills, or dispatch arbitrary workflows. The full profile ships in `permissions.example.json`.
 
+Prompt-level hard refusals back the profile where the token technically could: the agent never touches repository secrets or Actions variables in any repo (variables are the platform's own control plane — identities, triggers, pause switches, plugin sources), and **a permission denial is treated as a signal, not an obstacle** — working around one means deliberately doing what the operator forbade, knowingly. Honest limit: substring rules are advisory whenever an interpreter is allowed (this deployment allows python for its Python repos — a deliberate per-repo tradeoff, see [customization](customization.md#adapting-the-platform-to-your-repo)); the profile closes the cheap paths, the refusal rules and the deny-is-a-signal doctrine carry deliberate evasion.
+
 ## Known, accepted residuals
 
 Honesty section — bounded risks we know about and accept:

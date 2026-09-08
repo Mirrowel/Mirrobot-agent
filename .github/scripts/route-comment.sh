@@ -45,14 +45,19 @@ mention_re=""
 review_re=""
 check_re=""
 first=1
+# set -f: a stem is admin-controlled data, but a glob character in it (`*`)
+# must never expand against workspace filenames here; the backslash joins
+# the escape class so it cannot break the ERE either.
+set -f
 for stem in $(printf '%s' "$stems" | tr ',' ' '); do
-  esc=$(printf '%s' "$stem" | sed 's/[][^.*+?(){}\|$]/\\&/g')
+  esc=$(printf '%s' "$stem" | sed 's/[][^.*+?(){}\\$|]/\\&/g')
   sep=""; [ $first = 1 ] || sep="|"
   mention_re="${mention_re}${sep}@${esc}"
   review_re="${review_re}${sep}/${esc}[-_]review"
   check_re="${check_re}${sep}/${esc}[-_]check"
   first=0
 done
+set +f
 if printf '%s' "$clean" | grep -qiE "$review_re"; then routes="$routes review"; fi
 if printf '%s' "$clean" | grep -qiE "$check_re";  then routes="$routes compliance"; fi
 if printf '%s' "$clean" | grep -qiE "$mention_re"; then routes="$routes reply"; fi

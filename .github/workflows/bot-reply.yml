@@ -144,6 +144,20 @@ jobs:
       ACCOUNT_TOKEN_SET: ${{ secrets.ACCOUNT_GH_TOKEN != '' }}
 
     steps:
+      # Kill-switch shape validation: job-level if-expressions cannot
+      # type-check (fromJSON of a VALID-but-wrong-shape value — e.g. `[]`,
+      # `3` — silently evaluates the part as not-paused). This step makes
+      # a broken AGENT_PAUSED_PARTS_JSON fail LOUDLY, matching the
+      # router/stub gates: a kill switch you cannot see working is a
+      # kill switch you cannot trust.
+      - name: Validate pause config
+        env:
+          PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '{}' }}
+        run: |
+          printf '%s' "$PARTS_JSON" | jq -e 'type == "object"' >/dev/null || {
+            echo "::error::AGENT_PAUSED_PARTS_JSON must be a JSON object like {\"pr-review\": true} — got a different shape. Refusing to run with a broken kill switch (fix or delete the variable)."
+            exit 1
+          }
       # Runtime enforcement of the dispatch contract (schema-required is
       # impossible - see the inputs comment for the platform bug).
       - name: Validate dispatch inputs
@@ -261,8 +275,12 @@ jobs:
             # --- genuine-mention verification (mention kind only) --------
             if [ "${TRIGGER_KIND:-mention}" = "mention" ]; then
               # Genuine-mention re-check: the body must carry an @<identity>
-              # token (resolved identity family, case-insensitive).
-              if ! printf '%s' "$body" | tr 'A-Z' 'a-z' | grep -qif <(printf '%s' "$BOT_NAMES_JSON" | jq -r '.[] | "@" + ltrimstr("@")' | sed 's/\\[bot\\]//'); then
+              # token (resolved identity family, case-insensitive, literal
+              # strings — fixed-string grep so regex metacharacters in a
+              # declared identity can never match anything else). App forms
+              # additionally accept the bare @<name> spelling (a typeable
+              # mention of the app twin).
+              if ! printf '%s' "$body" | tr 'A-Z' 'a-z' | tr -d '\r' | grep -qiFf <(printf '%s' "$BOT_NAMES_JSON" | jq -r '.[] | "@" + ltrimstr("@") | (., sub("\\[bot\\]$"; ""))' | tr -d '\r' | awk 'NF'); then
                 echo "::notice::No genuine identity-mention token in the fetched body; declining."
                 echo "should_proceed=false" >> "$GITHUB_OUTPUT"; exit 0
               fi
@@ -647,8 +665,9 @@ jobs:
         id: review_type
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
+          QUERY_REPO: ${{ inputs.targetRepo || github.repository }}
         run: |
-          pr_summary_payload=$(gh pr view $THREAD_NUMBER --repo "$QUERY_REPO" --json comments,reviews)
+          pr_summary_payload=$(gh pr view "$THREAD_NUMBER" --repo "$QUERY_REPO" --json comments,reviews)
           detect_json=$(echo "$pr_summary_payload" | jq -c --argjson bots "$BOT_NAMES_JSON" '
             def ts(x): if (x//""=="") then null else x end;
             def items:
@@ -729,7 +748,16 @@ jobs:
           rm -rf ./* ./.github 2>/dev/null || true   # drop the home-repo workspace copy
           git remote remove origin 2>/dev/null || true
           git fetch --quiet "https://github.com/${TARGET_REPO}.git" "pull/${THREAD_NUMBER}/head:refs/remotes/pr-head" 2>/dev/null
-          git checkout --quiet --force "$PR_HEAD_SHA" 2>/dev/null || git checkout --quiet --force pr-head
+          # TOCTOU: check out EXACTLY the API-recorded SHA or fail the run.
+          # A fallback to the ref tip would silently review whatever the PR
+          # was force-pushed to mid-run while every record (PR_HEAD_SHA,
+          # /tmp/head_sha.txt, share-link context) still names the old
+          # commit — record and tree must never diverge. A fresh trigger on
+          # the new head is the correct retry path.
+          if ! git checkout --quiet --force "$PR_HEAD_SHA"; then
+            echo "::error::PR head $PR_HEAD_SHA is no longer fetchable (force-pushed mid-run?). Re-trigger on the new head."
+            exit 1
+          fi
           echo "guest checkout: ${TARGET_REPO}#${THREAD_NUMBER} @ $PR_HEAD_SHA"
 
       # SECURITY: guest scrub — NO trusted anchor exists abroad; every
@@ -879,10 +907,23 @@ jobs:
             # scrub). Never flatten the whole file: the per-commit bullets
             # below line 1 are what /tmp/scrub-taint.txt exists for.
             taint_summary=$(head -1 /tmp/scrub-taint.txt)
+            TAINT_DELIM="TAINT_EOF_$(openssl rand -hex 8)"
             {
-              echo "TRUST_CONTEXT_WARNING<<TAINT_EOF"
+              echo "TRUST_CONTEXT_WARNING<<$TAINT_DELIM"
               echo "$taint_summary"
-              echo "TAINT_EOF"
+              echo "$TAINT_DELIM"
+            } >> "$GITHUB_ENV"
+          fi
+          if [ -s /tmp/scrub-era.txt ]; then
+            # Dated-context notes surface independently of taint line 1 —
+            # trusted-era auto-load keeps must stay visible to the agent
+            # even when a TAINT alert occupies the taint summary. Unguessable
+            # delimiter: era content embeds file paths from PR-adjacent trees.
+            ERA_DELIM="ERA_EOF_$(openssl rand -hex 8)"
+            {
+              echo "TRUST_CONTEXT_ERA<<$ERA_DELIM"
+              cat /tmp/scrub-era.txt
+              echo "$ERA_DELIM"
             } >> "$GITHUB_ENV"
           fi
 
@@ -945,6 +986,7 @@ jobs:
           REQUESTER_CONTEXT: ${{ steps.requester.outputs.requester_context }}
           TRUST_CONTEXT: ${{ env.TRUST_CONTEXT }}
           TRUST_CONTEXT_WARNING: ${{ env.TRUST_CONTEXT_WARNING }}
+          TRUST_CONTEXT_ERA: ${{ env.TRUST_CONTEXT_ERA }}
           TRUSTED_PEOPLE: ${{ env.TRUSTED_PEOPLE }}
           IS_PR: ${{ steps.context.outputs.IS_PR }}
           LAST_REVIEWED_SHA: ${{ steps.review_type.outputs.last_reviewed_sha }}
@@ -980,7 +1022,7 @@ jobs:
             # boot cannot pin them; the always() post-run step is the belt.
             ( bash /tmp/opencode-cleanup.sh waiter ) &
             set -o pipefail
-            { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $TRUSTED_PEOPLE' < /tmp/security-brief.md; \
+            { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $TRUST_CONTEXT_ERA $TRUSTED_PEOPLE' < /tmp/security-brief.md; \
               [ -n "${TARGET_REPO:-}" ] && { echo; echo '## GUEST SESSION RULES (foreign repository)'; echo; cat /tmp/guest-rules.md; echo; } || true; \
               bash /tmp/assemble-prompt.sh bot-reply | FULL_DIFF_PATH="$FULL_DIFF_PATH" PR_NUMBER="$THREAD_NUMBER" INCREMENTAL_DIFF_PATH="$INCREMENTAL_DIFF_PATH" LAST_REVIEWED_SHA="$LAST_REVIEWED_SHA" envsubst "$VARS"; } | opencode run --share - 2>&1 | bash /tmp/share-filter.sh
             bash /tmp/opencode-cleanup.sh now

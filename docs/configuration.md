@@ -29,13 +29,15 @@ Pause one agent part: `true` = that part skips visibly (gray), the router stops 
 ### `BOT_IDENTITIES_JSON`
 **Default:** seeded by Bootstrap — the account login in account mode, the stock names in app mode. **Type:** identity array.
 
-**Who the agent is**: the logins treated as *self* by loop guards, review attribution, FIRST/FOLLOW-UP markers, and footer verification:
+**Who the agent is**: the logins treated as *self* by loop guards, review attribution, FIRST/FOLLOW-UP markers, and footer verification. List **only identities you control** — an account login, plus an app login *only if you registered that app*:
 
 ```json
 ["mybot", "mybot[bot]"]
 ```
 
-Resolution at runtime: this variable **∪** the account login detected live via the API (account mode). The stock fallback (`mirrobot-agent`, `mirrobot-agent[bot]`) applies only when both are absent — so a fork that sets the variable never matches `mirrobot` as itself. Bare `mirrobot` is deliberately *not* an identity (the username is taken; a spoofed account must never be treated as self) — it remains a trigger word. Renames in account mode are picked up instantly via detection; the variable catches up whenever you edit it.
+**The `[bot]` twin is never assumed.** GitHub app slugs and usernames are *separate namespaces*: someone else can register an app named exactly like your account. The platform therefore never synthesizes a `name[bot]` twin from your account name — an app identity is trusted only when you list its **full name including `[bot]`** in this variable (that listing is your explicit claim that you control that app). A wrong twin here would make the agent adopt a stranger's reviews as its own previous work — the most dangerous silent misconfiguration there is.
+
+Resolution at runtime: this variable **∪** the account login detected live via the API (account mode — credential-proven, so a rename self-heals instantly). The stock fallback (`mirrobot-agent`, `mirrobot-agent[bot]`) applies only when both are absent — both are identities this project verifiably controls. Bare `mirrobot` is deliberately *not* an identity (the username is taken; a spoofed account must never be treated as self) — it remains a trigger word.
 
 ### `BOT_TRIGGERS`
 **Default:** `mirrobot, mirrobot-agent` (seeded). **Type:** comma-separated raw stems.

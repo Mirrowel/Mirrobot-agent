@@ -17,6 +17,11 @@
 #     fallback ["mirrobot-agent", "mirrobot-agent[bot]"] applies ONLY when
 #     both sources are empty. Bare "mirrobot" is NEVER an identity (the
 #     username is taken; a spoofed account must never be treated as self).
+#     NO "[bot]" twin is EVER synthesized from a detected login: app slugs
+#     and usernames are separate GitHub namespaces, so name shape proves
+#     nothing — a twin is trusted ONLY when explicitly declared in the
+#     variable (operator controls that app) or shipped in the stock
+#     fallback (this project verifiably owns both stock identities).
 #
 #   TRIGGERS ("what text summons ME?"): routing words. Resolution:
 #     stems = vars.BOT_TRIGGERS (comma-separated raw names, if set)
@@ -45,25 +50,38 @@ DETECTED="${BOT_DETECTED_LOGIN:-}"
 IN_TRIG="${BOT_TRIGGERS_INPUT:-}"
 
 # ---- identities: variable ∪ detection, fallback only when both empty -----
+# An identity set is ONLY ever: what the operator EXPLICITLY declared in
+# BOT_IDENTITIES_JSON (their claim of control — include an app's FULL login
+# like "name[bot]" there iff you registered that app) ∪ what a credential
+# we hold PROVES (the account /user login). NEVER a synthesized "[bot]"
+# twin of the detected login — GitHub app slugs and usernames are separate
+# namespaces, so name shape proves nothing (an attacker can own the app
+# "name[bot]" while the operator owns the account "name").
 ident_note="fallback"
-IDENT_ITEMS=""
+IDENT_RAW=""
 if [ -n "$(printf '%s' "$IN_IDENT" | tr -d '[:space:]')" ]; then
   if jq -e 'type == "array" and all(.[]; type == "string")' <<< "$IN_IDENT" >/dev/null 2>&1; then
-    while IFS= read -r item; do IDENT_ITEMS="${IDENT_ITEMS}${item}\n"; done < <(jq -r '.[]' <<< "$IN_IDENT")
+    while IFS= read -r item; do IDENT_RAW="${IDENT_RAW}${item}"$'\n'; done < <(jq -r '.[]' <<< "$IN_IDENT")
     ident_note="variable"
   else
     echo "::warning::bot-config: BOT_IDENTITIES_JSON variable is not a JSON array of strings — ignoring it (fix the variable)." >&2
   fi
 fi
 if [ -n "$DETECTED" ]; then
-  IDENT_ITEMS="${IDENT_ITEMS}${DETECTED}\n"
+  IDENT_RAW="${IDENT_RAW}${DETECTED}"$'\n'
   ident_note="${ident_note}+detected(${DETECTED})"
 fi
+
+# Filter FIRST, then judge emptiness: [""] or a whitespace-only variable is
+# ABSENT, not an empty identity set (an empty set would silently no-op
+# every loop guard). Real newlines (never printf %b: it would also
+# interpret backslash escapes inside a declared identity).
+IDENT_ITEMS=$(printf '%s' "$IDENT_RAW" | awk 'NF')
 
 if [ -n "$IDENT_ITEMS" ]; then
   # unique (case-insensitive — logins are) + compact single-line JSON
   # (GITHUB_ENV values must be one line)
-  BOT_NAMES_JSON=$(printf '%b' "$IDENT_ITEMS" | awk 'NF' | tr 'A-Z' 'a-z' | sort -u | jq -R . | jq -sc .)
+  BOT_NAMES_JSON=$(printf '%s' "$IDENT_ITEMS" | tr 'A-Z' 'a-z' | sort -u | jq -R . | jq -sc .)
   identity_sourced=1
 else
   BOT_NAMES_JSON="$FALLBACK_IDENTITIES"

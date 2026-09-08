@@ -38,8 +38,15 @@ target_id="${3:?target id}"
 # trigger comments ending with BOTH eyes and rocket).
 if [ -z "${BOT_LOGIN:-}" ]; then
   BOT_LOGIN=$(gh api /user --jq .login 2>/dev/null || true)
-  BOT_LOGIN="${BOT_LOGIN:-mirrobot-agent[bot]}"
 fi
+# Fallback order: /user (live identity) → first DECLARED identity in
+# BOT_NAMES_JSON (operator-stated, credential/detection-proven upstream) →
+# the stock app-bot constant (this project's own default deployment; never
+# a synthesized twin — shape proves nothing).
+if [ -z "$BOT_LOGIN" ]; then
+  BOT_LOGIN=$(printf '%s' "${BOT_NAMES_JSON:-[]}" | jq -r '.[0] // empty' 2>/dev/null || true)
+fi
+BOT_LOGIN="${BOT_LOGIN:-mirrobot-agent[bot]}"
 
 if [ "$kind" = "comment" ]; then
   base="/repos/${TARGET_REPO}/issues/comments/${target_id}/reactions"

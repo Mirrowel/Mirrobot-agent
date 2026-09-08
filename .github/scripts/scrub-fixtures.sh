@@ -809,5 +809,51 @@ else
   FAIL=1
 fi
 
+# ---- identity isolation: no synthesized [bot] twin, ever -------------------
+# GitHub app slugs and usernames are SEPARATE namespaces: anyone can
+# register an app named like the account. A login[bot] identity is trusted
+# ONLY when the operator declared it (variable) or it is the verifiable
+# stock pair. These pins keep the no-synthesis doctrine from regressing.
+WORKER="$SCRIPT_DIR/../../tools/mention-worker/worker.js"
+check "identity: worker never synthesizes a [bot] twin (template form)" no \
+  "$(grep -qF 'botLogin.toLowerCase()}[bot]' "$WORKER" && echo yes || echo no)"
+check "identity: worker never builds a [bot] twin (concat form)" no \
+  "$(grep -qE '\+ *."[[]bot[]]"|"\[bot\]" *\) *\+|login *\+ *`\[bot\]`' "$WORKER" && echo yes || echo no)"
+check "identity: worker self set includes declared variable" yes \
+  "$(grep -q 'BOT_IDENTITIES_JSON' "$WORKER" && echo yes || echo no)"
+BC_OUT=$(BOT_IDENTITIES_INPUT='' BOT_DETECTED_LOGIN='zeta-acct' BOT_TRIGGERS_INPUT='' bash "$SCRIPT_DIR/bot-config.sh" --export 2>/dev/null; echo "rc=$?")
+check "identity: bot-config detected-only set has NO twin" \
+  'export BOT_NAMES_JSON=\[\"zeta-acct\"\]' \
+  "$(printf '%s\n' "$BC_OUT" | grep '^export BOT_NAMES_JSON=')"
+BC_OUT2=$(BOT_IDENTITIES_INPUT='["a*"]' BOT_DETECTED_LOGIN='' BOT_TRIGGERS_INPUT='' bash "$SCRIPT_DIR/bot-config.sh" --export 2>/dev/null; echo "rc=$?")
+check "identity: glob-stem variable passes through for route escaping" \
+  'export BOT_NAMES_JSON=\[\"a\*\"\]' \
+  "$(printf '%s\n' "$BC_OUT2" | grep '^export BOT_NAMES_JSON=')"
+
+# ---- runtime env pairing: a used $VAR must be defined upstream -------------
+# Regression class (live): an audit-fix commit deleted an env entry but kept
+# both usages — every bot-reply PR run died at the review-type step while
+# fixtures stayed green (they never check pairing). These pins do.
+check "pairing: bot-reply QUERY_REPO defined AND used" yes \
+  "$(grep -q 'QUERY_REPO: ' "$BOTWF" && grep -q '"\$QUERY_REPO"' "$BOTWF" && echo yes || echo no)"
+
+# ---- pause shape validation present in all four agent workflows -----------
+for wf in bot-reply pr-review compliance-check issue-comment; do
+  check "pause-shape: $wf validates AGENT_PAUSED_PARTS_JSON type" yes \
+    "$(grep -q "type == .object." "$SCRIPT_DIR/../workflows/$wf.yml" && echo yes || echo no)"
+done
+
+# ---- guest checkout is SHA-pinned, no ref-tip fallback ---------------------
+check "guest: TOCTOU - checkout fails instead of falling back to tip" yes \
+  "$(grep -q 'force-pushed mid-run' "$BOTWF" && ! grep -q 'checkout --quiet --force pr-head' "$BOTWF" && echo yes || echo no)"
+
+# ---- era notes surface independently of taint line 1 -----------------------
+check "era: dedicated era file written" yes \
+  "$(grep -q 'SCRUB_ERA_FILE' "$SCRIPT_DIR/scrub-workspace.sh" && echo yes || echo no)"
+check "era: pr-review exports TRUST_CONTEXT_ERA" yes \
+  "$(grep -q 'TRUST_CONTEXT_ERA<<' "$SCRIPT_DIR/../workflows/pr-review.yml" && grep -q 'ERA_EOF_\$(openssl rand -hex 8)' "$SCRIPT_DIR/../workflows/pr-review.yml" && echo yes || echo no)"
+check "era: brief carries the era placeholder" yes \
+  "$(grep -q 'TRUST_CONTEXT_ERA' "$SCRIPT_DIR/../prompts/security-brief.md" && echo yes || echo no)"
+
 echo "----"; echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

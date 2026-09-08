@@ -98,19 +98,25 @@ is_bot() { # $1 = login — this agent's identity family, case-insensitive
     '$bots | index(input | ascii_downcase) != null'
 }
 
-has_mention_token() { # $1 = body — contains @<user-identity> (not the [bot]
-  # app form, not bare name text), case-insensitive. Command substitution +
-  # herestring (NOT process substitution: inside the main read-loop a
-  # proc-sub feed proved unreliable on this runner family - silent EOF).
-  local b_lc="$1" name names
+has_mention_token() { # $1 = body — contains @<declared user identity>
+  # (case-insensitive, FIXED-STRING match — never regex: an identity with
+  # metacharacters must not over-match strangers). Dual-form, mirroring the
+  # bot-reply guest gate: every identity matches its full @<login> AND an
+  # app form additionally matches the bare @<name-without-[bot]> spelling.
+  # Command substitution + herestring (NOT process substitution: inside the
+  # main read-loop a proc-sub feed proved unreliable on this runner family
+  # - silent EOF).
+  local b_lc="$1" tokens
   b_lc=$(printf '%s' "$b_lc" | tr 'A-Z' 'a-z')
-  names=$(printf '%s' "${BOT_NAMES_JSON:-[]}" | jq -r '.[] | select(endswith("[bot]") | not)' 2>/dev/null)
+  tokens=$(printf '%s' "${BOT_NAMES_JSON:-[]}" | jq -r '.[] | "@" + ltrimstr("@") | (., sub("\\[bot\\]$"; ""))' 2>/dev/null | tr -d '\r' | awk 'NF' | sort -u)
   while read -r name; do
-    [ -n "$name" ] || continue
-    if printf '%s' "$b_lc" | grep -qi "@$name"; then
+    # awk index() = literal substring, case pre-lowered on both sides —
+    # no regex, no glob, no grep -F platform quirks. Tokens already carry
+    # their @ prefix (emitted by the jq above).
+    if printf '%s' "$b_lc" | awk -v t="$name" 'index($0,t){found=1} END{exit found?0:1}'; then
       return 0
     fi
-  done <<< "$names"
+  done <<< "$tokens"
   return 1
 }
 
