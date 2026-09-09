@@ -1,12 +1,14 @@
-# Excerpts Refresh — rebuilds the landing page's auto-card pool (docs/excerpts.json)
+# Excerpts Refresh — rebuilds and redeploys the landing page with a fresh auto-card pool
 #
 # EXECUTES FROM: default branch (schedule + dispatch only; no PR triggers).
 #
 # Runs the harvester (search + GraphQL with the run token, read-only against
 # public repos) over the home repos, quality-gates the agent's posts, and
-# commits the resulting pool if it changed. The landing page fetches the
-# static JSON same-origin — visitors spend zero API budget on excerpt cards.
-# Zero secrets: GITHUB_TOKEN only, and only for read + the commit push.
+# deploys docs/ (plus the regenerated excerpts.json) to GitHub Pages as a
+# workflow artifact. Nothing is committed to main: the pool is derived
+# content, so it never needs a push (the repo's branch rules stay untouched).
+# The page fetches the static JSON same-origin — visitors spend zero API
+# budget on excerpt cards. Zero secrets: GITHUB_TOKEN only.
 #
 # EDITABLE KNOBS — adjust for your deployment:
 env:
@@ -24,7 +26,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: excerpts-refresh
@@ -33,11 +37,14 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Checkout (default branch)
         uses: actions/checkout@v4
         with:
-          persist-credentials: true # the commit push uses this token
+          persist-credentials: false
 
       - name: Run the harvester
         run: bash .github/scripts/harvest-excerpts.sh
@@ -48,15 +55,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_PAGER: ""
 
-      - name: Commit pool if changed
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet docs/excerpts.json; then
-            echo "pool unchanged — nothing to commit"
-          else
-            git add docs/excerpts.json
-            git commit -m "chore(page): refresh excerpt pool [skip ci]"
-            git push
-            echo "pool refreshed and pushed"
-          fi
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload page artifact (docs/ + fresh pool)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
