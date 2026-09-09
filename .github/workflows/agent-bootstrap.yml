@@ -152,8 +152,21 @@ jobs:
           fi
           # name|color|description (GitHub-standard labels keep their
           # canonical colors/descriptions; the rest follow the prefix
-          # conventions of the agent's triage vocabulary).
-          LABELS='
+          # conventions of the agent's triage vocabulary). Quoted heredoc:
+          # descriptions may contain apostrophes.
+          EXISTING=$(gh label list -R "$REPO" --limit 200 --json name --jq '.[].name')
+          CREATED=0
+          while IFS='|' read -r name color desc; do
+            [ -z "$name" ] && continue
+            if printf '%s\n' "$EXISTING" | grep -qxF "$name"; then
+              continue
+            fi
+            if gh label create "$name" -R "$REPO" --color "$color" --description "$desc" >/dev/null 2>&1; then
+              CREATED=$((CREATED+1))
+            else
+              LABEL_FAILED=1
+            fi
+          done <<'LABELS_EOF'
           bug|d73a4a|Something isn't working
           duplicate|cfd3d7|This issue or pull request already exists
           enhancement|a2eeef|New feature or request
@@ -175,20 +188,7 @@ jobs:
           accepted|207de5|Feature request evaluated and worth building
           wish|bfe5bf|Not on the roadmap; maybe someday
           Agent Monitored|5319e7|Collaborator-applied: PR watched by the agent (the agent never applies this)
-          '
-          gh label list -R "$REPO" --limit 200 --json name --jq '.[].name' > /tmp/existing_labels.txt
-          CREATED=0
-          while IFS='|' read -r name color desc; do
-            [ -z "$name" ] && continue
-            if grep -qxF "$name" /tmp/existing_labels.txt; then
-              continue
-            fi
-            if gh label create "$name" -R "$REPO" --color "$color" --description "$desc" >/dev/null 2>&1; then
-              CREATED=$((CREATED+1))
-            else
-              LABEL_FAILED=1
-            fi
-          done <<< "$LABELS"
+          LABELS_EOF
           if [ "${LABEL_FAILED:-0}" = "1" ]; then
             echo "::warning::Some labels could not be added (token may lack label access). Existing labels were untouched."
           fi
