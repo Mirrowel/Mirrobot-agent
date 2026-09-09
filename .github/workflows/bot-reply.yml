@@ -246,7 +246,11 @@ jobs:
 
             REPO_SLUG="${TARGET_REPO:-$GITHUB_REPOSITORY}"
             D_OWNER="${REPO_SLUG%%/*}"; D_NAME="${REPO_SLUG##*/}"
-            CLJ="${CONTEXT_LIMITS_JSON:-{}}"
+            # NOTE: never write "${CONTEXT_LIMITS_JSON:-{}}" — the first }
+            # TERMINATES the expansion, appending a literal } to a set value
+            # (live-caught: jq Unmatched '}' on the seeded variable).
+            CLJ="${CONTEXT_LIMITS_JSON:-}"
+            [ -z "$CLJ" ] && CLJ='{}'
             LIM_DC=$(printf '%s' "$CLJ" | jq -r '."discussion-comments" // 70')
             LIM_BC=$(printf '%s' "$CLJ" | jq -r '."body-chars" // 3000')
 
