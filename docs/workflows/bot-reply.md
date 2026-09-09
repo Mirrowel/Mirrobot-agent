@@ -2,7 +2,7 @@
 
 The general agent: anything that isn't a structured review or compliance run lands here. Conversations, questions, investigations, on-demand work, code contributions, and cross-repo guest sessions.
 
-**Triggers:** `workflow_dispatch` only (the Agent Router dispatches it; the Mention Poller dispatches it for guest mode).
+**Triggers:** `workflow_dispatch` only (the Agent Router dispatches it; the Mention Poller dispatches it for guest mode). The `threadType` input selects the thread kind: `issue`/empty (default), `discussion` (mention in a discussion comment — home router or foreign worker relay), `discussion-new` (mention in a new discussion's body). Discussion mode is all-GraphQL: one fetch resolves trigger + budgeted context (`discussion-comments`, hidden/noise filtered, body-chars capped), reactions run on GraphQL subject nodes, posting via `addDiscussionComment` (the mission prompt teaches the patterns). Discussion numbers are a separate counter from issues, so the concurrency group carries a `disc-` prefix.
 **Executes from:** the default branch, always.
 **Permissions:** `contents: read`, `issues: write`, `pull-requests: write`.
 
