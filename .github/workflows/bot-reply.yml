@@ -376,9 +376,9 @@ jobs:
                 [ ((.comments.nodes // [])[])
                   | select(.isMinimized != true)
                   | select((.author.login // "" | ascii_downcase) as $u | ($ig | ascii_downcase | split(",")) | index($u) | not)
-                  | select((.body // "") | noise | not)
-                  | "- \(.author.login // \"?\") (\(.authorAssociation // \"NONE\")) at \(.createdAt):\n\(clip(.body // \"\"))"
-                  + (([((.replies.nodes // [])[]) | select(.isMinimized != true) | select((.author.login // \"\" | ascii_downcase) as $u | ($ig | ascii_downcase | split(\",\")) | index($u) | not) | \"    ↳ \(.author.login // \"?\"): \(clip(.body // \"\"))\"] | if length > 0 then "\n" + join("\n") else "" end)) ]
+                  | select((.body // "") | noise(.) | not)
+                  | "- \(.author.login // "?") (\(.authorAssociation // "NONE")) at \(.createdAt):\n\(clip(.body // ""))"
+                  + (([((.replies.nodes // [])[]) | select(.isMinimized != true) | select((.author.login // "" | ascii_downcase) as $u | ($ig | ascii_downcase | split(",")) | index($u) | not) | "    ↳ \(.author.login // "?"): \(clip(.body // ""))"] | if length > 0 then "\n" + join("\n") else "" end)) ]
                 | reverse | join("\n\n")')
 
             cat_hdr=$(printf '%s\n' "$disc_json" | jq -r '"Discussion #\(.number): \(.title)\nCategory: \(.category.name)\(if .category.isAnswerable then " (answerable)" else "" end)\(if .isAnswered == true then " | ANSWERED" elif .isAnswered == false then "" else "" end)\nOpened by \(.author.login // "?") at \(.createdAt)"')
