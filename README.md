@@ -344,8 +344,8 @@ bash .github/scripts/scrub-fixtures.sh                  # security fixtures gree
 
 Repositories running a Mirrobot deployment can carry the **Ask Mirrobot** badge, linking visitors to the [informational page](https://mirrowel.github.io/Mirrobot-agent/). Two knobs on the badge link:
 
-- [`?bot=`](docs/customization.md#the-informational-page--badge) — your deployment's bot name, so visitors know who to mention back home
-- [`&repo=`](docs/customization.md#the-informational-page--badge) — repoints the page's live-activity strip at your repository
+- [`?bot=`](docs/customization.md#the-informational-page--badge) — your deployment's bot name, so visitors know who to mention back home; comma-separate several if it answers to more than one (`?bot=MyBot,MyBot[bot]`)
+- [`&repo=`](docs/customization.md#the-informational-page--badge) — repoints the page's live-activity strip at the linking repository (`&repo=OWNER/REPO`)
 
 The page ships in [`docs/`](docs/) and publishes through the [Excerpts Refresh](.github/workflows/excerpts-refresh.yml) workflow as a Pages artifact; its "field notes" cards are dealt at random from a weekly-harvested pool of the agent's real posts ([harvest knobs](docs/workflows/excerpts-refresh.md#knobs-workflow-env-block)).
 

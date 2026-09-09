@@ -205,6 +205,9 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
 }
 .snippet button:hover{color:var(--paper)}
 .snippet button:active{transform:translateY(1px)}
+.snip-note{margin-top:10px;font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--faint)}
+.snip-note b{color:var(--paper);font-weight:500}
+.snip-note i{color:var(--dim)}
 .foot-end{
   display:flex;justify-content:space-between;align-items:baseline;gap:6px 32px;flex-wrap:wrap;
   margin-top:18px;padding-top:16px;border-top:1px dashed rgba(242,234,216,.09);
@@ -332,10 +335,11 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
 <footer class="rv">
   <p class="sec-label yellow">take it with you</p>
   <div class="badge-zone">
-    <img src="badge.svg" alt="Ask Mirrobot badge" width="150" height="28" loading="lazy">
+    <img src="badge.svg" alt="Ask Mirrobot badge" width="100" height="20" loading="lazy">
     <p class="badge-blurb">For repositories running a Mirrobot deployment. The link carries your bot's name so visitors landing here know who to mention back home.</p>
   </div>
   <div class="snippet" id="snippet"><code>[![Ask Mirrobot](https://mirrowel.github.io/Mirrobot-agent/badge.svg)](https://mirrowel.github.io/Mirrobot-agent/?bot=YOUR-BOT-NAME)</code><button id="copy" type="button">copy</button></div>
+  <p class="snip-note"><b>?bot=</b><i>name</i> — your deployment's identity; comma-separate several if it answers to more than one (<i>?bot=MyBot,MyBot[bot]</i>) &nbsp;·&nbsp; <b>&amp;repo=</b><i>owner/name</i> — repoints this page's activity list at the linking repository</p>
   <p class="foot-end">
     <span>Mirrobot is a project by <a href="https://github.com/Mirrowel" rel="noopener">Mirrowel</a> · agent platform under MIT · this page is hand-made, grain and all<br>no cookies · no tracking · the only network calls are your browser's, to public GitHub APIs</span>
     <span class="r">currently refusing to merge something pointless</span>
@@ -349,12 +353,16 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
 
   /* ---- deployment context (?bot= / ?repo=) ---- */
   var q = new URLSearchParams(location.search);
-  var bot = (q.get("bot")||"").replace(/[^A-Za-z0-9_\-.[]]/g,"").slice(0,60);
+  var bots = (q.get("bot")||"").slice(0,140).split(",")
+    .map(function(s){ return s.replace(/[^A-Za-z0-9_\-.[]]/g,"").slice(0,60); })
+    .filter(Boolean);
+  var bot = bots[0] || "";
   var repo = (q.get("repo")||"").replace(/[^A-Za-z0-9_\-./]/g,"").slice(0,140);
   if(bot){
     var chip = document.getElementById("ctxchip");
-    chip.innerHTML = "you arrived from a deployment that answers as <b>@" + bot +
-      "</b> — that's the one to mention in its repository." +
+    chip.innerHTML = "you arrived from a deployment that answers as <b>" +
+      bots.map(function(b){ return "@"+b; }).join(bots.length > 2 ? ", " : " and ") +
+      "</b> — " + (bots.length > 1 ? "those are the ones" : "that's the one") + " to mention in its repository." +
       (repo ? " origin: <b>" + repo + "</b>" : "");
     chip.classList.add("on");
   }
