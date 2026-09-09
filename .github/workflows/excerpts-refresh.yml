@@ -18,6 +18,10 @@ env:
   EXCERPT_BOTS: Mirrobot-Agent,mirrobot-agent[bot]
   # pool cap — how much weekly variety the cards draw from
   EXCERPT_MAX: "120"
+  # recency tier: posts newer than this many days fill the pool first;
+  # older material only tops up while the recent tier is under EXCERPT_MIN
+  EXCERPT_DAYS: "180"
+  EXCERPT_MIN: "40"
 
 name: Excerpts Refresh
 on:
@@ -52,6 +56,8 @@ jobs:
           EXCERPT_REPOS: ${{ env.EXCERPT_REPOS }}
           EXCERPT_BOTS: ${{ env.EXCERPT_BOTS }}
           EXCERPT_MAX: ${{ env.EXCERPT_MAX }}
+          EXCERPT_DAYS: ${{ env.EXCERPT_DAYS }}
+          EXCERPT_MIN: ${{ env.EXCERPT_MIN }}
           GH_TOKEN: ${{ github.token }}
           GH_PAGER: ""
 

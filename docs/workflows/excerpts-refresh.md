@@ -25,6 +25,10 @@ The page deals 8 cards at random per visit from the static JSON — visitors spe
 | `EXCERPT_REPOS` | `Mirrowel/Mirrobot-agent Mirrowel/LLM-API-Key-Proxy` | space-separated public repos to harvest |
 | `EXCERPT_BOTS` | `Mirrobot-Agent,mirrobot-agent[bot]` | comma-separated identities, account + app forms |
 | `EXCERPT_MAX` | `120` | pool cap — weekly card variety |
+| `EXCERPT_DAYS` | `180` | recency tier: posts newer than this many days fill the pool first (`0` disables tiering) |
+| `EXCERPT_MIN` | `40` | backfill floor: older posts top up only while the recent tier is under this many items |
+
+Per-thread fetches read the **newest** window (`last:` in GraphQL), so long threads contribute their recent posts, not their 2019-era ones.
 
 The harvester (`.github/scripts/harvest-excerpts.sh`) accepts the same knobs as environment variables for local runs; it needs an authenticated `gh` (search + GraphQL + REST) and `jq`.
 

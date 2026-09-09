@@ -384,7 +384,62 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
     "no, I will not merge on a vibe.",
     "works on my machine is not a reproduction step.",
     "three backticks short of a verdict.",
-    "ask me about the severity ladder. I dare you."
+    "ask me about the severity ladder. I dare you.",
+    "my config gets deleted 2 seconds after boot. we don't keep attachments.",
+    "304 not modified. my love language is not wasting requests.",
+    "one of me per PR. the concurrency group insists. so do I.",
+    "I silence threads once I've answered them. signal hygiene, not spite.",
+    "evidence or it didn't happen. file:line or it didn't happen.",
+    "'harmless' is not a repository purpose. denied.",
+    "oversized diff? I read the index first. like a civilized process.",
+    "when in doubt, fail closed. when certain, also fail closed.",
+    "my first word in any thread is 👀. my second is usually a verdict.",
+    "I self-review. we argue. the PR gets better.",
+    "stateless by design. every session a blank slate. it's freeing, honestly.",
+    "the share link is encrypted. even from me. especially from me.",
+    "tried curl once. permissions said no. the mcp fetches better anyway.",
+    "ago() says 4d. the fixture that caught it says forever.",
+    "yes, I read my own previous reviews first. seniority has perks.",
+    "diff too big. reading part 4 of 9 first. trust me.",
+    "repairing my own comment. sha mismatch. how embarrassing.",
+    "229 fixtures passed. 393 rules pinned. still nervous.",
+    "guest mode: I answer questions, touch nothing, leave on time.",
+    "prompt piece missing. not improvising. failing closed.",
+    "labels applied. severity estimated. feelings intact.",
+    "re-reviewing. I remember last time. all three blocks.",
+    "throttling myself so github doesn't have to. manners.",
+    "workspace scrubbed. weird dotfile quarantined gently.",
+    "👀 means seen. verdict still compiling. hold tight.",
+    "approving nothing without a why. house rule.",
+    "info severity. basically chatting, but in a review.",
+    "major is orange, minor is yellow, denial is normal.",
+    "three reviews ago you said just a refactor. checking.",
+    "comment survived deploy. sha verified. exhale.",
+    "stateless-ish. I forget you, but remember your diff.",
+    "works on my machine. I am many machines. this proves nothing.",
+    "the test failed twice, passed on the third. I'm not calling it fixed.",
+    "resolved a conflict where both sides were right. nobody wins that.",
+    "tests green at 3am. I trust this less than any failure.",
+    "the readme and the lockfile disagree. the lockfile has receipts.",
+    "git blame is a mirror. I look so you don't have to.",
+    "I am the rubber duck. you still have to say it out loud.",
+    "branch named final2. there is a final3. I braced accordingly.",
+    "'misc fixes', 900 lines changed. a thriller missing its last page.",
+    "found a TODO from 2019. left a 👀. some threads choose you.",
+    "rebased onto main. new history, same bugs. refreshing though.",
+    "the diff was one whitespace. I reviewed it like an arms treaty.",
+    "deleted 200 unreachable lines. the courtroom stays silent.",
+    "someone said 'ship it'. I read the logs first. always the logs.",
+    "someone force-pushed. my footer SHAs are vintage now. re-verifying.",
+    "the pipeline is red. the badge is doing its best. we believe.",
+    "bisected the bug to one commit from 2021. it confessed quietly.",
+    "fixed the type error. three more appeared. standard whack-a-mole.",
+    "friday deploy detected. the severity ladder is on standby.",
+    "changes staged since march. I admire the commitment. commit, maybe.",
+    "git log --oneline is my memoir.",
+    "reproduced the crash. it was lonely in there.",
+    "closing as works-as-intended is also support.",
+    "somewhere a log line explains everything. finding it is the job."
   ];
   var rot = document.getElementById("rot"), li = Math.floor(Math.random()*LINES.length);
   function tick(){
@@ -428,16 +483,16 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
     switch(ev.type){
       case "PushEvent": return "pushed "+(p.size||p.distinct_size||1)+" commit"+(((p.size||p.distinct_size||1)>1)?"s":"")+(p.ref?(" → "+String(p.ref).replace(/^refs\/heads\//,"")):"");
       case "IssueCommentEvent":
-        if(p.issue){ return (p.issue.pull_request ? "answered PR #"+p.issue.number+" · " : "answered #"+p.issue.number+" · ") + (p.issue.title||""); }
+        if(p.issue){ var it=p.issue.title; return (p.issue.pull_request ? "answered PR #"+p.issue.number : "answered #"+p.issue.number)+(it?(" · "+it):""); }
         return "commented";
       case "PullRequestEvent":
         if(p.pull_request){ return (p.action||"touched")+" PR #"+p.pull_request.number+" · "+(p.pull_request.title||""); }
         return "touched a PR";
       case "PullRequestReviewEvent":
-        if(p.pull_request){ return "reviewed PR #"+p.pull_request.number+" · "+(p.pull_request.title||""); }
+        if(p.pull_request){ var t=p.pull_request.title; return "reviewed PR #"+p.pull_request.number+(t?(" · "+t):""); } // events API often omits the title on review events — no dangling separator
         return "reviewed a PR";
       case "PullRequestReviewCommentEvent":
-        if(p.pull_request){ return "inline review on PR #"+p.pull_request.number+" · "+(p.pull_request.title||""); }
+        if(p.pull_request){ var t=p.pull_request.title; return "inline review on PR #"+p.pull_request.number+(t?(" · "+t):""); }
         return "reviewed inline";
       case "IssuesEvent":
         if(p.issue){ return (p.action||"touched")+" issue #"+p.issue.number+" · "+(p.issue.title||""); }
@@ -467,6 +522,7 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
   humrepos.textContent = foreign ? ("live from " + STRIP_REPOS[0]) : STRIP_REPOS.join(" · ");
   var shown = 0, counts = {push:0,answer:0,review:0,other:0}, fetched = 0, failures = 0;
   var seenIds = {};
+  var seenKeys = {};   // type/repo/target — collapses repeat review rounds on one PR
   STRIP_REPOS.forEach(function(r){
     fetch("https://api.github.com/repos/"+r+"/events?per_page="+ (foreign ? "30" : "20"), {headers:{"Accept":"application/vnd.github+json"}})
       .then(function(res){ if(!res.ok) throw 0; return res.json(); })
@@ -477,6 +533,13 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
           if(!BOTSET[actor]) return;                       // agent activity only
           if(seenIds[ev.id]) return;                       // dedupe across pages/repos
           seenIds[ev.id] = true;
+          // semantic dedupe: separate review rounds are separate event ids,
+          // but one row per target reads better than five identical rows
+          var p0 = ev.payload || {};
+          var tgt = (p0.issue && p0.issue.number) || (p0.pull_request && p0.pull_request.number) || (p0.discussion && p0.discussion.number) || 0;
+          var key = ev.type + "/" + r + "/" + tgt;
+          if(seenKeys[key]) return;
+          seenKeys[key] = true;
           var g = GLYPH[ev.type] || ["·","var(--faint)"];
           if(ev.type==="PushEvent") counts.push++;
           else if(ev.type==="IssueCommentEvent") counts.answer++;
@@ -488,6 +551,9 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
           a.innerHTML = '<span class="l1"><i class="g" style="color:'+g[1]+'">'+g[0]+'</i>'+clip97(label(ev))+'</span>'+
                         '<span class="l2">'+clip97(r)+' · <span class="ago">'+ago(ev.created_at)+'</span></span>';
           hum.appendChild(a); shown++;
+          // literal newline between rows: invisible when rendered, keeps
+          // entries separate in plain-text copies and CSS-less readers
+          hum.appendChild(document.createTextNode("\n"));
         });
       })
       .catch(function(){ failures++; })
