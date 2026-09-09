@@ -95,6 +95,15 @@ That is the whole hard surface: Git attribution is derived from the account/App 
 
 All trigger words derive from the `BOT_TRIGGERS` variable (see [renaming](#renaming-the-agent) and [configuration](configuration.md#bot_triggers)); routing itself lives in one place, `.github/scripts/route-comment.sh`, which builds the match matrix from the stems. The stub's label gate is the literal `Agent Monitored` in `pr-review-trigger.yml`. The mention matching is loose (substring); tighten it in `route-comment.sh` if you'd rather, at the cost of stricter typo tolerance.
 
+## The informational page & badge
+
+`docs/index.html` is a self-contained landing page (published via GitHub Pages from `docs/` on `main`), and `docs/badge.svg` is the **Ask Mirrobot** badge with the bot avatar embedded. Fork-relevant edits:
+
+- The `REPOS` array near the top of the page script is the "home repositories" list powering the live-activity strip and its stat line — point it at the repos your deployment actually runs in (public repos only; the strip reads GitHub's public API from the visitor's browser, unauthenticated).
+- Badge links should carry your deployment's bot name as `?bot=YOUR-BOT-NAME` — the page then tells visitors who to mention back home instead of assuming this repo's identity. A `?repo=owner/name` param is also understood and shown as origin context.
+- The rotating status lines, FAQ, and excerpt cards are curated content — edit them freely; keep quotes real.
+- If you don't want the site at all, disable GitHub Pages in repo settings and delete the two files; nothing else depends on them.
+
 ## Adding a whole new mode
 
 If you need a genuinely new agent kind (say, a release-notes writer): add a `mission-*` part, a manifest naming it plus the shared parts, a workflow modeled on the existing dispatch-only ones (bot-setup → context fetch → assembly → session → verify), a router matrix row in `route-comment.sh`, and fixture pins for the new manifest. The stub/gate/router need no changes; dispatch is generic.
