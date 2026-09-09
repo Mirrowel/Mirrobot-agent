@@ -390,8 +390,8 @@ route() { # body is_pr -> flags or "none" — delegates to the shared script
 # with a nonexistent github.event.issue and dispatches empty inputs
 # (live-caught 2026-09-09: red run per discussion comment).
 ROUTER_YML="$SCRIPT_DIR/../workflows/agent-router.yml"
-check "router: route job gated to issue_comment" yes "$(grep -A3 '^  route:' "$ROUTER_YML" | grep -q "github.event_name == 'issue_comment'" && echo yes || echo no)"
-check "router: route_discussion gated to discussion events" yes "$(grep -A3 '^  route_discussion:' "$ROUTER_YML" | grep -q "github.event_name == 'discussion_comment'" && echo yes || echo no)"
+check "router: route job gated to issue_comment" yes "$(sed -n '/^  route:$/,/^  [a-z]/p' "$ROUTER_YML" | head -30 | grep -q "github.event_name == 'issue_comment'" && echo yes || echo no)"
+check "router: route_discussion gated to discussion events" yes "$(sed -n '/^  route_discussion:$/,/^  [a-z]/p' "$ROUTER_YML" | head -30 | grep -q "github.event_name == 'discussion_comment'" && echo yes || echo no)"
 check "router: plain mention (PR)"          "reply"                  "$(route 'hey @mirrobot look at this' true)"
 check "router: plain mention (issue)"       "reply"                  "$(route 'hey @mirrobot look at this' false)"
 check "router: review command (PR)"         "review"                 "$(route 'please /mirrobot-review' true)"
