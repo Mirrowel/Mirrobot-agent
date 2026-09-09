@@ -1,8 +1,8 @@
 # Agent Router
 
-The single comment entrypoint. Every `issue_comment[created]` event in the repository hits this workflow and nothing else.
+The single comment-trigger entrypoint. Every `issue_comment[created]` event in the repository hits this workflow and nothing else — and since the discussions extension, every `discussion_comment[created]` and `discussion[created]` (new-discussion body mention) hits its sibling `route_discussion` job in the same file.
 
-**Triggers:** `issue_comment [created]`.
+**Triggers:** `issue_comment [created]`, `discussion_comment [created]`, `discussion [created]`.
 **Executes from:** the default branch, always.
 **Permissions:** `contents: read` (one sparse checkout of the shared routing script), `actions: write` (dispatching targets).
 

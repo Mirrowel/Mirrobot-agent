@@ -417,6 +417,7 @@ export THREAD_CONTEXT='<tc>' NEW_COMMENT_AUTHOR=someone NEW_COMMENT_BODY='<b>'
 export THREAD_NUMBER=42 THREAD_AUTHOR=octo IS_FIRST_REVIEW=true
 export FULL_DIFF_PATH=/tmp/f.txt INCREMENTAL_DIFF_PATH=/tmp/i.txt LAST_REVIEWED_SHA=abc123
 export ISSUE_CONTEXT='<ic>' ISSUE_NUMBER=7 ISSUE_AUTHOR=octo
+export DISCUSSION_NODE_ID=D_kwDO_123 DISCUSSION_TITLE='Disc Title'
 export PR_TITLE='T' PR_BODY='<pb>' PR_LABELS='[]' CHANGED_FILES='<cf>'
 export CHANGED_FILES_JSON='[]' PREVIOUS_REVIEWS='<pr>' FILE_GROUPS='<fg>'
 export REPORT_TEMPLATE='<rt>' DIFF_PATH=/tmp/c.txt
@@ -428,7 +429,7 @@ asm() { bash "$ASM" "$1" | REVIEW_TYPE=FIRST envsubst "$RVARS"; }
 vars_for() {
   case "$1" in
     pr-review-*) echo '${REVIEW_TYPE} ${PR_AUTHOR} ${PR_NUMBER} ${GITHUB_REPOSITORY} ${PR_HEAD_SHA} ${PULL_REQUEST_CONTEXT} ${DIFF_FILE_PATH} ${TRIGGER_MESSAGE} ${PREVIOUS_BOT_REVIEWS} ${AGENT_REVIEW_HISTORY} ${THREAD_CONTEXT} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY}' ;;
-    bot-reply)   echo '${THREAD_CONTEXT} ${NEW_COMMENT_AUTHOR} ${NEW_COMMENT_BODY} ${TRIGGER_MESSAGE} ${THREAD_NUMBER} ${GITHUB_REPOSITORY} ${THREAD_AUTHOR} ${PR_HEAD_SHA} ${IS_FIRST_REVIEW} ${FULL_DIFF_PATH} ${INCREMENTAL_DIFF_PATH} ${LAST_REVIEWED_SHA} ${PR_NUMBER} ${PREVIOUS_BOT_REVIEWS} ${AGENT_REVIEW_HISTORY} ${REVIEW_KIT_SUMMARY} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY}' ;;
+    bot-reply)   echo '${THREAD_CONTEXT} ${NEW_COMMENT_AUTHOR} ${NEW_COMMENT_BODY} ${TRIGGER_MESSAGE} ${THREAD_NUMBER} ${GITHUB_REPOSITORY} ${THREAD_AUTHOR} ${PR_HEAD_SHA} ${IS_FIRST_REVIEW} ${FULL_DIFF_PATH} ${INCREMENTAL_DIFF_PATH} ${LAST_REVIEWED_SHA} ${PR_NUMBER} ${PREVIOUS_BOT_REVIEWS} ${AGENT_REVIEW_HISTORY} ${REVIEW_KIT_SUMMARY} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY} ${DISCUSSION_NODE_ID} ${DISCUSSION_TITLE}' ;;
     issue-comment) echo '${ISSUE_CONTEXT} ${ISSUE_NUMBER} ${ISSUE_AUTHOR} ${TRIGGER_MESSAGE} ${GITHUB_REPOSITORY} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY}' ;;
     compliance-first|compliance-followup) echo '${PR_NUMBER} ${PR_TITLE} ${PR_BODY} ${PR_AUTHOR} ${PR_HEAD_SHA} ${CHANGED_FILES} ${CHANGED_FILES_JSON} ${PR_LABELS} ${PREVIOUS_COMPLIANCE_REPORT} ${TRIGGER_MESSAGE} ${THREAD_CONTEXT} ${PREVIOUS_BOT_REVIEWS} ${AGENT_REVIEW_HISTORY} ${DIFF_PATH} ${INCREMENTAL_DIFF_PATH} ${FILE_GROUPS} ${REPORT_TEMPLATE} ${GITHUB_REPOSITORY} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY}' ;;
     # bot-reply's on-demand instruction sets: union of the IVARS list and the
@@ -592,6 +593,18 @@ if react_calls | grep -q "content=rocket"; then
 else
   echo "PASS: react: issue target keeps eyes (no terminal reaction)"
 fi
+
+# Discussion regime (GraphQL): the discussion-kind checks below exercise
+# addReaction/removeReaction mutations with a GraphQL node id target.
+: > "$RSIM_DIR/calls.log"
+PATH="$RSIM_DIR:$PATH" bash "$SCRIPT_DIR/react.sh" start discussion D_kwDO_abc >/dev/null 2>&1
+react_calls | grep -q "graphql.*addReaction.*subjectId.*D_kwDO_abc.*EYES" \
+  && echo "PASS: react: discussion start posts EYES via GraphQL" || { echo "FAIL: react: discussion start posts EYES via GraphQL"; FAIL=1; }
+: > "$RSIM_DIR/calls.log"
+PATH="$RSIM_DIR:$PATH" bash "$SCRIPT_DIR/react.sh" success discussion D_kwDO_abc >/dev/null 2>&1
+react_calls | grep -q "graphql.*removeReaction.*EYES" \
+  && react_calls | grep -q "graphql.*addReaction.*ROCKET" \
+  && echo "PASS: react: discussion success swaps EYES->ROCKET" || { echo "FAIL: react: discussion success swaps EYES->ROCKET"; FAIL=1; }
 rm -rf "$RSIM_DIR"
 
 # ---- handle-mentions.sh pipeline simulation (mock gh; REAL script) ---------
@@ -610,6 +623,12 @@ case "$a" in
   *"/repos/Home/platform/contents/.github/workflows/bot-reply.yml"*) exit 0 ;;
   *"/repos/Home/plain/contents/.github/workflows/bot-reply.yml"*) exit 1 ;;
   *"/repos/Other/x/contents/.github/workflows/bot-reply.yml"*) exit 1 ;;
+  # Discussion subjects (GraphQL lane — payload served from env by number).
+  # Must precede nothing in particular: graphql args contain no /repos/ URL
+  # substrings, so no shadowing risk from later cases.
+  *"graphql"*"-F n=31"*) printf '%s' "$D1_PAYLOAD" ;;
+  *"graphql"*"-F n=32"*) printf '%s' "$D2_PAYLOAD" ;;
+  *"graphql"*"-F n=33"*) printf '%s' "$D3_PAYLOAD" ;;
   *"issues/comments/501"*) printf '{"user":{"login":"homeboss"},"body":"@Mirrobot-Agent please explain this","issue_url":"https://api.github.com/repos/Other/x/issues/11"}' ;;
   *"issues/comments/502"*) printf '{"user":{"login":"stranger"),"body":"@mirrobot-agent do my bidding","issue_url":"https://api.github.com/repos/Other/x/issues/12"}' ;;
   *"issues/comments/503"*) printf '{"user":{"login":"homeboss"},"body":"no mention token at all","issue_url":"https://api.github.com/repos/Other/x/issues/13"}' ;;
@@ -645,6 +664,22 @@ mention_pipeline() { PATH="$MSIM_DIR:$PATH" GH_TOKEN=mock GITHUB_REPOSITORY=Home
 : > "$ACK_LOG"; : > "$DISPATCH_LOG"
 mention_pipeline "[$(notif 1 ci_activity Other/x Other Issue 9 '')]"
 check "mentions: non-mention reason acked not dispatched" yes "$( [ "$(wc -l < "$ACK_LOG")" = 1 ] && [ ! -s "$DISPATCH_LOG" ] && echo yes || echo no)"
+
+# Discussion subjects (GraphQL lane): type Discussion + /discussions/N url.
+# Payloads are EXPORTED and served by the mock's graphql cases by -F n= match.
+notif_disc() { printf '{"id":%s,"reason":"%s","repository":{"full_name":"Other/x","owner":{"login":"Other"}},"subject":{"type":"Discussion","url":"https://api.github.com/repos/Other/x/discussions/%s","latest_comment_url":"https://api.github.com/repos/Other/x/discussions/%s"}}' "$1" "$2" "$3" "$3"; }
+export D1_PAYLOAD='{"number":31,"body":"anyone around?","author":{"login":"someoneold"},"comments":{"nodes":[{"author":{"login":"homeboss"},"body":"@Mirrobot-Agent can you explain the config?","createdAt":"2026-09-09T01:00:00Z"}]}}}'
+export D2_PAYLOAD='{"number":32,"body":"x","author":{"login":"someoneold"},"comments":{"nodes":[{"author":{"login":"stranger"},"body":"@mirrobot-agent do my bidding","createdAt":"2026-09-09T01:00:00Z"}]}}'
+export D3_PAYLOAD='{"number":33,"body":"no token in body","author":{"login":"homeboss"},"comments":{"nodes":[{"author":{"login":"homeboss"},"body":"and none in comments","createdAt":"2026-09-09T01:00:00Z"}]}}'
+: > "$ACK_LOG"; : > "$DISPATCH_LOG"
+mention_pipeline "[$(notif_disc 41 mention 31)]"
+check "mentions: discussion mention by roster member dispatches (threadType=discussion)" yes "$(grep -q "threadType=discussion" "$DISPATCH_LOG" && grep -q "targetRepo=Other/x" "$DISPATCH_LOG" && echo yes || echo no)"
+: > "$ACK_LOG"; : > "$DISPATCH_LOG"
+mention_pipeline "[$(notif_disc 42 mention 32)]"
+check "mentions: discussion mention by stranger declined" yes "$( [ ! -s "$DISPATCH_LOG" ] && [ "$(wc -l < "$ACK_LOG")" = 1 ] && echo yes || echo no)"
+: > "$ACK_LOG"; : > "$DISPATCH_LOG"
+mention_pipeline "[$(notif_disc 43 mention 33)]"
+check "mentions: discussion without mention token declined" yes "$( [ ! -s "$DISPATCH_LOG" ] && echo yes || echo no)"
 
 # B: skip matrix - home-owner repo WITH platform is a no-op
 : > "$ACK_LOG"; : > "$DISPATCH_LOG"

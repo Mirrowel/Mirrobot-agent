@@ -8,3 +8,6 @@ __pycache__/
 __pycache__/
 custom_providers.json
 tools/mention-worker/.wrangler/
+
+# Local operator token (never commit)
+token.txt

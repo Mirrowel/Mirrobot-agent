@@ -41,6 +41,14 @@ name: Agent Router
 on:
   issue_comment:
     types: [created]
+  # Discussions (2026-09-09 extension): both paths are mention-summons for
+  # Bot Reply (discussions are reply-only threads — no review/compliance
+  # routes). Default-branch guaranteed like issue_comment. Discussion
+  # payloads have no REST endpoints: the target re-fetches via GraphQL.
+  discussion_comment:
+    types: [created]
+  discussion:
+    types: [created]
 
 permissions:
   actions: write    # dispatch the target agent workflows
@@ -220,4 +228,140 @@ jobs:
             # miss is visible in the Actions tab, not just a warning line.
             echo "::error::One or more target dispatches failed for comment #$COMMENT_ID"
             exit 1
+          fi
+
+  # ==========================================================================
+  # DISCUSSION ROUTING (sibling of the route job)
+  # ==========================================================================
+  # discussion_comment[created] = mention inside a discussion comment;
+  # discussion[created] = mention in a NEW discussion's body (the landing
+  # page path — a discussion created without a mention wakes nothing, the
+  # same deliberate asymmetry as issues: no first-contact analysis mode).
+  # Payload shapes differ from issue_comment (comment under a discussion /
+  # the discussion itself), hence a separate job — but the decision logic
+  # is the SAME shared script, and the loop guards, OPEN_TRIGGERING gate,
+  # pause parts, and audit-trail contract are identical to the route job.
+  # The target re-fetches the discussion via GraphQL by number (and by
+  # comment databaseId for comment triggers); nothing trust-relevant rides
+  # the dispatch payload.
+  route_discussion:
+    if: |
+      vars.AGENT_PAUSED != 'true' &&
+      !endsWith(github.event.comment.user.login || github.event.discussion.user.login, '[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout routing script
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Parse discussion trigger and route
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_ID: ${{ github.event.comment.id || '' }}
+          COMMENT_BODY: ${{ github.event.comment.body || github.event.discussion.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login || github.event.discussion.user.login }}
+          AUTHOR_ASSOC: ${{ github.event.comment.author_association || github.event.discussion.author_association || 'NONE' }}
+          THREAD_NUMBER: ${{ github.event.discussion.number }}
+          REPO_OWNER: ${{ github.event.repository.owner.login }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_TOKEN: ${{ github.token }}
+          BOT_IDENTITIES_INPUT: ${{ vars.BOT_IDENTITIES || '' }}
+          BOT_TRIGGERS_INPUT: ${{ vars.BOT_TRIGGERS || '' }}
+          AGENT_PAUSED_PARTS_JSON: ${{ vars.AGENT_PAUSED_PARTS_JSON || '' }}
+          OPEN_TRIGGERING: ${{ vars.OPEN_TRIGGERING || 'true' }}
+          TRUSTED_USERS: ${{ vars.TRUSTED_AGENT_USERS || '' }}
+        run: |
+          set -euo pipefail
+
+          eval "$(bash .github/scripts/bot-config.sh --export)"
+
+          # --- Agent-identity loop guard (same contract as the route job).
+          author_lc=$(printf '%s' "$COMMENT_AUTHOR" | tr 'A-Z' 'a-z')
+          if printf '%s' "$BOT_NAMES_JSON" | jq -e --arg a "$author_lc" \
+               'map(ascii_downcase) | index($a) != null' >/dev/null 2>&1; then
+            echo "::notice::Discussion trigger authored by our own identity (@${COMMENT_AUTHOR}); bot-loop guard - not routed."
+            exit 0
+          fi
+
+          # --- Shared decision logic. Discussions are reply-only threads:
+          # is_pr=false strips the review/compliance routes; only a genuine
+          # mention routes (code/quote cleaning applies as everywhere).
+          ROUTES=$(printf '%s' "$COMMENT_BODY" | bash .github/scripts/route-comment.sh false)
+
+          # --- Open-triggering gate (identical to the route job). Discussion
+          # webhook payloads may lack author_association: when the gate is
+          # armed and the payload carried none, one GraphQL call resolves it
+          # (the target re-fetches everything again — this is gate-only).
+          if [ "$ROUTES" != "none" ] && [ "${OPEN_TRIGGERING}" != "true" ]; then
+            assoc="$AUTHOR_ASSOC"
+            if [ -z "$assoc" ] || [ "$assoc" = "NONE" ]; then
+              assoc=$(gh api graphql -f owner="$REPO_OWNER" -f name="$REPO_NAME" -F n="$THREAD_NUMBER" \
+                -f query='query($owner:String!,$name:String!,$n:Int!) { repository(owner:$owner,name:$name) { discussion(number:$n) { authorAssociation } } }' \
+                --jq '.data.repository.discussion.authorAssociation // "NONE"' 2>/dev/null || echo NONE)
+            fi
+            authorized=no
+            case "$assoc" in
+              OWNER|MEMBER|COLLABORATOR) authorized=yes ;;
+            esac
+            if [ "$authorized" = "no" ] && [ -n "$TRUSTED_USERS" ]; then
+              author_check=$(printf '%s' "$TRUSTED_USERS" | tr ',' '\n' | tr -d '[:space:]' | tr 'A-Z' 'a-z')
+              if printf '%s\n' "$author_check" | grep -qxf "$author_lc"; then
+                authorized=yes
+              fi
+            fi
+            if [ "$authorized" = "no" ]; then
+              {
+                echo "- OPEN_TRIGGERING is off: on-demand summons are limited to collaborators and the trusted roster; this author (${assoc}) is neither. Not routed."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice::OPEN_TRIGGERING is off and @${COMMENT_AUTHOR} is not a collaborator/trusted user - discussion trigger declined."
+              exit 0
+            fi
+          fi
+
+          if [ "$ROUTES" != "reply" ]; then
+            echo "::notice::No agent trigger found in discussion #${THREAD_NUMBER} content; nothing dispatched."
+            {
+              echo "### Agent Router — discussion #${THREAD_NUMBER}"
+              echo "- No trigger found; nothing dispatched."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # --- Per-part pause (bot-reply owns discussions).
+          v="${AGENT_PAUSED_PARTS_JSON:-}"
+          if [ -n "$v" ]; then
+            if ! printf '%s' "$v" | jq -e 'type == "object"' >/dev/null 2>&1; then
+              echo "::error::AGENT_PAUSED_PARTS_JSON is not a JSON object - fix the variable."
+              exit 1
+            fi
+            if printf '%s' "$v" | jq -e '.["bot-reply"] == true' >/dev/null 2>&1; then
+              echo "::notice::Bot Reply is paused (AGENT_PAUSED_PARTS_JSON) - skipping discussion dispatch."
+              exit 0
+            fi
+          fi
+
+          {
+            echo "### Agent Router — discussion #${THREAD_NUMBER} (${EVENT_NAME})"
+            echo "- Author: @${COMMENT_AUTHOR} (${AUTHOR_ASSOC})"
+            echo "- Dispatching Bot Reply (${EVENT_NAME} trigger)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$EVENT_NAME" = "discussion" ]; then
+            echo "::notice::Routing to Bot Reply (new discussion #${THREAD_NUMBER}, body mention)"
+            if ! gh workflow run bot-reply.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
+                 -f threadNumber="$THREAD_NUMBER" -f threadType=discussion-new; then
+              echo "::error::Failed to dispatch Bot Reply for discussion #$THREAD_NUMBER"
+              exit 1
+            fi
+          else
+            echo "::notice::Routing to Bot Reply (discussion #${THREAD_NUMBER}, comment #$COMMENT_ID)"
+            if ! gh workflow run bot-reply.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
+                 -f commentId="$COMMENT_ID" -f threadNumber="$THREAD_NUMBER" -f threadType=discussion; then
+              echo "::error::Failed to dispatch Bot Reply for discussion #$THREAD_NUMBER"
+              exit 1
+            fi
           fi

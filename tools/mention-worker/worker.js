@@ -238,6 +238,44 @@ async function prefilter(env, state, n, roster) {
       return { pass: true };
     }
 
+    // Discussions: NO REST content endpoint exists (probe-verified
+    // 2026-09-09 — the notification's REST-shaped subject URL is dead).
+    // One GraphQL call reconstructs the trigger: the NEWEST content (body
+    // or comment) carrying a genuine mention token is the summon. Deny-only
+    // + fail-open like everything here; the in-repo gauntlet re-verifies.
+    if (n.subject?.type === "Discussion") {
+      const url = n.subject?.url || "";
+      const rm = url.match(/^https:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/discussions\/(\d+)$/);
+      if (!rm) return { pass: true };
+      const gql = await fetch("https://api.github.com/graphql", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.BOT_PAT}`, "Content-Type": "application/json", "User-Agent": "mirrobot-mention-worker" },
+        body: JSON.stringify({
+          query: "query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){discussion(number:$num){body author{login} comments(last:10){nodes{author{login} body createdAt}}}}}",
+          variables: { o: rm[1], n: rm[2], num: parseInt(rm[3], 10) },
+        }),
+      });
+      if (!gql.ok) return { pass: true }; // fail-open
+      const gj = await gql.json();
+      const disc = gj?.data?.repository?.discussion;
+      if (!disc) return { pass: true };
+      const tokens = mentionTokens(selfSet);
+      if (tokens.length === 0) return { pass: true };
+      const flat = (s) => String(s || "").replace(/[\r\n]+/g, " ").toLowerCase();
+      // Oldest → newest, then walk newest-first; body first (oldest).
+      const cands = [{ author: disc.author?.login, body: flat(disc.body) }];
+      for (const c of disc.comments?.nodes || []) cands.push({ author: c.author?.login, body: flat(c.body) });
+      let trigger = null;
+      for (let i = cands.length - 1; i >= 0; i--) {
+        if (tokens.some((t) => cands[i].body.includes(t))) { trigger = cands[i]; break; }
+      }
+      if (!trigger) return { decline: "token" };
+      const a = String(trigger.author || "").toLowerCase();
+      if (selfSet.has(a)) return { decline: "self" };
+      if (roster.ok && !roster.names.has(a)) return { decline: "allowlist" };
+      return { pass: true };
+    }
+
     // mention/subscribed/comment: fetch the triggering content (last
     // comment when there is one, else the issue/PR body itself)
     const target = n.subject?.latest_comment_url || n.subject?.url;
@@ -254,8 +292,8 @@ async function prefilter(env, state, n, roster) {
     // only on positive evidence: a resolvable login whose body carries no
     // genuine mention token of ANY self identity (dual-form).
     if (!botLogin && selfSet.size === 0) return { pass: true };
-    const tokens = mentionTokens(selfSet);
-    if (tokens.length > 0 && !tokens.some((t) => body.includes(t))) return { decline: "token" };
+    const tokens2 = mentionTokens(selfSet);
+    if (tokens2.length > 0 && !tokens2.some((t) => body.includes(t))) return { decline: "token" };
     if (roster.ok && !roster.names.has(author)) return { decline: "allowlist" };
     return { pass: true };
   } catch (e) {
