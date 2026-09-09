@@ -15,7 +15,7 @@
 - **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
 - **Open-triggering gate, opt-out**: `OPEN_TRIGGERING=false` limits on-demand summons (mentions + commands through the router) to collaborators and the `TRUSTED_AGENT_USERS` roster, with a visible decline notice; auto paths (PR auto-reviews, issues-opened analysis, cross-repo mentions with their own allowlist) stay open, and the check is zero API cost (association rides the event payload, the roster is a variable)
 - **Graceful pause ladder**: one kill switch (`AGENT_PAUSED`) plus per-part switches (`AGENT_PAUSED_PARTS_JSON`); the status stubs deliberately keep running so a paused agent never makes a PR mergeable
-- **Batteries in CI**: 207 security fixtures + 357 pinned prompt rules run on every `.github/` change, so drift turns CI red
+- **Batteries in CI**: 231 security fixtures + 393 pinned prompt rules run on every `.github/` change, so drift turns CI red
 
 ## Layers
 
@@ -23,7 +23,7 @@
 - Purpose: Wake on GitHub events, decide whether an agent should act, and dispatch exactly one privileged workflow per trigger, with zero secrets and zero checkouts
 - Location: `.github/workflows/` (the dispatcher subset: `agent-router.yml`, `pr-review-trigger.yml`, `compliance-gate.yml`)
 - Contains: Workflow YAML plus one shared routing script (`route-comment.sh`)
-- Depends on: GitHub `issue_comment`/`pull_request` events, `workflow_dispatch` API via `GITHUB_TOKEN` (the documented token-recursion exception)
+- Depends on: GitHub `issue_comment`/`discussion_comment`/`discussion`/`pull_request` events, `workflow_dispatch` API via `GITHUB_TOKEN` (the documented token-recursion exception)
 - Used by: Every entry into the agent layer
 
 **Agent Workflow Layer:**
@@ -70,6 +70,11 @@
 4. Router dispatches matching targets (`pr-review.yml`, `bot-reply.yml`, `compliance-check.yml`) by comment id; targets re-fetch the comment from the API by id, so author/body never arrive from dispatch inputs
 5. Routing decisions are logged to the run step summary; the router run is the audit trail
 
+**Discussion Routing (home + foreign discussions):**
+1. `discussion_comment[created]` / `discussion[created]` wake a sibling `route_discussion` job in `agent-router.yml` (each routing job is event-guarded to its own payload shape); discussions are reply-only threads — `route-comment.sh` runs with `is_pr=false` so only a genuine mention routes (no review/compliance targets)
+2. The open-triggering gate is identical to comments, with one GraphQL fallback: discussion payloads may lack `author_association`, so when the gate is armed one query resolves `Discussion.authorAssociation`
+3. Dispatch → `bot-reply.yml` with `threadType=discussion` (comment trigger; comment id passed) or `threadType=discussion-new` (new-discussion body trigger; no comment id exists); the target re-fetches the whole discussion via GraphQL by number, so nothing trust-relevant rides the dispatch
+
 **PR Review (the life of a review):**
 1. PR event → `pr-review-trigger.yml` stub (runs from the PR's **base branch**, zero secrets, no checkout) decides if a review is wanted and posts the pending merge-blocker status; declined events dispatch nothing
 2. Dispatch → `pr-review.yml` (runs from `main`): runtime input validation, fast "eyes" reaction in account mode, identity minting via `.github/actions/bot-setup/action.yml`
@@ -83,7 +88,7 @@
 **Cross-Repo Mention (guest mode):**
 1. GitHub turns mentions of the account / review requests in any public repo into account notifications
 2. `tools/mention-worker/worker.js` polls via a self-rescheduling Durable Object alarm with conditional requests (`If-None-Match` → free 304 idle polls, 30-120s adaptive cadence), applies a deny-only **fail-open** pre-filter (bot-own identity derived from the cached `/user` login, requester allowlist, genuine-mention token); declines are acked and never wake Actions
-3. Qualifying notifications relay via `repository_dispatch` → `mention-poller.yml` → `.github/scripts/handle-mentions.sh`, the **sole authority**: reason filter → skip matrix (platform-repos of the home owner are no-ops) → mark-read-before-dispatch → subject re-fetch from the API → bot-loop guard → summoner allowlist → genuine-mention verification (for review requests: trust the timeline *actor*, not the PR author) → per-run cap → `bot-reply.yml` in guest mode with `guest-rules.md` injected
+3. Qualifying notifications relay via `repository_dispatch` → `mention-poller.yml` → `.github/scripts/handle-mentions.sh`, the **sole authority**: reason filter → skip matrix (platform-repos of the home owner are no-ops) → mark-read-before-dispatch → subject re-fetch from the API → bot-loop guard → summoner allowlist → genuine-mention verification (for review requests: trust the timeline *actor*, not the PR author) → per-run cap → `bot-reply.yml` in guest mode with `guest-rules.md` injected; Discussion subjects take a GraphQL branch (discussions have no REST endpoints): the subject is re-fetched via GraphQL, the genuine-mention scan runs over the body and recent comments, and the dispatch carries `threadType=discussion` with no comment id
 
 **Compliance Gating:**
 1. A stem-derived compliance command (default `/mirrobot-check`) → router → `compliance-check.yml` runs the merge audit and posts the `compliance-check` status + report (`FILE_GROUPS_JSON` in the workflow defines which files must stay consistent)
@@ -125,14 +130,14 @@
 **Three-block discussion context:**
 - Purpose: Single source of truth for what the reviewer remembers, its own newest N reviews (elevated: only resolved/outdated markers bypassed), older review history (fully filtered), and everything else (correlated, noise-filtered) plus orphaned inline threads
 - Location: `.github/scripts/fetch-pr-discussion.sh`
-- Pattern: Hidden/minimized content stays hidden everywhere (own content included); filtering happens *before* capping so filtered content never consumes fetch budget; budget slots count content shown, never content fetched: windows overfill 3x in the same single GraphQL request, and at most one cursor catch-up page runs when noise truncated a window while slots stayed unfilled (the common case stays exactly one request); the own-newest-reviews window is a safeguard that always applies even beyond the general review cap; all window sizes come from the `CONTEXT_LIMITS_JSON` variable; filter variables `CONTEXT_IGNORE_AUTHORS` / `CONTEXT_FILTER_PATTERNS_JSON` come from repo variables with baked AI-reviewer noise defaults
+- Pattern: Hidden/minimized content stays hidden everywhere (own content included); filtering happens *before* capping so filtered content never consumes fetch budget; budget slots count content shown, never content fetched: windows overfill 3x in the same single GraphQL request, and at most one cursor catch-up page runs when noise truncated a window while slots stayed unfilled (the common case stays exactly one request); a `body-chars` budget clips every rendered body (comments, inline threads, review summaries) with a visible `[body truncated]` marker instead of silent loss; the own-newest-reviews window is a safeguard that always applies even beyond the general review cap; all window sizes come from the `CONTEXT_LIMITS_JSON` variable; filter variables `CONTEXT_IGNORE_AUTHORS` / `CONTEXT_FILTER_PATTERNS_JSON` come from repo variables with baked AI-reviewer noise defaults
 
 ## Entry Points
 
 **Agent Router:**
 - Location: `.github/workflows/agent-router.yml`
-- Triggers: any `issue_comment[created]` (single comment-trigger entrypoint, consolidates 3 former per-workflow triggers into 1 run per comment)
-- Responsibilities: Parse once via `route-comment.sh`, enforce the `OPEN_TRIGGERING` gate on routed comments (collaborators + trusted roster when off), dispatch exactly the matching agent workflow(s); log the decision to the step summary; compound comments dispatch all matches in parallel; a failing dispatch fails the run so the miss is visible
+- Triggers: any `issue_comment[created]`, `discussion_comment[created]`, or `discussion[created]` (single entrypoint for comment-shaped triggers, one run per event; discussion payloads route through the dedicated `route_discussion` sibling job)
+- Responsibilities: Parse once via `route-comment.sh`, enforce the `OPEN_TRIGGERING` gate on routed comments and discussions (collaborators + trusted roster when off), dispatch exactly the matching agent workflow(s); log the decision to the step summary; compound comments dispatch all matches in parallel; a failing dispatch fails the run so the miss is visible; the discussion sibling job reuses the same script and gates but dispatches `bot-reply.yml` only
 
 **PR Review Trigger (stub):**
 - Location: `.github/workflows/pr-review-trigger.yml`
@@ -147,12 +152,12 @@
 **Bot Reply on Mention:**
 - Location: `.github/workflows/bot-reply.yml`
 - Triggers: dispatch only (router, mention pipeline, manual)
-- Responsibilities: The general agent, conversations, investigations, on-demand reviews (via the review kit), contributor strategy (branch → implement → self-review → PR, never touching `.github/workflows`), repository management; strategy instruction sets load on demand
+- Responsibilities: The general agent, conversations, investigations, on-demand reviews (via the review kit), contributor strategy (branch → implement → self-review → PR, never touching `.github/workflows`), repository management; strategy instruction sets load on demand. The `threadType` input selects the thread kind: `issue` (default), `discussion` (mention in a discussion comment), `discussion-new` (mention in a new discussion's body) — discussion mode is all-GraphQL (one fetch resolves trigger + budgeted context; posting via `addDiscussionComment`; reactions on GraphQL node ids), and discussion runs carry a `disc-` concurrency prefix since discussion numbers are a separate counter from issues
 
 **Issue Analysis:**
 - Location: `.github/workflows/issue-comment.yml`
 - Triggers: `issues[opened]` (plus manual `workflow_dispatch`)
-- Responsibilities: Duplicate hunt, root-cause trace, labels, suggested fix
+- Responsibilities: Open-ended triage (classify, fast duplicate pass with linked-PR harvesting, root-cause trace, neutral judgment, feature-worth gate); labels applied directly — the seeded vocabulary is the default palette and repo customs always win; no fixed report shape
 
 **Compliance Check / Compliance Gate:**
 - Location: `.github/workflows/compliance-check.yml`, `.github/workflows/compliance-gate.yml`
@@ -162,17 +167,17 @@
 **Mention Poller:**
 - Location: `.github/workflows/mention-poller.yml`
 - Triggers: `repository_dispatch` from the mention-worker, manual `workflow_dispatch` (on-demand poll), documented opt-in schedule
-- Responsibilities: Runs the `handle-mentions.sh` gauntlet on relayed/polled notifications; single writer of notification read-state
+- Responsibilities: Runs the `handle-mentions.sh` gauntlet on relayed/polled notifications (issues/PRs and foreign Discussions); single writer of notification read-state
 
 **Agent Bootstrap:**
 - Location: `.github/workflows/agent-bootstrap.yml`
 - Triggers: `workflow_dispatch` (write access) only
-- Responsibilities: One-time setup, seeds every variable with safe defaults/templates (never overwrites), including the identity/trigger defaults derived from the repo's own bot identity; prints the secrets checklist into the run summary; state-silent (logs can never reveal which variables or secrets exist)
+- Responsibilities: One-time setup, seeds every variable with safe defaults/templates (never overwrites), including the identity/trigger defaults derived from the repo's own bot identity; seeds the triage label vocabulary create-if-missing (existing labels are never touched — a repo's own customs win); prints the secrets checklist into the run summary; state-silent (logs can never reveal which variables or secrets exist)
 
 **Scrub Fixture Suite:**
 - Location: `.github/workflows/scrub-fixtures.yml`
 - Triggers: any `.github/` change
-- Responsibilities: The batteries, 207 security fixtures (`scrub-fixtures.sh`), 357 pinned prompt rules (`prompt-rule-fixtures.sh`), strict YAML validation
+- Responsibilities: The batteries, 231 security fixtures (`scrub-fixtures.sh`), 393 pinned prompt rules (`prompt-rule-fixtures.sh`), strict YAML validation
 
 ## Error Handling
 

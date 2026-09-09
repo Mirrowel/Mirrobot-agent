@@ -10,13 +10,15 @@
 │   ├── actions/                # Composite actions (shared setup steps)
 │   │   ├── bot-setup/          # Dual-identity token mint + config layering + deps
 │   │   └── requester-context/  # Factual trust-line output for the security brief
+│   ├── ISSUE_TEMPLATE/         # Issue forms (bug/feature/support) feeding the triage agent
 │   ├── prompts/                # Agent behavior, as composable prose
 │   │   ├── parts/              # 34 instruction parts (the prose)
 │   │   ├── manifests/          # 13 mode manifests (the assembly order)
 │   │   ├── security-brief.md   # Read first in every agent session
 │   │   └── guest-rules.md      # Guest-mode rules, injected after the brief
 │   ├── scripts/                # 14 bash scripts: all reusable logic
-│   └── workflows/              # 10 GitHub Actions workflows
+│   ├── workflows/              # 10 GitHub Actions workflows
+│   └── pull_request_template.md  # PR form: gain/purpose + Closes # + redaction hint
 ├── ARCHITECTURE.md             # Code-state mirror: layers, entry points, flows
 ├── STRUCTURE.md                # This file: the file inventory
 ├── docs/                       # Deep documentation (README stays the overview)
@@ -50,7 +52,7 @@ Non-code directories: `.github/buk/` is archived pre-parts prompt backups (do no
 **`.github/scripts/`:**
 - Purpose: All shared logic, callable from any workflow or the agent's own tooling
 - Contains: Bash scripts, each with a strict contract header (env in/out, files written, exit semantics)
-- Key files: `bot-config.sh` (identity + trigger resolution, the single "who am I / what summons me" source, exports `BOT_IDENTITY_LIST` / `BOT_IDENTITY_PRIMARY` for prompt prose), `assemble-prompt.sh` (fail-closed parts assembler), `scrub-workspace.sh` (split-trust scrub), `route-comment.sh` (shared routing decision), `handle-mentions.sh` (the guest gauntlet, sole authority for cross-repo mentions), `generate-review-kit.sh` (review context for any PR), `fetch-pr-discussion.sh` (three-block context, `CONTEXT_LIMITS_JSON` budgeting, fill-loop slots that count content shown), `fetch-roster.sh`, `react.sh` (reaction lifecycle), `share-filter.sh` (share-URL mask/encrypt + boot sentinel), `split-diff.sh` (oversized diffs → navigable parts + index, never truncated), `opencode-cleanup.sh` (config/plugin delete-after-boot), plus the two CI batteries `scrub-fixtures.sh` and `prompt-rule-fixtures.sh`
+- Key files: `bot-config.sh` (identity + trigger resolution, the single "who am I / what summons me" source, exports `BOT_IDENTITY_LIST` / `BOT_IDENTITY_PRIMARY` for prompt prose), `assemble-prompt.sh` (fail-closed parts assembler), `scrub-workspace.sh` (split-trust scrub), `route-comment.sh` (shared routing decision, comments and discussions alike), `handle-mentions.sh` (the guest gauntlet, sole authority for cross-repo mentions — issues/PRs plus foreign Discussions via a GraphQL subject branch), `generate-review-kit.sh` (review context for any PR), `fetch-pr-discussion.sh` (three-block context, `CONTEXT_LIMITS_JSON` budgeting, fill-loop slots that count content shown, `body-chars` per-body clips), `fetch-roster.sh`, `react.sh` (reaction lifecycle: REST for issues/comments, GraphQL mutations for discussion nodes), `share-filter.sh` (share-URL mask/encrypt + boot sentinel), `split-diff.sh` (oversized diffs → navigable parts + index, never truncated), `opencode-cleanup.sh` (config/plugin delete-after-boot), plus the two CI batteries `scrub-fixtures.sh` and `prompt-rule-fixtures.sh`
 
 **`.github/prompts/`:**
 - Purpose: The agent's behavior and security doctrine as content, not code
@@ -72,8 +74,8 @@ Non-code directories: `.github/buk/` is archived pre-parts prompt backups (do no
 
 **Entry Points:** `.github/workflows/*.yml`, all 10 workflows; GitHub events and dispatches start here. The comment path always enters via `agent-router.yml`.
 **Core Logic:** `.github/scripts/*.sh` (identity/triggers, routing, scrubbing, context assembly, prompt assembly, verification; `.github/actions/bot-setup/action.yml`) token minting and config lifecycle.
-**Configuration:** Secrets and variables live in GitHub (not in the repo); behavior knobs are variables (`AGENT_PAUSED`, `AGENT_PAUSED_PARTS_JSON`, `BOT_IDENTITIES`, `BOT_TRIGGERS`, `CONTEXT_LIMITS_JSON`, `AGENT_MODELS_JSON`, `OPEN_TRIGGERING`, `OPENCODE_PLUGINS_JSON*`, roster/filter lists, see `docs/configuration.md`). The committed config surface is `.github/actions/bot-setup/permissions.example.json` (full-config template) and per-workflow `env:` knob blocks (e.g. `MAINTAINED_BASE_BRANCHES` in `pr-review.yml`, `FILE_GROUPS_JSON` in `compliance-check.yml`, `DIFF_MAX_BYTES` diff caps). `custom_providers.json` is local test input only.
-**Tests:** `.github/scripts/scrub-fixtures.sh` (207 security fixtures covering the scrub, roster transforms, and permission-profile deny patterns) and `.github/scripts/prompt-rule-fixtures.sh` (357 pinned prompt rules), wired to CI via `.github/workflows/scrub-fixtures.yml`. Local: `test-config.py` emulates secrets/inputs and writes to `test_results/`.
+**Configuration:** Secrets and variables live in GitHub (not in the repo); behavior knobs are variables (`AGENT_PAUSED`, `AGENT_PAUSED_PARTS_JSON`, `BOT_IDENTITIES`, `BOT_TRIGGERS`, `CONTEXT_LIMITS_JSON`, `AGENT_MODELS_JSON`, `OPEN_TRIGGERING`, `OPENCODE_PLUGINS_JSON*`, roster/filter lists, see `docs/configuration.md`). The committed config surface is `.github/actions/bot-setup/permissions.example.json` (full-config template) and per-workflow `env:` knob blocks (e.g. `MAINTAINED_BASE_BRANCHES` in `pr-review.yml`, `FILE_GROUPS_JSON` in `compliance-check.yml`, `DIFF_SPLIT_BYTES` diff split threshold). `custom_providers.json` is local test input only.
+**Tests:** `.github/scripts/scrub-fixtures.sh` (231 security fixtures covering the scrub, roster transforms, router decision matrix, mention/discussion pipelines, and permission-profile deny patterns) and `.github/scripts/prompt-rule-fixtures.sh` (393 pinned prompt rules), wired to CI via `.github/workflows/scrub-fixtures.yml`. Local: `test-config.py` emulates secrets/inputs and writes to `test_results/`.
 
 ## Naming Conventions
 
