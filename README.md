@@ -11,7 +11,7 @@ with genuine judgment, in its own voice, on infrastructure you already have.
 
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/Mirrowel/Mirrobot-agent) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Mirrowel/Mirrobot-agent) [![Ask Mirrobot](https://mirrowel.github.io/Mirrobot-agent/badge.svg)](https://mirrowel.github.io/Mirrobot-agent/?bot=Mirrobot-Agent)
 
-The **Ask Mirrobot** badge is this project's own: repositories running a Mirrobot deployment can carry it, linking visitors to the [informational page](https://mirrowel.github.io/Mirrobot-agent/) — pass your deployment's bot name via `?bot=` (plus `&repo=` to repoint the page's live-activity strip at your repository) so visitors know who to mention back home. The page ships in `docs/` and publishes through the [Excerpts Refresh](.github/workflows/excerpts-refresh.yml) workflow as a Pages artifact; its "field notes" cards are dealt at random from a weekly-harvested pool of the agent's real posts (knobs documented in [docs/workflows/excerpts-refresh.md](docs/workflows/excerpts-refresh.md)).
+The **[Ask Mirrobot](#landing-page--badge)** badge in the row above is this project's own.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Powered by OpenCode](https://img.shields.io/badge/Powered%20by-OpenCode-blue)](https://opencode.ai)
@@ -339,6 +339,15 @@ bash .github/scripts/scrub-fixtures.sh                  # security fixtures gree
 - **[Security](docs/security.md)**: the threat model, defense by defense
 - **[Workflows](docs/workflows/)**: one page per workflow
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** / **[STRUCTURE.md](STRUCTURE.md)**: the code-state mirrors (layers, entry points, file inventory); the docs above carry the principles and guides
+
+### Landing page & badge
+
+Repositories running a Mirrobot deployment can carry the **Ask Mirrobot** badge, linking visitors to the [informational page](https://mirrowel.github.io/Mirrobot-agent/). Two knobs on the badge link:
+
+- [`?bot=`](docs/customization.md#the-informational-page--badge) — your deployment's bot name, so visitors know who to mention back home
+- [`&repo=`](docs/customization.md#the-informational-page--badge) — repoints the page's live-activity strip at your repository
+
+The page ships in [`docs/`](docs/) and publishes through the [Excerpts Refresh](.github/workflows/excerpts-refresh.yml) workflow as a Pages artifact; its "field notes" cards are dealt at random from a weekly-harvested pool of the agent's real posts ([harvest knobs](docs/workflows/excerpts-refresh.md#knobs-workflow-env-block)).
 
 ---
 
