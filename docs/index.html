@@ -484,7 +484,7 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
     "Its public <em>paper trail.</em>"
   ];
   var hp = HERO[Math.floor(Math.random() * HERO.length)];
-  document.getElementById("hero-h1").innerHTML = hp[0] + '<span class="dot">.</span>';
+  document.getElementById("hero-h1").innerHTML = hp[0].replace(/\.(\s*(<\/|$))/, "$1") + '<span class="dot">.</span>';
   document.getElementById("what-h2").innerHTML = hp[1];
   document.getElementById("notes-h2").innerHTML = NOTES_H[Math.floor(Math.random() * NOTES_H.length)];
   document.getElementById("hum-h2").innerHTML = HUM_H[Math.floor(Math.random() * HUM_H.length)];
@@ -518,6 +518,7 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
     return Math.round(s/86400)+"d ago";
   }
   function clip97(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function clipTxt(s){ s = String(s||""); if(s.length <= 420) return clip97(s); return clip97(s.slice(0,420).replace(/\s+\S*$/,"")) + "…"; }
   function label(ev){
     var p = ev.payload||{};
     switch(ev.type){
@@ -586,10 +587,21 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
           else if(ev.type.indexOf("PullRequest")===0 || ev.type==="DiscussionEvent") counts.review++;
           else counts.other++;
           if(shown===0) hum.innerHTML = "";
+          // rows are real DOM: <a> with two DIV children. Divs are block by
+          // construction — they stack even if every stylesheet rule vanished.
           var a = document.createElement("a");
           a.href = targetUrl(ev, r);
-          a.innerHTML = '<span class="l1"><i class="g" style="color:'+g[1]+'">'+g[0]+'</i>'+clip97(label(ev))+'</span>'+
-                        '<span class="l2">'+clip97(r)+' · <span class="ago">'+ago(ev.created_at)+'</span></span>';
+          var l1 = document.createElement("div"); l1.className = "l1";
+          var gi = document.createElement("i"); gi.className = "g"; gi.style.color = g[1]; gi.textContent = g[0];
+          l1.appendChild(gi);
+          var labTxt = label(ev);
+          l1.appendChild(document.createTextNode(clip97(labTxt)));
+          if(labTxt.indexOf("\u00b7") < 0) l1.appendChild(document.createTextNode(" \u00b7"));
+          var l2 = document.createElement("div"); l2.className = "l2";
+          l2.appendChild(document.createTextNode(clip97(r) + " \u00b7 "));
+          var ag = document.createElement("span"); ag.className = "ago"; ag.textContent = ago(ev.created_at);
+          l2.appendChild(ag);
+          a.appendChild(l1); a.appendChild(l2);
           hum.appendChild(a); shown++;
           // literal newline between rows: invisible when rendered, keeps
           // entries separate in plain-text copies and CSS-less readers
@@ -623,7 +635,7 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
      Cards draw ONLY from items inside the pool's recency window (days);
      older backfill material exists in the JSON but never renders. */
   var BOTNAME = bot || "Mirrobot-Agent";
-  fetch("excerpts.json")
+  fetch("excerpts.json", {cache:"no-store"})
     .then(function(res){ if(!res.ok) throw 0; return res.json(); })
     .then(function(pool){
       var days = (pool && pool.days) || 180;
@@ -657,7 +669,7 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
         var d = when ? when.toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) : "";
         var card = document.createElement("div");
         card.className = "note " + CLS[n % CLS.length];
-        card.innerHTML = "<q>"+clip97(it.t)+"</q>"+
+        card.innerHTML = "<q>"+clipTxt(it.t)+"</q>"+
           '<p class="src"><b>'+KINDN[it.k]+'</b> · <a href="'+clip97(it.u)+'" rel="noopener">'+clip97(it.r)+"#"+it.n+"</a>"+(d?" · "+d:"")+(it.ti?" · "+clip97(it.ti):"")+"</p>";
         grid.appendChild(card);
       });

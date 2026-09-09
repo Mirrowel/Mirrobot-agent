@@ -13,11 +13,11 @@
 #            EXCERPT_MAX    pool cap (default 80)
 #            EXCERPT_DAYS   recency tier: newer-than-days posts fill first (180; 0 = off)
 #            EXCERPT_MIN    backfill floor: older posts top up while recent tier is under this (40)
-#            EXCERPT_MIN    display-text clip length (default 420)
+#            EXCERPT_MIN    backfill floor for older posts (default 40)
 #            EXCERPT_OUT    output path (default docs/excerpts.json)
 #   needs  : gh (authenticated; search + GraphQL + REST), jq
-#   out    : EXCERPT_OUT = {"generated": iso, "items": [{k,t,ti,r,n,u,w}...]}
-#            k = comment|review, t = clipped text, ti = thread title,
+#   out    : EXCERPT_OUT = {"generated": iso, "days": n, "items": [{k,t,ti,r,n,u,w}...]}
+#            k = comment|review, t = FULL text (the page clips for display), ti = thread title,
 #            r = repo, n = number, u = source url, w = authored-at iso
 #   exit   : 0 = pool written (possibly unchanged), 1 = config/tooling failure
 #   notes  : authenticated gh only — never run against untrusted input; the
@@ -32,7 +32,6 @@ EXCERPT_MAX="${EXCERPT_MAX:-80}"
 # material tops up only while the recent tier is under EXCERPT_MIN items
 EXCERPT_DAYS="${EXCERPT_DAYS:-180}"
 EXCERPT_MIN="${EXCERPT_MIN:-40}"
-EXCERPT_MIN_CLIP="${EXCERPT_MIN:-420}"
 EXCERPT_OUT="${EXCERPT_OUT:-docs/excerpts.json}"
 
 command -v gh >/dev/null 2>&1 || { echo "harvest: gh not found" >&2; exit 1; }
@@ -132,13 +131,14 @@ done < "$CANDS"
 TOTAL_RAW=$(wc -l < "$RAW")
 echo "harvest: $TOTAL_RAW bot-authored post(s) collected"
 
-# ---- 3. quality gate + clip + dedupe + cap ----
+# ---- 3. quality gate + dedupe + cap ----
 # comment gate: 150..900 chars, prose-dominant (backtick fraction < .15),
 #               and not a conversational ack (old-era "Thanks for the great
 #               report" openers — the voice the platform moved away from)
 # review gate:  80..2400 chars, backtick fraction < .35 (reviews carry code spans)
-# both: strip AI-footer lines, skip pure-code or empty results, clip display text
-jq -s --argjson clip "$EXCERPT_MIN_CLIP" --argjson max "$EXCERPT_MAX" --argjson days "$EXCERPT_DAYS" --argjson floor "$EXCERPT_MIN" '
+# both: strip AI-footer lines, skip pure-code or empty results (no server-side
+# clipping — full text ships; the page clips for display)
+jq -s --argjson max "$EXCERPT_MAX" --argjson days "$EXCERPT_DAYS" --argjson floor "$EXCERPT_MIN" '
   def recent: ((now - (.w | fromdateiso8601)) / 86400) <= $days;
   map(
     (.t // "") as $body0
@@ -151,8 +151,6 @@ jq -s --argjson clip "$EXCERPT_MIN_CLIP" --argjson max "$EXCERPT_MAX" --argjson 
         else ($body | length >= 150) and ($body | length <= 900) and (($bt * 7) < ($body | length))
           and ((($body | test("^@\\S+[,:]?\\s+(thanks|on it|i.?m on it|hi\\b|hello|acknowledg)";"i"))
              or ($body | test("^(you.?re (absolutely )?right|good catch|great (catch|report)|looks good to merge|time to review my own work)";"i"))) | not) end)
-    | .t = (if ($body | length) > $clip
-      then (($body[0:$clip] | sub("\\s+\\S*$";"")) + "…") else $body end)
     | select((.u | length) > 0)
   )
   | unique_by(.u)
