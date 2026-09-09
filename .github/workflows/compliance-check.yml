@@ -306,6 +306,28 @@ jobs:
         with:
           persist-credentials: false  # no credentials in .git/config (public repo: anonymous fetches still work)
 
+      # ---------------------------------------------------------------------
+      # FILE GROUPS OVERRIDE: a repo-specific compliance-groups.json placed
+      # next to this workflow (same directory) replaces the inline default
+      # above when present and valid. See compliance-groups.EXAMPLE.json.
+      # Read from the trusted base-branch checkout - never PR content.
+      - name: Resolve file groups (override file wins over inline default)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          OG=".github/workflows/compliance-groups.json"
+          if [ -f "$OG" ]; then
+            if jq -e 'type == "array" and length > 0' "$OG" >/dev/null 2>&1; then
+              D="FGROUPS_$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+              { echo "FILE_GROUPS_JSON<<$D"; cat "$OG"; echo; echo "$D"; } >> "$GITHUB_ENV"
+              echo "file groups: override file ($OG, $(jq 'length' "$OG") group(s))"
+            else
+              echo "::warning::compliance-groups.json is not a non-empty JSON array - using the workflow default instead"
+              echo "file groups: override file INVALID, workflow default in effect"
+            fi
+          else
+            echo "file groups: workflow default (no override file)"
+          fi
+
       # Builds the factual requester context line (routed-comment author when
       # dispatched by the router, dispatch actor otherwise) consumed by the security brief.
       # Any user may trigger the check; this only informs the agent's judgment.
