@@ -13,6 +13,7 @@ One page per workflow. Each page covers: what triggers it, where it executes fro
 | Bot Reply on Mention | The general agent, conversations, investigations, contributions, guest mode | [bot-reply.md](bot-reply.md) |
 | Mention Poller | Cross-repo ears: the account's notifications → guest sessions | [mention-poller.md](mention-poller.md) |
 | Agent Bootstrap | One-dispatch setup: seeds every variable, prints the secrets checklist | [agent-bootstrap.md](agent-bootstrap.md) |
+| Excerpts Refresh | Weekly rebuild of the landing page's auto-card pool | [excerpts-refresh.md](excerpts-refresh.md) |
 | Scrub Fixture Suite | The batteries, CI enforcement of every contract in these docs | [scrub-fixtures.md](scrub-fixtures.md) |
 
 ## The shared lifecycle

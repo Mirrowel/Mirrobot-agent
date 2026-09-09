@@ -1,0 +1,62 @@
+# Excerpts Refresh — rebuilds the landing page's auto-card pool (docs/excerpts.json)
+#
+# EXECUTES FROM: default branch (schedule + dispatch only; no PR triggers).
+#
+# Runs the harvester (search + GraphQL with the run token, read-only against
+# public repos) over the home repos, quality-gates the agent's posts, and
+# commits the resulting pool if it changed. The landing page fetches the
+# static JSON same-origin — visitors spend zero API budget on excerpt cards.
+# Zero secrets: GITHUB_TOKEN only, and only for read + the commit push.
+#
+# EDITABLE KNOBS — adjust for your deployment:
+env:
+  # space-separated owner/name list of the repos your agent runs in (public only)
+  EXCERPT_REPOS: Mirrowel/Mirrobot-agent Mirrowel/LLM-API-Key-Proxy
+  # comma-separated bot identities to harvest (account AND app forms)
+  EXCERPT_BOTS: Mirrobot-Agent,mirrobot-agent[bot]
+  # pool cap — how much weekly variety the cards draw from
+  EXCERPT_MAX: "120"
+
+name: Excerpts Refresh
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC (off the :00 roundup)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: excerpts-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (default branch)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true # the commit push uses this token
+
+      - name: Run the harvester
+        run: bash .github/scripts/harvest-excerpts.sh
+        env:
+          EXCERPT_REPOS: ${{ env.EXCERPT_REPOS }}
+          EXCERPT_BOTS: ${{ env.EXCERPT_BOTS }}
+          EXCERPT_MAX: ${{ env.EXCERPT_MAX }}
+          GH_TOKEN: ${{ github.token }}
+          GH_PAGER: ""
+
+      - name: Commit pool if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet docs/excerpts.json; then
+            echo "pool unchanged — nothing to commit"
+          else
+            git add docs/excerpts.json
+            git commit -m "chore(page): refresh excerpt pool [skip ci]"
+            git push
+            echo "pool refreshed and pushed"
+          fi

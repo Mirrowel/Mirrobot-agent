@@ -97,12 +97,13 @@ All trigger words derive from the `BOT_TRIGGERS` variable (see [renaming](#renam
 
 ## The informational page & badge
 
-`docs/index.html` is a self-contained landing page (published via GitHub Pages from `docs/` on `main`), and `docs/badge.svg` is the **Ask Mirrobot** badge with the bot avatar embedded. Fork-relevant edits:
+`docs/index.html` is a self-contained landing page (published via GitHub Pages from `docs/` on `main`), and `docs/badge.svg` is the **Ask Mirrobot** badge with the bot avatar embedded. Fork-relevant pieces:
 
-- The `REPOS` array near the top of the page script is the "home repositories" list powering the live-activity strip and its stat line — point it at the repos your deployment actually runs in (public repos only; the strip reads GitHub's public API from the visitor's browser, unauthenticated).
-- Badge links should carry your deployment's bot name as `?bot=YOUR-BOT-NAME` — the page then tells visitors who to mention back home instead of assuming this repo's identity. A `?repo=owner/name` param is also understood and shown as origin context.
-- The rotating status lines, FAQ, and excerpt cards are curated content — edit them freely; keep quotes real.
-- If you don't want the site at all, disable GitHub Pages in repo settings and delete the two files; nothing else depends on them.
+- **Live-activity strip** — two constants at the top of the page script: `REPOS` (home repositories the strip watches) and `BOTS` (the identities whose activity counts — include both your account and `[bot]` app forms). The strip shows only bot-actor events; when a visitor arrives via a badge link carrying `?repo=owner/name`, it repoints at that repo instead.
+- **Auto-cards ("field notes")** — the page deals eight random cards from `docs/excerpts.json`, rebuilt weekly by the [Excerpts Refresh](workflows/excerpts-refresh.md) workflow from your repos × your identities, hidden content excluded, quality-gated (old-era conversational acks and pure one-liners filtered out). Run the harvester locally with `EXCERPT_REPOS`/`EXCERPT_BOTS`/`EXCERPT_MAX` env overrides; the JSON is static and same-origin, so visitors spend no API budget on it.
+- Badge links should carry your deployment's bot name as `?bot=YOUR-BOT-NAME` (and optionally `&repo=OWNER/REPO` for the foreign strip) — the page then tells visitors who to mention back home instead of assuming this repo's identity.
+- The rotating status lines, FAQ, and fallback excerpt cards are curated content — edit them freely; keep quotes real.
+- If you don't want the site at all, disable GitHub Pages in repo settings and delete the page files; nothing else depends on them.
 
 ## Adding a whole new mode
 

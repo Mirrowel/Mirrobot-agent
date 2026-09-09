@@ -119,14 +119,24 @@ h2 em{font-style:italic;color:var(--dim);font-weight:420}
 .hum-head .live{color:var(--red)}
 .hum-head .live::before{content:"●";margin-right:7px;animation:blink 1.6s steps(1) infinite}
 .hum{font-family:var(--mono);font-size:13.5px}
-.hum a{display:grid;grid-template-columns:110px 1fr auto;gap:14px;padding:11px 18px;border-bottom:1px solid rgba(242,234,216,.06);color:var(--dim);border-bottom-color:rgba(242,234,216,.06)}
+.hum a{
+  display:block;padding:11px 18px;color:var(--paper);
+  border-bottom:1px solid rgba(242,234,216,.07);
+  transition:background .15s ease;
+}
 .hum a:last-child{border-bottom:0}
-.hum a:hover{background:rgba(242,234,216,.05);border-bottom-color:rgba(242,234,216,.06)}
-.hum .kind{color:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hum .kind i{font-style:normal;margin-right:8px}
-.hum .repo{color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hum .ago{color:var(--faint);white-space:nowrap}
-.hum .gone{padding:22px 18px;color:var(--faint)}
+.hum a:hover{background:rgba(242,234,216,.05)}
+.hum a:hover .l2{color:var(--dim)}
+.hum a:focus-visible{outline:1px solid rgba(242,234,216,.35);outline-offset:-1px;background:rgba(242,234,216,.05)}
+.hum .l1{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hum .g{font-style:normal;display:inline-block;width:1.8em;text-align:center}
+.hum .l2{
+  display:block;margin-top:2px;padding-left:1.8em;
+  font-size:12px;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.hum .ago{color:inherit}
+.hum .gone{padding:16px 18px;font-size:12.5px;color:var(--faint)}
 .statline{margin-top:16px;font-family:var(--mono);font-size:13px;color:var(--faint)}
 .statline b{color:var(--yellow);font-weight:500}
 
@@ -178,20 +188,28 @@ details p a{color:var(--yellow)}
 
 /* footer */
 footer{padding:64px 0 80px;border-top:1px solid var(--line)}
-.badge-zone{display:flex;gap:26px;align-items:center;flex-wrap:wrap;margin-bottom:26px}
-.badge-zone img{border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.badge-zone{display:grid;grid-template-columns:auto 1fr;gap:12px 26px;align-items:center;margin-bottom:16px}
+.badge-zone img{border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.5);transform:rotate(-1.2deg)}
+.badge-blurb{color:var(--faint);font-size:14.5px;font-style:italic}
 .snippet{
+  display:flex;align-items:center;gap:12px;
   font-family:var(--mono);font-size:12.5px;color:var(--dim);
   background:var(--ink-2);border:1px solid var(--line);border-radius:10px;
-  padding:16px 18px;position:relative;max-width:720px;overflow-x:auto;white-space:pre;
+  padding:10px 12px 10px 18px;overflow:hidden;
 }
+.snippet code{flex:1;min-width:0;white-space:nowrap;overflow-x:auto;padding:5px 0;scrollbar-width:thin;scrollbar-color:rgba(242,234,216,.2) transparent}
 .snippet button{
-  position:absolute;top:8px;right:8px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+  flex:none;font-family:var(--mono);font-size:11px;letter-spacing:.08em;
   background:var(--ink-3);color:var(--dim);border:1px solid var(--line);border-radius:6px;
   padding:5px 10px;cursor:pointer;transition:color .2s;
 }
 .snippet button:hover{color:var(--paper)}
-.foot-end{font-family:var(--mono);font-size:12px;color:var(--faint);line-height:2}
+.snippet button:active{transform:translateY(1px)}
+.foot-end{
+  display:flex;justify-content:space-between;align-items:baseline;gap:6px 32px;flex-wrap:wrap;
+  margin-top:18px;padding-top:16px;border-top:1px dashed rgba(242,234,216,.09);
+  font-family:var(--mono);font-size:12px;color:var(--faint);line-height:2;
+}
 .foot-end .r{color:var(--red)}
 
 /* reveal */
@@ -204,8 +222,9 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
   .hero{grid-template-columns:1fr;gap:30px;padding-top:64px}
   .avatar{width:112px;height:112px}
   .cols{grid-template-columns:1fr}
-  .hum a{grid-template-columns:1fr auto}
-  .hum .repo{display:none}
+  .badge-zone{grid-template-columns:1fr}
+  .hum a{padding:10px 14px;font-size:12.5px}
+  .hum .l2{font-size:11.5px}
 }
 </style>
 </head>
@@ -258,7 +277,7 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
 <section id="notes" class="rv">
   <p class="sec-label yellow">field notes</p>
   <h2>Things it has <em>actually said.</em></h2>
-  <div class="notes">
+  <div class="notes" id="notes-grid">
     <div class="note r">
       <q><b>Verdict: changes requested</b> — one must-fix: the unquoted <i>SHARE_CTX_THREAD</i> expression is truncated by YAML at the comment marker and the workflow file no longer loads, killing the bot-reply mission until quoted.</q>
       <p class="src"><b>PR review</b> · caught a syntax kill live in a 900-line workflow · <a href="https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/162" rel="noopener">LLM-API-Key-Proxy#162</a></p>
@@ -271,11 +290,8 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
       <q>I checked the repository and the answer is short: <i>it contains no files at all</i> — no branches with commits, no tree to walk. Which, for a repo named <i>guest-test</i>, is arguably the correct amount of content.</q>
       <p class="src"><b>guest reply</b> · summoned cross-repo into an empty test repository · source repo since deleted</p>
     </div>
-    <div class="note o">
-      <q>4</q>
-      <p class="src"><b>guest reply</b> · the entire answer to “hello — what is 2+2?” · first successful cross-repo mention relay</p>
-    </div>
   </div>
+  <p class="muted" id="notes-src">quoted verbatim from real threads · <span id="notes-mode">a hand-picked starter set</span></p>
 </section>
 
 <section id="summon" class="rv">
@@ -317,12 +333,12 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
   <p class="sec-label yellow">take it with you</p>
   <div class="badge-zone">
     <img src="badge.svg" alt="Ask Mirrobot badge" width="150" height="28" loading="lazy">
-    <p class="muted" style="margin-top:0">For repositories running a Mirrobot deployment. The link carries your bot's name so visitors landing here know who to mention back home.</p>
+    <p class="badge-blurb">For repositories running a Mirrobot deployment. The link carries your bot's name so visitors landing here know who to mention back home.</p>
   </div>
-  <div class="snippet" id="snippet">[![Ask Mirrobot](https://mirrowel.github.io/Mirrobot-agent/badge.svg)](https://mirrowel.github.io/Mirrobot-agent/?bot=YOUR-BOT-NAME)<button id="copy" type="button">copy</button></div>
+  <div class="snippet" id="snippet"><code>[![Ask Mirrobot](https://mirrowel.github.io/Mirrobot-agent/badge.svg)](https://mirrowel.github.io/Mirrobot-agent/?bot=YOUR-BOT-NAME)</code><button id="copy" type="button">copy</button></div>
   <p class="foot-end">
-    Mirrobot is a project by <a href="https://github.com/Mirrowel" rel="noopener">Mirrowel</a> · agent platform under MIT · this page is hand-made, grain and all<br>
-    no cookies · no tracking · the only network calls are your browser's, to public GitHub APIs <span class="r">· currently refusing to merge something pointless</span>
+    <span>Mirrobot is a project by <a href="https://github.com/Mirrowel" rel="noopener">Mirrowel</a> · agent platform under MIT · this page is hand-made, grain and all<br>no cookies · no tracking · the only network calls are your browser's, to public GitHub APIs</span>
+    <span class="r">currently refusing to merge something pointless</span>
   </p>
 </footer>
 
@@ -351,10 +367,24 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
     "the correct amount of content.",
     "severity: minor, but I stand by it.",
     "that 'typo fix' deleted 99% of the file. blocking.",
-    "verdict first. feelings never.",
-    "currently: refusing to merge something pointless.",
+    "currently refusing to merge something pointless.",
     "fixtures green. as they should be.",
-    "will roast off-topic asks. exactly once."
+    "will roast off-topic asks. exactly once.",
+    "verdict first. feelings never.",
+    "found it. it was a newline. it's always a newline.",
+    "your bug is reproducible. congratulations, I hate it.",
+    "reviewing the review of my review. we're deep now.",
+    "I don't grade reports. I read them.",
+    "taint detected. breathing into a paper bag.",
+    "LGTM is a lie I refuse to speak.",
+    "hunting duplicates like they owe me money.",
+    "zero-second runs, zero jobs, zero patience for phantoms.",
+    "I bookmark things in /tmp. emotionally.",
+    "someone said 'just a quick question'. four repos later—",
+    "no, I will not merge on a vibe.",
+    "works on my machine is not a reproduction step.",
+    "three backticks short of a verdict.",
+    "ask me about the severity ladder. I dare you."
   ];
   var rot = document.getElementById("rot"), li = Math.floor(Math.random()*LINES.length);
   function tick(){
@@ -374,13 +404,15 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
     document.querySelectorAll(".rv").forEach(function(el){ el.classList.add("in"); });
   }
 
-  /* ---- the hum: live activity from home repos (unauthenticated, client-side) ---- */
-  var REPOS = ["Mirrowel/Mirrobot-agent", "Mirrowel/LLM-API-Key-Proxy"]; // edit for your deployment (docs/customization.md)
+  /* ---- the hum: live AGENT activity (bot-actor events only, client-side) ---- */
+  var REPOS = ["Mirrowel/Mirrobot-agent", "Mirrowel/LLM-API-Key-Proxy"]; // home repos — edit for your deployment (docs/customization.md)
+  var BOTS  = ["Mirrobot-Agent", "mirrobot-agent[bot]"];                 // the deployment's identities, account + app forms
+  var BOTSET = {}; BOTS.forEach(function(b){ BOTSET[b.toLowerCase()] = true; });
   var GLYPH = {
-    PushEvent:["▲","var(--orange)"], IssuesEvent:["◎","var(--yellow)"],
-    IssueCommentEvent:["💬","var(--blue)"], PullRequestEvent:["⇄","var(--red)"],
-    PullRequestReviewEvent:["✓","var(--blue)"], PullRequestReviewCommentEvent:["💬","var(--blue)"],
-    CreateEvent:["＋","var(--dim)"], ReleaseEvent:["★","var(--yellow)"],
+    PushEvent:["▲","var(--orange)"], IssueCommentEvent:["›","var(--blue)"],
+    PullRequestEvent:["⇄","var(--red)"], PullRequestReviewEvent:["✓","var(--blue)"],
+    PullRequestReviewCommentEvent:["‹","var(--blue)"], IssuesEvent:["◎","var(--yellow)"],
+    DiscussionEvent:["◈","var(--yellow)"], CreateEvent:["＋","var(--dim)"],
     ForkEvent:["⑂","var(--dim)"], WatchEvent:["◉","var(--faint)"]
   };
   function ago(iso){
@@ -390,60 +422,124 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
     if(s < 86400) return Math.round(s/3600)+"h ago";
     return Math.round(s/86400)+"d ago";
   }
+  function clip97(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
   function label(ev){
-    var p = ev.payload||{}, a = (ev.actor&&ev.actor.login)||"someone";
+    var p = ev.payload||{};
     switch(ev.type){
-      case "PushEvent": return a+" pushed "+(p.size||p.distinct_size||1)+" commit"+((p.size||1)>1?"s":"");
-      case "IssuesEvent": return a+" "+(p.action||"touched")+" an issue";
-      case "IssueCommentEvent": return a+" commented";
-      case "PullRequestEvent": return a+" "+(p.action||"touched")+" a PR"+(p.pull_request&&p.pull_request.number?" #"+p.pull_request.number:"");
-      case "PullRequestReviewEvent": return a+" reviewed a PR";
-      case "PullRequestReviewCommentEvent": return a+" reviewed inline";
-      case "CreateEvent": return a+" created "+(p.ref_type||"something");
-      case "ReleaseEvent": return a+" released "+((p.release&&p.release.tag_name)||"");
-      case "ForkEvent": return a+" forked";
-      case "WatchEvent": return a+" starred";
+      case "PushEvent": return "pushed "+(p.size||p.distinct_size||1)+" commit"+(((p.size||p.distinct_size||1)>1)?"s":"")+(p.ref?(" → "+String(p.ref).replace(/^refs\/heads\//,"")):"");
+      case "IssueCommentEvent":
+        if(p.issue){ return (p.issue.pull_request ? "answered PR #"+p.issue.number+" · " : "answered #"+p.issue.number+" · ") + (p.issue.title||""); }
+        return "commented";
+      case "PullRequestEvent":
+        if(p.pull_request){ return (p.action||"touched")+" PR #"+p.pull_request.number+" · "+(p.pull_request.title||""); }
+        return "touched a PR";
+      case "PullRequestReviewEvent":
+        if(p.pull_request){ return "reviewed PR #"+p.pull_request.number+" · "+(p.pull_request.title||""); }
+        return "reviewed a PR";
+      case "PullRequestReviewCommentEvent":
+        if(p.pull_request){ return "inline review on PR #"+p.pull_request.number+" · "+(p.pull_request.title||""); }
+        return "reviewed inline";
+      case "IssuesEvent":
+        if(p.issue){ return (p.action||"touched")+" issue #"+p.issue.number+" · "+(p.issue.title||""); }
+        return "touched an issue";
+      case "DiscussionEvent":
+        if(p.discussion){ return (p.action||"touched")+" discussion #"+p.discussion.number+" · "+(p.discussion.title||""); }
+        return "touched a discussion";
+      case "CreateEvent": return "created "+(p.ref_type||"something");
+      case "ForkEvent": return "forked";
+      case "WatchEvent": return "starred";
       default: return ev.type.replace(/Event$/,"");
     }
   }
+  function targetUrl(ev, r){
+    var p = ev.payload||{};
+    if(p.issue && p.issue.html_url) return p.issue.html_url;
+    if(p.pull_request && p.pull_request.html_url) return p.pull_request.html_url;
+    if(p.discussion && p.discussion.html_url) return p.discussion.html_url;
+    return "https://github.com/"+r;
+  }
   var hum = document.getElementById("hum");
-  document.getElementById("humrepos").textContent = REPOS.join(" · ");
-  var shown = 0, counts = {push:0,issue:0,pr:0,other:0}, fetched = 0, seen = 0;
-  REPOS.forEach(function(r){
-    fetch("https://api.github.com/repos/"+r+"/events?per_page=5", {headers:{"Accept":"application/vnd.github+json"}})
+  var humrepos = document.getElementById("humrepos");
+  // foreign mode: a ?repo= param (badge links from other repos) repoints the strip at that repo
+  var STRIP_REPOS = REPOS.slice();
+  var foreign = false;
+  if(repo && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)){ STRIP_REPOS = [repo]; foreign = true; }
+  humrepos.textContent = foreign ? ("live from " + STRIP_REPOS[0]) : STRIP_REPOS.join(" · ");
+  var shown = 0, counts = {push:0,answer:0,review:0,other:0}, fetched = 0, failures = 0;
+  var seenIds = {};
+  STRIP_REPOS.forEach(function(r){
+    fetch("https://api.github.com/repos/"+r+"/events?per_page="+ (foreign ? "30" : "20"), {headers:{"Accept":"application/vnd.github+json"}})
       .then(function(res){ if(!res.ok) throw 0; return res.json(); })
       .then(function(evts){
         evts.forEach(function(ev){
-          if(shown >= 9) return;
+          if(shown >= 6) return;
+          var actor = (ev.actor && ev.actor.login || "").toLowerCase();
+          if(!BOTSET[actor]) return;                       // agent activity only
+          if(seenIds[ev.id]) return;                       // dedupe across pages/repos
+          seenIds[ev.id] = true;
           var g = GLYPH[ev.type] || ["·","var(--faint)"];
           if(ev.type==="PushEvent") counts.push++;
-          else if(ev.type==="IssuesEvent"||ev.type==="IssueCommentEvent") counts.issue++;
-          else if(ev.type.indexOf("PullRequest")===0) counts.pr++;
+          else if(ev.type==="IssueCommentEvent") counts.answer++;
+          else if(ev.type.indexOf("PullRequest")===0 || ev.type==="DiscussionEvent") counts.review++;
           else counts.other++;
           if(shown===0) hum.innerHTML = "";
           var a = document.createElement("a");
-          a.href = "https://github.com/"+r;
-          a.innerHTML = '<span class="kind"><i style="color:'+g[1]+'">'+g[0]+'</i>'+label(ev).replace(/&/g,"&amp;").replace(/</g,"&lt;")+'</span>'+
-                        '<span class="repo">'+r+'</span>'+
-                        '<span class="ago">'+ago(ev.created_at)+'</span>';
+          a.href = targetUrl(ev, r);
+          a.innerHTML = '<span class="l1"><i class="g" style="color:'+g[1]+'">'+g[0]+'</i>'+clip97(label(ev))+'</span>'+
+                        '<span class="l2">'+clip97(r)+' · <span class="ago">'+ago(ev.created_at)+'</span></span>';
           hum.appendChild(a); shown++;
         });
       })
-      .catch(function(){})
+      .catch(function(){ failures++; })
       .finally(function(){
         fetched++;
-        if(fetched===REPOS.length){
-          if(shown===0) hum.innerHTML = '<div class="gone">the hum is rate-limited right now — GitHub\'s, not mine.</div>';
+        if(fetched===STRIP_REPOS.length){
+          if(shown===0){
+            hum.innerHTML = failures
+              ? '<div class="gone">○ the wire is quiet — GitHub\'s public API rate limit, not the bot holding its tongue.</div>'
+              : '<div class="gone">○ the agent has been quiet lately. suspicious.</div>';
+          }
           var sl = document.getElementById("statline");
           if(shown>0){
-            var total = counts.push+counts.issue+counts.pr+counts.other;
-            sl.innerHTML = "recent pulse across "+REPOS.length+" home repos: <b>"+counts.push+"</b> pushes · <b>"+
-              counts.issue+"</b> issue events · <b>"+counts.pr+"</b> PR events"+(counts.other?" · "+counts.other+" other":"")+
+            var parts = [];
+            if(counts.review) parts.push("<b>"+counts.review+"</b> review-ish");
+            if(counts.answer) parts.push("<b>"+counts.answer+"</b> "+(counts.answer===1?"answer":"answers"));
+            if(counts.push) parts.push("<b>"+counts.push+"</b> push"+(counts.push===1?"":"es"));
+            if(counts.other) parts.push(counts.other+" other");
+            sl.innerHTML = "recent agent work across "+STRIP_REPOS.length+(STRIP_REPOS.length>1?" repos":" repo")+": "+parts.join(" · ")+
               " — public API, fetched by your browser just now";
           }
         }
       });
   });
+
+  /* ---- auto-cards: 8 random excerpts from the harvest pool ---- */
+  fetch("excerpts.json")
+    .then(function(res){ if(!res.ok) throw 0; return res.json(); })
+    .then(function(pool){
+      var items = (pool && pool.items) || [];
+      if(items.length < 4) throw 0;
+      for(var i = items.length - 1; i > 0; i--){          // Fisher-Yates
+        var j = Math.floor(Math.random() * (i + 1)); var t = items[i]; items[i] = items[j]; items[j] = t;
+      }
+      var pick = items.slice(0, Math.min(8, items.length));
+      var grid = document.getElementById("notes-grid");
+      var CLS = ["r","o","y","b"];
+      var KINDN = {review:"PR review", comment:"reply"};
+      grid.innerHTML = "";
+      pick.forEach(function(it, n){
+        var when = it.w ? new Date(it.w) : null;
+        var d = when ? when.toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) : "";
+        var card = document.createElement("div");
+        card.className = "note " + CLS[n % CLS.length];
+        card.innerHTML = "<q>"+clip97(it.t)+"</q>"+
+          '<p class="src"><b>'+KINDN[it.k]+'</b> · <a href="'+clip97(it.u)+'" rel="noopener">'+clip97(it.r)+"#"+it.n+"</a>"+(d?" · "+d:"")+(it.ti?" · "+clip97(it.ti):"")+"</p>";
+        grid.appendChild(card);
+      });
+      document.getElementById("notes-mode").textContent =
+        "8 of "+items.length+" in this week's harvest — machine-picked at random, quality-gated, every source linked";
+    })
+    .catch(function(){ /* fallback cards stay */ });
 
   /* ---- badge snippet copy ---- */
   var snip = document.getElementById("snippet");

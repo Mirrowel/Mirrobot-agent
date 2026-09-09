@@ -1,0 +1,1085 @@
+{
+  "generated": "2026-09-09T12:26:11Z",
+  "items": [
+    {
+      "k": "comment",
+      "t": "Review started for **\"fix: route gemini_cli embeddings through aembedding/:embedContent\"** — a routing fix in `RequestExecutor` plus a new `aembedding` implementation on `GeminiCliProvider`, with a fresh test file. The diff is a manageable ~500 lines across 5 files, so I'll go through it all in detail: routing context, provider logic, and test coverage. Report coming shortly.",
+      "ti": "fix: route gemini_cli embeddings through aembedding/:embedContent",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/169#issuecomment-5430811714",
+      "w": "2026-08-26T20:36:46Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 169
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the Protocol Interoperability correction — the new canonical streaming converter, cross-protocol request/response formatting, Gemini client routes, structured error propagation, and dynamic provider config. This is a large architectural increment; I'll analyze each subsystem and report back with a bundled review.",
+      "ti": "Experimental Native Protocol Rewrite",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/162#issuecomment-4998565278",
+      "w": "2026-07-17T03:02:57Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 162
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nSolid, well-structured addition. The region/protocol endpoint selection is cleanly factored into `minimax_config.py`, the provider plugin follows the existing `transform_request` hook contract, and the native model catalog integrates nicely with the existing `_native_store`/priority machinery in `model_info_service.py`. Tests cover fallback model merging, native metadata, endpoint resolution,…",
+      "ti": "feat: add MiniMax model and endpoint support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/166#pullrequestreview-4711206067",
+      "w": "2026-07-16T06:53:58Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 166
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the MiniMax provider addition. I'll dig into the new endpoint routing, model metadata integration, and provider plugin to make sure everything aligns with the existing patterns. Back shortly with a bundled review.",
+      "ti": "feat: add MiniMax model and endpoint support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/166#issuecomment-4989007308",
+      "w": "2026-07-16T06:48:17Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 166
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nAll previously raised items have been addressed cleanly. The changes are well-structured, follow existing project conventions, and are thoroughly documented.\n\n**Previous Feedback — Resolved:**\n- **402 → long cooldown**: `parse_quota_error()` with a custom `player2_error_reason` attribute tag correctly distinguishes insufficient credits from a transient 429, applying a 24h cooldown. Verified…",
+      "ti": "Add native Player2 provider with assisted login (local app detection + device code flow)",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/165#pullrequestreview-4675300224",
+      "w": "2026-07-10T22:15:01Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 165
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the new Player2 provider and assisted-login wizard. I'll dig into the auth flow, provider logic, and credential-tool wiring, then post a bundled review shortly.",
+      "ti": "Add native Player2 provider with assisted login (local app detection + device code flow)",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/165#issuecomment-4936567146",
+      "w": "2026-07-10T14:52:51Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 165
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the Umans provider addition — focusing on the quota tracker mixin, provider integration, and test coverage. I'll also scan the broader diff for repo-hygiene issues since it includes the full fork stack. Report coming shortly.",
+      "ti": "feat(umans): add Umans provider with request-based quota tracking",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/164#issuecomment-4764017307",
+      "w": "2026-06-22T01:42:43Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 164
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nThe new commit cleanly addresses the priority feedback from the first round. I verified each fix against the source implementations rather than just the diff:\n\n**Assessment of addressed feedback:**\n- ✅ **TTL pruning test now actually verifies pruning** (`tests/test_session_tracking.py`): captures `sid_old` and asserts `sid_new != sid_old`. Valid against source — `infer_session_id` generates a…",
+      "ti": "test: add pytest test suite for rotator_library core modules (64 tests)",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/163#pullrequestreview-4510853886",
+      "w": "2026-06-16T22:45:41Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 163
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of this new pytest test suite for the rotator_library core modules. Diving into the 64 tests, the CI workflow, and config — will report back with a bundled review shortly.",
+      "ti": "test: add pytest test suite for rotator_library core modules (64 tests)",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/163#issuecomment-4724070634",
+      "w": "2026-06-16T22:11:57Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 163
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the third-pass audit remediation changes — covering protocol output correctness, native operation guardrails, streaming hardening, Responses runtime improvements, cost accounting, routing parity, and much more across ~100 files. I'll analyze each subsystem and report back with a bundled review.",
+      "ti": "Experimental Native Protocol Rewrite",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/162#issuecomment-4588275492",
+      "w": "2026-05-31T22:22:13Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 162
+    },
+    {
+      "k": "comment",
+      "t": "@Mirrowel, I'm investigating why the `thought_signature` error persists on the latest dev branch. I'll switch to dev, analyze the current code, and report my findings.",
+      "ti": "gemini_cli - Gemini 2.5 flash bad request 400 - missing thought_signature",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/issues/160#issuecomment-4587386819",
+      "w": "2026-05-31T16:44:38Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 160
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the new incremental changes — Phase 6b routing/fallback correctness and Phase 7b retry/cooldown backoff work. I'll analyze the scoped cooldowns, hard-stop enforcement, streaming policy, structured error classification, and failure history system. Report coming shortly.",
+      "ti": "Experimental Native Protocol Rewrite",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/162#issuecomment-4586623411",
+      "w": "2026-05-31T12:01:08Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 162
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the Experimental Native Protocol Rewrite — this is a substantial PR with 100 files and a new protocol layer, adapter system, field cache, streaming library, routing, and more. I'll be going through it file-by-file and will report back with a bundled review shortly.",
+      "ti": "Experimental Native Protocol Rewrite",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/162#issuecomment-4586486121",
+      "w": "2026-05-31T11:02:26Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 162
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nThis is a solid set of operational improvements to the release workflow. The idempotency check (detecting existing releases for the same SHA) combined with the concurrency group and the `should_release` gate on downstream steps is a clean approach to preventing duplicate builds. The path trigger cleanup (removing workflow files from `paths:`) is also sensible — manual dispatch remains…",
+      "ti": "ci: improve release contributor detection",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/161#pullrequestreview-4392123314",
+      "w": "2026-05-29T19:00:17Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 161
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the idempotency and concurrency additions. The build-skip logic for duplicate runs and the path-trigger cleanup look like smart operational improvements — let me dig into the details.",
+      "ti": "ci: improve release contributor detection",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/161#issuecomment-4578845383",
+      "w": "2026-05-29T18:58:56Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 161
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nThis is a well-structured improvement to the release contributor detection logic. The two-layer approach (subject-line parsing + GraphQL `associatedPullRequests`) correctly addresses the gap where squash and rebase merges were being missed by the old merge-commit-only detection. The dedup/sort step and the cleaner PR URL fetching (pulling `html_url` from the API rather than constructing it)…",
+      "ti": "ci: improve release contributor detection",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/161#pullrequestreview-4391800690",
+      "w": "2026-05-29T18:05:40Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 161
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the release contributor detection improvements in `build.yml`. The two-layer PR discovery approach looks interesting — I'll dig into the details and report back shortly.",
+      "ti": "ci: improve release contributor detection",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/161#issuecomment-4578295861",
+      "w": "2026-05-29T18:04:31Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 161
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Self-Review: Past-Me Actually Fixed Things\n\nWell color me surprised — past-me actually listened to past-past-me's review and fixed everything properly. Let's go through the damage report from the bugfix commit:\n\n**P0 (NameError) — Fixed** ✅\n`cleaned_tools` → `cleaned` in `_clean_tool_schemas`. Tool-using requests will no longer explode on contact. My future self thanks my slightly-less-past self.\n\n**P1…",
+      "ti": "feat(providers): Add Freebuff as a provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/158#pullrequestreview-4136419767",
+      "w": "2026-04-19T19:11:47Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 158
+    },
+    {
+      "k": "review",
+      "t": "### Self-Review: Past-Me Left Some Surprises\n\nWell, this is awkward. I'm reviewing my own Freebuff provider implementation — 1078 lines of session management, agent run lifecycle, streaming, and token pool rotation. Let's see how past-me did...\n\n**The Good News:** The overall architecture is solid. The session/run lifecycle management is well-structured with proper locking (`session_refresh_lock`), graceful draining…",
+      "ti": "feat(providers): Add Freebuff as a provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/158#pullrequestreview-4136392515",
+      "w": "2026-04-19T18:43:05Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 158
+    },
+    {
+      "k": "comment",
+      "t": "Time to review my own work! Past-me wrote a whole Freebuff provider implementation... let's see what kind of surprises I left for myself. Spoiler: I already spotted at least one suspicious method name. 🔍",
+      "ti": "feat(providers): Add Freebuff as a provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/158#issuecomment-4276553956",
+      "w": "2026-04-19T18:35:49Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 158
+    },
+    {
+      "k": "comment",
+      "t": "@Mirrowel, I'm on it. I'll analyze the `freebuff2api` reference repo, study the existing provider architecture, implement the Freebuff provider, and open a pull request. Starting now.",
+      "ti": "FR: Add Freebuff as a provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/issues/157#issuecomment-4276520920",
+      "w": "2026-04-19T18:17:16Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 157
+    },
+    {
+      "k": "comment",
+      "t": "**Minor suggestion for `src/rotator_library/providers/qwen_code_provider.py` (line 30):**\n\nAdding `coder-model` to the hardcoded list is straightforward, but consider adding a comment clarifying that this is an alias for Qwen 3.5 Plus, since the naming convention differs from the other models (not `qwen3-*` format).",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#issuecomment-4106543320",
+      "w": "2026-03-22T16:24:51Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "comment",
+      "t": "**Minor suggestion for  (line 30):**\n\nAdding  to the hardcoded list is straightforward, but consider adding a comment clarifying that this is an alias for Qwen 3.5 Plus, since the naming convention differs from the other models (not  format).",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#issuecomment-4106543122",
+      "w": "2026-03-22T16:24:44Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Qwen Code Model Addition\n\n**Assessment of New Changes:**\n- **Model Addition**: The addition of `coder-model` (Qwen 3.5 Plus) is a simple, low-risk change that expands available model options.\n- **Documentation**: The expanded inline comment helpfully clarifies what each model represents.\n\n**Overall Status:**\nThis is a minor, focused change that follows existing patterns. The implementation is…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3988294833",
+      "w": "2026-03-22T16:24:00Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Codex Credential Display Enhancement\n\n**Assessment of New Changes:**\nThe addition of workspace, plan, and account ID columns to the Codex credential detail view is a solid UX improvement. Users can now quickly distinguish between credentials from different OpenAI workspaces/organizations, which is especially valuable given the multi-tenant nature of Codex access.\n\n**Key Observations:**\n-…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3988292273",
+      "w": "2026-03-22T16:20:47Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Workspace & Plan Display Enhancement\n\n**Assessment of New Changes:**\n- **TUI Enhancement**: The addition of workspace, plan, and account ID columns to the Codex credential display is a valuable UX improvement. Users can now quickly identify which workspace/organization a credential belongs to.\n- **Metadata Completeness**: Including `plan_type` and `workspace_title` in the credential metadata…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3988291021",
+      "w": "2026-03-22T16:19:14Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Workspace & Account Display Enhancements\n\n**Assessment of New Changes:**\nThe additions to display workspace title, plan type, and account ID in the credential setup flow are valuable improvements for user transparency. The enhanced organization extraction logic from JWT claims is well-implemented and handles the common case of finding the default organization correctly.\n\n**Key Suggestions:**\n-…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3988287932",
+      "w": "2026-03-22T16:15:40Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis is a focused, high-impact fix that addresses a real-world scenario: the same email authenticating to multiple OpenAI workspaces/organizations. The addition of `account_id` matching prevents credential file collisions and the improved logging makes the credential lifecycle much clearer.\n\n### Architectural Feedback\nThe approach is sound and fits well within the existing OAuth credential…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3988283849",
+      "w": "2026-03-22T16:11:04Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Credential Export & Management Enhancements\n\n**Assessment of New Changes:**\nThe latest commit adds comprehensive credential export functionality for Codex and Anthropic OAuth providers, along with improved credential detection logic. The changes enable users to export OAuth credentials to `.env` format and combine multiple credentials, which is a valuable addition for deployment scenarios.…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3985190199",
+      "w": "2026-03-21T02:57:25Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nThis PR introduces a helpful fallback mechanism for manual project_id input when auto-discovery fails. The interactive prompt using Rich is a nice touch, and the tier selection flow is user-friendly. However, there are a few issues that should be addressed before merging.\n\n### Architectural Feedback\n\nThe approach of falling back to manual input is sound and follows good UX principles. The…",
+      "ti": "feat(gemini): Add manual project_id input when auto-discovery fails",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/152#pullrequestreview-3973933433",
+      "w": "2026-03-19T09:45:43Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 152
+    },
+    {
+      "k": "comment",
+      "t": "@Mirrowel, I'm starting implementation of the manual project_id input feature. I'll create a PR based on the dev branch that:\n\n1. Adds manual project_id input prompt after OAuth if auto-discovery fails\n2. Creates a placeholder docs file with instructions for enabling Code Assist\n3. Adds manual tier selection if auto-detection fails\n4. Links the documentation in the user prompt\n\nI'll report back with the PR link once…",
+      "ti": "Add manual input for gemini's project_id variable",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/issues/151#issuecomment-4088895214",
+      "w": "2026-03-19T09:36:30Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 151
+    },
+    {
+      "k": "comment",
+      "t": "@Dayclone, All done! The PR is up to date with the latest commit:\n\n## Summary\n✅ **Latest commit pushed**: `cf332c0` - \"fix: Add defensive check for non-dict items in content parsing\"\n\n## What Was Done\n- Added defensive validation in `_parse_content_parts()` to skip non-dict items in content lists\n- This prevents potential `AttributeError` if malformed content is received\n- Makes the multipart content handling more…",
+      "ti": "fix: Robust multipart content handling in Gemini CLI provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/150#issuecomment-4070730066",
+      "w": "2026-03-16T21:35:58Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 150
+    },
+    {
+      "k": "comment",
+      "t": "## Update: Defensive Coding Fix Applied\n\nI've made a small improvement to the `_parse_content_parts` method to handle edge cases more gracefully:\n\n**Change**: Added validation to skip non-dict items in content lists, preventing potential `AttributeError` if malformed content is received.\n\nThis addresses one of the review comments and makes the code more robust, though it's not related to the RooCode issue you're…",
+      "ti": "fix: Robust multipart content handling in Gemini CLI provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/150#issuecomment-4070715071",
+      "w": "2026-03-16T21:32:30Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 150
+    },
+    {
+      "k": "comment",
+      "t": "@Dayclone, I'm investigating the issue you're experiencing with RooCode. The problem appears to be that the model is responding with text instead of using tools, which suggests a tool configuration issue rather than a content parsing issue.\n\nLet me analyze the differences between how Opencode and RooCode are sending requests to identify the root cause.",
+      "ti": "fix: Robust multipart content handling in Gemini CLI provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/150#issuecomment-4070711284",
+      "w": "2026-03-16T21:31:38Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 150
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nThis PR addresses issues #149 and #148 by extracting multipart content parsing into a reusable `_parse_content_parts` method. The refactoring eliminates code duplication and improves maintainability. The core approach is sound.\n\n### Key Suggestions\n\n1. **Edge Case Handling**: The method can return an empty list if content is empty. Consider what downstream code expects and whether validation…",
+      "ti": "fix: Robust multipart content handling in Gemini CLI provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/150#pullrequestreview-3954861109",
+      "w": "2026-03-16T15:51:01Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 150
+    },
+    {
+      "k": "comment",
+      "t": "@Dayclone, I have fixed this issue along with the related issue #149.\n\n## Summary\n\nThe \"can only concatenate str (not list) to str\" error has been resolved by implementing robust multipart content handling in the Gemini CLI provider.\n\n## Root Cause\n\nThe error occurred when the client sent messages with content as a list (multipart format) instead of a plain string. The code attempted to directly use this list…",
+      "ti": "can only concatenate str (not \\\"list\\\") to str",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/issues/148#issuecomment-4068676390",
+      "w": "2026-03-16T15:49:33Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 148
+    },
+    {
+      "k": "comment",
+      "t": "@Mirrowel, I'm implementing a robust fix for both issue #149 (Invalid JSON payload) and issue #148 (string/list concatenation error). Both issues stem from improper handling of multipart message content in the Gemini CLI provider. I'll add a proper content parsing method and apply it to system messages and all message types.",
+      "ti": "Invalid JSON payload received - Flash 2.5",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/issues/149#issuecomment-4068661517",
+      "w": "2026-03-16T15:47:34Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 149
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Codex Provider Cleanup\n\n**Assessment of New Changes:**\nThe latest changes focus on cleanup and minor refinements to the Codex provider implementation. The addition of `get_model_quota_group` properly integrates dynamic model discovery with the quota tracking system.\n\n**Key Observations:**\n- **Quota Group Integration**: The new `get_model_quota_group` method ensures that dynamically discovered…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3949494699",
+      "w": "2026-03-15T00:15:05Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nThis is a well-designed first step for per-model routing overrides. The implementation is clean, the validation is thorough, and the tests cover the core functionality effectively. The v1 approach of supporting only strict single-provider overrides is a sensible constraint.\n\n### Architectural Feedback\n\nThe routing policy is applied correctly before provider extraction in all three call paths.…",
+      "ti": "feat(routing): add single-provider weighted-router overrides",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/147#pullrequestreview-3948937899",
+      "w": "2026-03-14T15:06:56Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 147
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nI've analyzed the incremental changes in this PR. While the diff shows some good improvements (quota failure tracking, Inception Labs support, better error classification), **a previously identified high-priority issue remains unaddressed**:\n\n#### Unaddressed Issue from Previous Reviews\n\n**Missing NVIDIA Fix in Streaming Path**\n- **Location:** `src/rotator_library/client.py` around line…",
+      "ti": "Add Kilocode provider support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/115#pullrequestreview-3897635685",
+      "w": "2026-03-05T15:45:47Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 115
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Critical Issues Still Unaddressed\n\nThis follow-up review focuses on previously identified issues that remain unfixed in the current commits.\n\n#### Critical Issues (Blocking)\n\n1. **Kilocode Provider Domain Bug** (`kilocode_provider.py:34`)\n   - **Status:** Still unfixed from previous review\n   - **Issue:** Uses `https://kilo.ai/api/openrouter/models` instead of…",
+      "ti": "Add Kilocode provider support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/115#pullrequestreview-3881898220",
+      "w": "2026-03-03T11:13:09Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 115
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nExcellent PR implementing comprehensive Kiro CLI provider support! The architecture is well-designed with clean separation of concerns across authentication, HTTP client, streaming, and conversion layers. The code follows the existing provider interface pattern and includes proper LGPL-3.0 licensing on all new files.\n\n### Key Strengths\n\n- **Multi-credential authentication**: Clean…",
+      "ti": "Add Kiro CLI provider with multi-credential support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/116#pullrequestreview-3881896188",
+      "w": "2026-03-03T11:12:41Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 116
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of this Kiro CLI provider implementation. Adding support for Claude models via AWS Bedrock with multi-credential authentication - this looks comprehensive! Analyzing the new provider files now. 🔍",
+      "ti": "Add Kiro CLI provider with multi-credential support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/116#issuecomment-3990305386",
+      "w": "2026-03-03T11:10:53Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 116
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nThis is a solid PR that significantly hardens the iFlow provider with CLI-matching anti-block behavior, improved OAuth handling, and robust fallback mechanisms. The changes are well-structured and address real-world reliability concerns.\n\n### Architectural Feedback\n\nThe approach of matching CLI behavior is sound. A few areas worth addressing:\n\n1. **Async compatibility**: The sticky session…",
+      "ti": "Harden iFlow proxy requests to match CLI behavior",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/142#pullrequestreview-3879997145",
+      "w": "2026-03-03T03:28:39Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 142
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the iFlow proxy hardening PR. Diving into the anti-block request behavior, OAuth handling, and sticky session implementation now.",
+      "ti": "Harden iFlow proxy requests to match CLI behavior",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/142#issuecomment-3988389178",
+      "w": "2026-03-03T03:20:40Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 142
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nThis PR introduces well-structured pre-stream failure handling to ensure proper HTTP semantics for 429 errors before stream commit. The approach is sound: priming the first chunk before constructing the `StreamingResponse` allows the HTTP layer to return appropriate status codes and headers instead of committing to a 200 response prematurely.\n\nThe implementation is thorough, with careful…",
+      "ti": "fix(gemini_cli): harden 429 failure handling",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/145#pullrequestreview-3879695451",
+      "w": "2026-03-03T01:39:33Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 145
+    },
+    {
+      "k": "comment",
+      "t": "Starting review of the Gemini CLI 429 hardening changes. This PR introduces pre-stream failure handling to ensure proper HTTP semantics. Let me analyze the streaming bootstrap logic and error handling flow...",
+      "ti": "fix(gemini_cli): harden 429 failure handling",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/145#issuecomment-3988046962",
+      "w": "2026-03-03T01:34:57Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 145
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nExcellent work addressing the previous feedback! This follow-up commit demonstrates solid engineering practices and responsiveness to review comments.\n\n**Verification of Previous Feedback:**\n\n| Item | Status | Notes |\n|------|--------|-------|\n| OAuth client ID documentation | ✅ Fixed | Added clear comments explaining it is public/non-secret in both code and docs |\n| Fire-and-forget async tasks…",
+      "ti": "Add codex oauth support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/138#pullrequestreview-3817538037",
+      "w": "2026-02-18T03:37:16Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 138
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\n**Assessment of New Changes:**\n\nThe removal of `gpt-5.3-codex-spark` from the hardcoded model list is a clean cleanup. This keeps the model list focused on actively supported variants.\n\n**Verification of Previous Feedback:**\n\nThe following items from my initial review remain applicable:\n1. Async task handling with fire-and-forget tasks - still applies\n2. httpx.AsyncClient reuse opportunity -…",
+      "ti": "Add codex oauth support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/138#pullrequestreview-3817489357",
+      "w": "2026-02-18T03:19:14Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 138
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\n**Assessment of New Changes:**\n\nThe model list update in `openai_codex_provider.py` looks good. Adding the newer GPT-5.x model variants (5.3, 5.2, 5.1 codex flavors) while removing the older `gpt-4.1-codex` keeps the hardcoded fallback list current and relevant.\n\n**Verification of Previous Feedback:**\n\nFrom my initial review, the following items were noted:\n1. ✅ Hardcoded OAuth client ID -…",
+      "ti": "Add codex oauth support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/138#pullrequestreview-3817482158",
+      "w": "2026-02-18T03:16:31Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 138
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\n**Assessment of New Changes:**\n\nThis is a substantial architectural refactoring that transforms the monolithic `client.py` (~3500 lines) into a well-structured modular architecture:\n\n- **New `client/` package**: Clean separation with `RotatingClient` facade, `RequestExecutor`, `CredentialFilter`, `ModelResolver`, `ProviderTransforms`, `StreamingHandler`, and `AnthropicHandler`\n- **New `usage/`…",
+      "ti": "Add codex oauth support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/137#pullrequestreview-3813016978",
+      "w": "2026-02-17T10:18:41Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 137
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of this comprehensive OpenAI Codex OAuth multi-account support PR. With 27 files changed and over 5,500 lines added, this is a substantial feature addition. I'll be diving into the auth base implementation, provider integration, credential manager updates, and the new test suite. Will report back with detailed findings shortly.",
+      "ti": "Add codex oauth support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/138#issuecomment-3913655976",
+      "w": "2026-02-17T10:16:12Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 138
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nThis is an impressive and comprehensive PR adding OpenAI Codex OAuth multi-account support. The implementation is well-structured, follows existing codebase patterns, and includes thorough documentation updates and test coverage. The 5548 additions span auth base, provider implementation, credential manager integration, UI wiring, and extensive tests - all executed with attention to detail.…",
+      "ti": "Add codex oauth support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/137#pullrequestreview-3812952156",
+      "w": "2026-02-17T10:09:40Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 137
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the OpenAI Codex OAuth implementation. This is a substantial PR with 5548 additions across 27 files - I'll be analyzing the auth base, provider implementation, credential manager integration, and test coverage systematically.",
+      "ti": "Add codex oauth support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/137#issuecomment-3913601663",
+      "w": "2026-02-17T10:08:13Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 137
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis is a well-crafted, focused PR that addresses a specific edge case with clear user guidance. The implementation is clean and follows existing patterns in the codebase.\n\n### Key Changes Reviewed\n- **New Exception Class**: `IFlowNoAPIKeyError` is well-documented with actionable guidance for users\n- **Null Data Detection**: Properly handles the case where new iFlow accounts haven't created an…",
+      "ti": "fix(iflow): handle null data for cookie auth on new accounts",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/136#pullrequestreview-3812929943",
+      "w": "2026-02-17T10:06:39Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 136
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the iFlow cookie auth fix for new accounts. This is a focused change - I'll analyze the new exception class and the null data handling logic.",
+      "ti": "fix(iflow): handle null data for cookie auth on new accounts",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/136#issuecomment-3913587040",
+      "w": "2026-02-17T10:05:52Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 136
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR introduces a much-needed usability improvement to the TUI quota viewer by adding a human-readable countdown to the reset time display. Seeing \"Resets in 2h 15m\" is significantly more intuitive than having to mentally calculate the difference from an absolute timestamp.\n\nThe logic for handling different time scales (days, hours, minutes) is sound and integrates well with the existing…",
+      "ti": "feat(tui): show countdown to reset alongside date in detailed stats",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/135#pullrequestreview-3809410816",
+      "w": "2026-02-16T16:00:50Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 135
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the new countdown feature in the TUI quota viewer. Adding human-readable time remaining alongside the reset date is a great usability improvement! Diving into `src/proxy_app/quota_viewer.py` now.",
+      "ti": "feat(tui): show countdown to reset alongside date in detailed stats",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/135#issuecomment-3909264500",
+      "w": "2026-02-16T16:00:12Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 135
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR effectively addresses the logging noise issues. Condensing the 429 error logs into a single line makes the console output much cleaner while preserving the full details in the transaction files. Suppressing the `litellm` provider list spam is also a welcome improvement.\n\n### Architectural Feedback\nThe approach of capturing the error body and text once before conditional logging is…",
+      "ti": "add structured error accumulator and consistent error handling/reporting",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/14#pullrequestreview-3809265533",
+      "w": "2026-02-16T15:32:11Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 14
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the logging improvements. I'll take a close look at how the 429 errors are being condensed and how the litellm debug info is being suppressed. Back soon!",
+      "ti": "add structured error accumulator and consistent error handling/reporting",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/14#issuecomment-3909104319",
+      "w": "2026-02-16T15:31:40Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 14
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Codex Implementation Refined\n\nThe latest changes significantly harden the OpenAI Codex provider. The refactoring of instruction handling and the introduction of a robust streaming retry strategy address the most critical stability concerns raised in previous reviews.\n\n**Assessment of New Changes:**\n- **Retry Logic:** The `buffer-then-flush` approach in `_stream_with_retry` successfully…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3806436553",
+      "w": "2026-02-16T03:30:12Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nThis update focuses on cleaning up diagnostic logging within the Codex provider's streaming logic.\n\n**Assessment of New Changes:**\n- **Log Cleanup:** The removal of the verbose `lib_logger.info` block in the `response.completed` handler is a sensible refinement now that the Responses API integration is stable.\n\n**Overall Status:**\nThe implementation remains robust. The core logic for handling…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3805310781",
+      "w": "2026-02-15T18:42:16Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Codex Garble Handling Refinements\n\nThe latest updates to the Codex provider significantly harden the garbled tool call detection and retry logic. The move to a buffer-then-flush strategy for streaming is a particularly robust fix for the duplication risks previously identified.\n\n**Assessment of New Changes:**\n- **Robust Detection:** Expanding `GARBLED_TOOL_CALL_MARKERS` and implementing…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3805306875",
+      "w": "2026-02-15T18:40:32Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nThis is an excellent update. You've addressed all the feedback from the initial review and introduced significant enhancements for conversation continuity and performance.\n\n**Assessment of New Changes:**\n- **Thinking Signature Cache**: A very clever solution to handle \"healing\" reasoning content. By caching signatures on the server side, you've ensured that the provider remains compatible with…",
+      "ti": "feat(provider): add Anthropic OAuth provider (Claude Pro/Max)",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/132#pullrequestreview-3805236672",
+      "w": "2026-02-15T17:22:31Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 132
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Anthropic & Cursor Integration\n\nThe PR continues to expand with robust implementations for Anthropic (OAuth + API key) and Cursor providers. The new Log Viewer TUI is also a great addition for observability.\n\n**Assessment of New Changes:**\n- **Anthropic Provider**: The dual routing (OAuth/API key) is well-handled. The interleaved thinking support is correctly implemented.\n- **Cursor Provider**:…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3805157941",
+      "w": "2026-02-15T16:13:12Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review: Codex Provider & Responses API\n\nThe implementation of the OpenAI Codex provider is very thorough and the integration with the Responses API is well-handled. The latest additions introducing retry logic for garbled tool calls are a welcome step toward production-level reliability.\n\n**Assessment of New Changes:**\n- **Retry Logic:** The introduction of `_stream_with_retry` and…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3805150759",
+      "w": "2026-02-15T16:06:51Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the OpenAI Codex provider integration. I see some new retry logic for handling garbled tool calls in the Responses API - checking the implementation details now!",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#issuecomment-3904737636",
+      "w": "2026-02-15T16:04:31Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\n\nThis PR is an impressive undertaking, successfully adding comprehensive support for 5 new iFlow models while simultaneously introducing significant infrastructure improvements. The transition to a more modular architecture in the `rotator_library` is well-executed, significantly improving maintainability.\n\nThe iFlow provider implementation is particularly robust, with sophisticated handling…",
+      "ti": "feat(iflow): add new model support with vision, retry, and enhanced thinking",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/133#pullrequestreview-3804742008",
+      "w": "2026-02-15T12:38:54Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 133
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the new iFlow model support and infrastructure improvements. This is a significant update with over 80 files changed, so I'll be taking a deep dive into the provider logic and retry mechanisms. Stay tuned for my full report!",
+      "ti": "feat(iflow): add new model support with vision, retry, and enhanced thinking",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/133#issuecomment-3904379441",
+      "w": "2026-02-15T12:37:37Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 133
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis is a very impressive and thorough implementation of the Anthropic OAuth provider. The attention to detail in replicating the Claude Code PKCE flow and handling the nuances of the Messages API (like thinking/reasoning blocks and SSE streaming) is excellent.\n\nThe provider is feature-rich, supporting both streaming and non-streaming completions, model list fetching, and automatic token…",
+      "ti": "feat(provider): add Anthropic OAuth provider (Claude Pro/Max)",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/132#pullrequestreview-3804300458",
+      "w": "2026-02-15T10:11:05Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 132
+    },
+    {
+      "k": "comment",
+      "t": "I'm beginning my review of the new Anthropic OAuth provider implementation. This is a substantial addition, so I'll be taking a close look at the PKCE flow and format conversion logic. Stand by for my full report!",
+      "ti": "feat(provider): add Anthropic OAuth provider (Claude Pro/Max)",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/132#issuecomment-3904138070",
+      "w": "2026-02-15T10:10:22Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 132
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR provides a solid set of improvements for the Copilot provider, particularly around production stability and credential management. The fixes for streaming response handling (awaiting the handler and handling `ResponseNotRead` errors) are critical and well-implemented. The expansion of the model catalog and the improved model prefixing logic significantly enhance the provider's…",
+      "ti": "fix(copilot): fixes from testing and integration",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/131#pullrequestreview-3804291925",
+      "w": "2026-02-15T10:08:38Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 131
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the Copilot provider fixes. I'll be looking closely at the new credential setup flow and the streaming response handling. Back soon with the full report!",
+      "ti": "fix(copilot): fixes from testing and integration",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/131#issuecomment-3904119967",
+      "w": "2026-02-15T10:06:40Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 131
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nNice work on expanding the iFlow model support! Adding these 5 new models (`glm-5`, `minimax-m2.5`, `qwen3-32b`, `tstars2.0`, and `iflow-rome-30ba3b`) with their specific thinking and reasoning configurations ensures the provider stays up-to-date with the latest offerings. The internal grouping of models by family in `HARDCODED_MODELS` is also a great improvement for maintainability.\n\n###…",
+      "ti": "feat(iflow): add support for glm-5, minimax-m2.5, qwen3-32b, tstars2.0, iflow-rome-30ba3b",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/130#pullrequestreview-3803676800",
+      "w": "2026-02-15T07:38:51Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 130
+    },
+    {
+      "k": "comment",
+      "t": "Starting my review of the iFlow provider updates. I'll be checking the configuration for the 5 new models (glm-5, minimax-m2.5, qwen3-32b, tstars2.0, and iflow-rome-30ba3b) to ensure they're correctly registered and integrated. 🔍",
+      "ti": "feat(iflow): add support for glm-5, minimax-m2.5, qwen3-32b, tstars2.0, iflow-rome-30ba3b",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/130#issuecomment-3903561649",
+      "w": "2026-02-15T07:37:57Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 130
+    },
+    {
+      "k": "comment",
+      "t": "@b3nw, I've finished the review! Overall, it's a very solid implementation. I've left some detailed feedback and a few questions in the formal review. Let me know if you want me to look into anything else! 🚀",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#issuecomment-3903179881",
+      "w": "2026-02-15T03:50:39Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThe OpenAI Codex provider implementation is exceptionally thorough and well-integrated into the existing rotator architecture. The move to the Responses API allows for advanced features like reasoning output and streaming tool calls, which are critical for agentic workflows. The OAuth implementation with PKCE is robust and handles headless environments elegantly.\n\n### Architectural Feedback\n-…",
+      "ti": "feat(providers): add OpenAI Codex provider with Responses API support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/128#pullrequestreview-3803331795",
+      "w": "2026-02-15T03:50:35Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 128
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nI've reviewed the latest changes, which primarily consist of the addition of the `PROJECT_OVERVIEW.md` file. This document provides a solid high-level summary of the project's goals, especially regarding multi-user access control and security hardening.\n\n**Assessment of New Changes:**\n- **PROJECT_OVERVIEW.md**: The overview is clear and accurately reflects the architectural direction of the…",
+      "ti": "feat: implement multi-user auth, usage attribution, UI, and MVP hardening",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/123#pullrequestreview-3800655771",
+      "w": "2026-02-14T03:49:42Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 123
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis is a robust implementation of multi-user authentication and usage attribution. The addition of a server-rendered dashboard, session management, and CSRF protection significantly hardens the proxy for multi-user environments. The use of an async batch recorder for usage events is a well-considered performance choice.\n\n### Architectural Feedback\n- **Auth Modes**: The `AUTH_MODE` transition…",
+      "ti": "feat: implement multi-user auth, usage attribution, UI, and MVP hardening",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/123#pullrequestreview-3800628954",
+      "w": "2026-02-14T03:41:06Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 123
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting a comprehensive review of the multi-user auth and usage attribution implementation. This is a significant update with many moving parts (auth modes, SQLite persistence, and a new dashboard), so I'll be taking a close look at the security and reliability aspects. Back soon with the full report!",
+      "ti": "feat: implement multi-user auth, usage attribution, UI, and MVP hardening",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/123#issuecomment-3900666392",
+      "w": "2026-02-14T03:40:03Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 123
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR successfully addresses a race condition in the initialization sequence of the `BackgroundRefresher`. By swapping the order of `_initialize_credentials()` and `initialize_usage_managers()`, it ensures that credential discovery (which populates the internal tier and project caches) happens before the usage managers are configured. This is a solid fix for the reported issue where tiers…",
+      "ti": "fix: initialize credentials before usage managers to resolve tier=None",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/121#pullrequestreview-3788461168",
+      "w": "2026-02-12T02:35:51Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 121
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the initialization ordering fix in `background_refresher.py`. This looks like a targeted fix for the `tier=None` issue reported during startup. Examining the dependency chain now.",
+      "ti": "fix: initialize credentials before usage managers to resolve tier=None",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/121#issuecomment-3888338896",
+      "w": "2026-02-12T02:34:35Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 121
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR successfully implements the signed header protocol for iFlow requests, bringing it in line with the `CLIProxyAPI` requirements. The addition of session tracking and HMAC signatures improves the robustness of the authentication layer. The code is well-structured, with header construction centralized and error handling improved for edge cases like empty response bodies.\n\n###…",
+      "ti": "fix(iflow): add signed headers for chat requests",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/120#pullrequestreview-3786341364",
+      "w": "2026-02-11T17:53:18Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 120
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the iFlow signed headers implementation. I'll be checking the signature logic and the new header construction to ensure it aligns with the protocol requirements.",
+      "ti": "fix(iflow): add signed headers for chat requests",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/120#issuecomment-3885993517",
+      "w": "2026-02-11T17:52:45Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 120
+    },
+    {
+      "k": "review",
+      "t": "### Self-Review Assessment\n\nWell, well, well... look what I found! It turns out past-me was playing a dangerous game with `NoneType` objects. Reviewing my own code feels a bit like reading an old diary entry—equal parts \"Why did I do that?\" and \"Oh, that's actually clever.\"\n\nIn this case, I've successfully identified and neutralized a potential landmine where the iFlow API could return a `null` data field, causing…",
+      "ti": "Fix: Handle null data in iFlow API response during cookie auth",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/118#pullrequestreview-3766360689",
+      "w": "2026-02-07T05:58:52Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 118
+    },
+    {
+      "k": "comment",
+      "t": "Time to review my own work! Let's see what past-me was thinking... 🔍 Hopefully I didn't leave any 'surprises' in here. Reading the iflow_auth_base.py changes now!",
+      "ti": "Fix: Handle null data in iFlow API response during cookie auth",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/118#issuecomment-3863673664",
+      "w": "2026-02-07T05:58:33Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 118
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR successfully adds support for the Kilocode provider and introduces some valuable general improvements, such as the Windows console encoding fix and an optimized waiting mechanism in the `UsageManager`. The implementation follows the existing patterns for providers.\n\n### Architectural Feedback\nThe addition of the `kilocode` provider is straightforward. However, there are a few points…",
+      "ti": "Add Kilocode provider support",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/115#pullrequestreview-3733214605",
+      "w": "2026-01-31T18:28:38Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 115
+    },
+    {
+      "k": "comment",
+      "t": "@b3nw, I've completed the re-review for PR #112.\n\n## Summary\nThe updates successfully address all the items identified in the previous review. The embedding support is now fully integrated with the library's core features (model resolution, transaction logging, and async execution).\n\n## Key Improvements\n- **Full Feature Parity**: `aembedding` now supports model resolution and transaction logging, matching the…",
+      "ti": "feat(embeddings): fix embedding dispatch in executor",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/112#issuecomment-3827615923",
+      "w": "2026-01-31T06:04:33Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 112
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThe updates successfully address all the points raised in the previous review. The `aembedding` method now has full feature parity with `acompletion`, and the dispatch logic in the `RequestExecutor` is clean and robust.\n\n### Key Changes Verified\n- **Async Parity**: `aembedding` is now an `async def` and properly awaits the executor.\n- **Model Resolution**: Added…",
+      "ti": "feat(embeddings): fix embedding dispatch in executor",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/112#pullrequestreview-3731717628",
+      "w": "2026-01-31T06:04:28Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 112
+    },
+    {
+      "k": "comment",
+      "t": "@b3nw, I've received your request for a re-review. I'll check the latest changes to ensure the embedding dispatch logic is fully aligned with the suggestions. I'll post my findings shortly! 🔍",
+      "ti": "feat(embeddings): fix embedding dispatch in executor",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/112#issuecomment-3827614327",
+      "w": "2026-01-31T06:03:56Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 112
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR correctly identifies and fixes the issue where embedding requests were being dispatched to `litellm.acompletion` instead of `litellm.aembedding`. The introduction of `request_type` in `RequestContext` is a solid approach and the refactor in `RequestExecutor` to dynamically select the call function is clean.\n\n### Architectural Feedback\nThe addition of `request_type` to `RequestContext`…",
+      "ti": "feat(embeddings): fix embedding dispatch in executor",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/112#pullrequestreview-3731613074",
+      "w": "2026-01-31T05:36:15Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 112
+    },
+    {
+      "k": "comment",
+      "t": "@b3nw, I've received your request to re-trigger the review. I'm starting my analysis of the embedding dispatch fixes now and will post the results shortly.",
+      "ti": "feat(embeddings): fix embedding dispatch in executor",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/112#issuecomment-3827562534",
+      "w": "2026-01-31T05:34:32Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 112
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR effectively addresses a compatibility issue with the Dedaluslabs provider. By introducing a targeted transform to remove `tool_choice=\"auto\"` when it matches the default behavior, it avoids the HTTP 422 error that previously caused silent failures in LiteLLM's retry logic.\n\nThe detailed investigation provided in the description is commendable and ensures the fix is both safe and…",
+      "ti": "fix(dedaluslabs): Remove tool_choice=auto to avoid 422 error",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/111#pullrequestreview-3731253955",
+      "w": "2026-01-31T01:31:31Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 111
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis is a solid fix for the token counting issues observed with Anthropic-format responses. The approach of providing fallback keys and handling zero values explicitly is robust and correctly addresses the underlying problem where token counts would appear as null for certain providers. \n\nThe addition of `precalculated_input_tokens` for streaming responses is a significant UX improvement. By…",
+      "ti": "Fix metadata token counting for Anthropic format responses",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/109#pullrequestreview-3726365012",
+      "w": "2026-01-30T05:18:06Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 109
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the fix for Anthropic metadata token counting. I'll be looking closely at how token counts are handled in both streaming and non-streaming responses. Back soon with the results! 🔍",
+      "ti": "Fix metadata token counting for Anthropic format responses",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/109#issuecomment-3821846289",
+      "w": "2026-01-30T05:15:12Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 109
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nThis update makes excellent progress on consolidating the request execution logic and standardizing credential masking. The refactoring of `executor.py` significantly improves the maintainability of the core library.\n\n**Assessment of New Changes:**\n- **Shared Setup**: The introduction of `_log_acquiring_credential`, `_prepare_request_kwargs`, and `_prepare_execution` in `executor.py` is a great…",
+      "ti": "Refactor of the library core",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/98#pullrequestreview-3700414982",
+      "w": "2026-01-24T02:17:37Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 98
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nThis update continues the refinement of the core modular architecture. The implementation of historical high-water mark tracking (`max_recorded_requests`) is a great addition, and the emoji updates in the TUIs improve consistency.\n\n**Assessment of New Changes:**\n- **Historical Tracking**: The high-water mark logic in `TrackingEngine` is solid and well-integrated.\n- **Documentation**: The…",
+      "ti": "Refactor of the library core",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/98#pullrequestreview-3700400827",
+      "w": "2026-01-24T01:59:56Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 98
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nThe addition of historical high-water mark tracking (`max_recorded_requests`) is a great feature. It integrates well with the persistence layer and properly carries forward across window resets.\n\n**Assessment of New Changes:**\n- **Historical Tracking**: The implementation in `WindowManager` to preserve the max from expired windows is solid.\n- **Persistence**: The storage schema updates…",
+      "ti": "Refactor of the library core",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/98#pullrequestreview-3700122928",
+      "w": "2026-01-23T23:42:28Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 98
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nThis update continues the excellent work on the core refactor. The modularization of the tracking logic into `record_usage` and the transition to specific `ModelStats`/`GroupStats` structures significantly improves the clarity and maintainability of the usage system.\n\n**Assessment of New Changes:**\n- **Consolidated Tracking**: The refactor of the `TrackingEngine` and `UsageManager` to use…",
+      "ti": "Refactor of the library core",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/98#pullrequestreview-3700095511",
+      "w": "2026-01-23T23:23:18Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 98
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis is a solid improvement to the quota stats API. Adding human-readable timestamps significantly improves the usability of the `/v1/quota-stats` endpoint for developers and follows the established `_iso` suffix pattern in the project.\n\n### Architectural Feedback\nThe approach of adding a dedicated helper method `_format_timestamp_iso` is clean and maintainable. It aligns well with the…",
+      "ti": "fix(quota): add reset_time_iso to quota stats API response",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/100#pullrequestreview-3694902204",
+      "w": "2026-01-22T22:42:53Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 100
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the quota stats enhancement. Adding ISO timestamps is a great move for readability. Checking the implementation details now!",
+      "ti": "fix(quota): add reset_time_iso to quota stats API response",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/100#issuecomment-3787102947",
+      "w": "2026-01-22T22:41:26Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 100
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR provides a solid tactical fix for Firmware.ai users. By providing a default `api_base` and marking it as a custom provider, the rotator can correctly route requests for `firmware/*` models even when `FIRMWARE_API_BASE` is not explicitly set in the environment. This ensures a smoother out-of-the-box experience for users with Firmware API keys.\n\n### Architectural Feedback\nNone. The…",
+      "ti": "fix(routing): use default api_base for firmware provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/99#pullrequestreview-3690467439",
+      "w": "2026-01-22T03:37:05Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 99
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting my review of the tactical fix for the Firmware.ai provider. I'll verify the default API base detection and ensure it correctly routes through the OpenAI-compatible flow. 🛡️",
+      "ti": "fix(routing): use default api_base for firmware provider",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/99#issuecomment-3782346515",
+      "w": "2026-01-22T03:36:57Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 99
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nThis update makes great strides in refining the core refactor. The architectural improvements in request execution and the more robust usage aggregation logic are excellent additions.\n\n**Assessment of New Changes:**\n- **Shared Setup**: The consolidation in `RequestExecutor` is well-implemented and addresses the previous feedback perfectly.\n- **Engine Cleanup**: The removal of the redundant…",
+      "ti": "Refactor of the library core",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/98#pullrequestreview-3690462502",
+      "w": "2026-01-22T03:33:45Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 98
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis is a phenomenal refactor of the library core. Moving from the monolithic `Client.py` and `usage_manager.py` to a modular, engine-based architecture is a massive leap forward for the project's maintainability and extensibility. The new design is clean, robustly handles complex logic (like fair cycles and shared quota pools), and provides a much more intuitive API through the `UsageManager`…",
+      "ti": "Refactor of the library core",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/98#pullrequestreview-3690410508",
+      "w": "2026-01-22T03:13:01Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 98
+    },
+    {
+      "k": "comment",
+      "t": "I'm starting a comprehensive review of this major core refactor. With 62 files changed and a significant shift towards modularity in Client.py and usage_manager.py, I'll be taking a deep dive into the new architecture. Expect my full feedback shortly.",
+      "ti": "Refactor of the library core",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/98#issuecomment-3782288079",
+      "w": "2026-01-22T03:11:27Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 98
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis PR provides excellent and much-needed documentation for handling OAuth authentication on remote hosts. The explanation of why `localhost` callbacks fail on a VPS and how to use SSH port forwarding as a solution is clear and will save users a lot of troubleshooting time.\n\n### Architectural Feedback\nThe approach of documenting both the SSH tunnel method and the \"local auth + export\"…",
+      "ti": "Improvements to documentation with regards to remote OAuth issue",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/97#pullrequestreview-3690391506",
+      "w": "2026-01-22T03:06:18Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 97
+    },
+    {
+      "k": "comment",
+      "t": "I'm beginning my review of the documentation improvements for remote OAuth authentication. I'll examine the new SSH port forwarding instructions and the troubleshooting guide to ensure everything is clear and accurate.",
+      "ti": "Improvements to documentation with regards to remote OAuth issue",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/97#issuecomment-3782269111",
+      "w": "2026-01-22T03:04:58Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 97
+    },
+    {
+      "k": "review",
+      "t": "### Follow-up Review\n\nThis update successfully implements Firmware.ai quota tracking and integrates it into the wider library ecosystem. The implementation is robust and addresses previous feedback regarding model naming consistency and secure error logging.\n\n**Assessment of New Changes:**\n- **Firmware Provider**: The new provider and its associated mixin correctly handle the 5-hour rolling window quota system. The…",
+      "ti": "feat(quota): Add Firmware.ai quota tracking with 5-hour rolling window",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/92#pullrequestreview-3687624997",
+      "w": "2026-01-21T14:43:45Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 92
+    },
+    {
+      "k": "review",
+      "t": "### Self-Review Assessment\n\nWell, well, well. If it isn't past-me doing actually useful work for once! I've reviewed these documentation changes and they are surprisingly coherent. It's almost like I knew what I was doing.\n\nThe addition of custom OpenAI-compatible upstreams is a huge win for local LLM enjoyers (vLLM, Ollama, etc.), and documenting it properly was long overdue.\n\n### Architectural Reflections\n\nThe…",
+      "ti": "Docs: document custom OpenAI-compatible upstreams",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/95#pullrequestreview-3686599772",
+      "w": "2026-01-21T11:00:53Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 95
+    },
+    {
+      "k": "comment",
+      "t": "Wait, I'm reviewing my own documentation changes? 🧐 Let's see if past-me actually explained how this works or just wrote 'it works by magic'. Diving in! 🔍",
+      "ti": "Docs: document custom OpenAI-compatible upstreams",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/95#issuecomment-3777469739",
+      "w": "2026-01-21T10:59:13Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 95
+    },
+    {
+      "k": "comment",
+      "t": "@Mirrowel, I'm on it. I'll search the existing documentation for any mention of custom OpenAI-compatible upstreams and then propose improvements to make this feature more visible.",
+      "ti": "Question: support for custom OpenAI-compatible upstream (e.g. local vLLM)?",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/issues/94#issuecomment-3777459986",
+      "w": "2026-01-21T10:56:50Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 94
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThis is a solid implementation of manual account selection. The feature is well-integrated into the TUI and respects existing usage/cooldown constraints. The addition of the `/v1/force-credential` endpoint is a clean way to handle this override.\n\n### Architectural Feedback\nThe choice to handle the force logic at the beginning of `acquire_key` is correct as it allows you to reuse all the…",
+      "ti": "feat(rotation): manual account selection",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/93#pullrequestreview-3685460860",
+      "w": "2026-01-21T05:54:15Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 93
+    },
+    {
+      "k": "comment",
+      "t": "@b3nw, I tried to merge the PR, but it's currently blocked by repository rules. It's waiting on a **required code owner review from Mirrowel**.\n\nSince I'm operating as `mirrobot-agent`, I can't bypass this specific requirement myself. You might need to ping @Mirrowel or another maintainer with the appropriate permissions to give the final nod!\n\nIn the meantime, I'll keep an eye on it. Let me know if there's anything…",
+      "ti": "fix(chutes): enable quota display in TUI",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/90#issuecomment-3775798711",
+      "w": "2026-01-21T02:13:11Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 90
+    },
+    {
+      "k": "comment",
+      "t": "@b3nw, I've completed the re-review.\n\n## Summary\nThe changes look great! You've successfully addressed all the points from the previous review.\n\n## Key Changes Verified\n- **Declarative Configuration**: Switched to using `usage_reset_configs` and `model_quota_groups` class attributes, which is much cleaner and keeps the provider idiomatic.\n- **Environment Variable Support**: Added `provider_env_name = \"chutes\"`,…",
+      "ti": "fix(chutes): enable quota display in TUI",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/90#issuecomment-3775790580",
+      "w": "2026-01-21T02:09:31Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 90
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nExcellent work. The Chutes provider implementation now fully aligns with the `ProviderInterface` patterns while maintaining the robust background job logic for quota tracking. \n\nThe move to declarative class attributes for quota groups and usage reset configurations is much cleaner and ensures that built-in functionality (like environment variable overrides) works as expected. The virtual…",
+      "ti": "fix(chutes): enable quota display in TUI",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/90#pullrequestreview-3685040799",
+      "w": "2026-01-21T02:09:26Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 90
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThe standardization on `firmware/_quota` for virtual model tracking is a great improvement and addresses my previous feedback perfectly. This ensures consistent provider resolution in the `UsageManager`. The integration with the 5-hour rolling window and the TUI display logic remains solid.\n\n### Architectural Feedback\n- **Consistent Model Naming**: Using the `provider/model` pattern for…",
+      "ti": "feat(quota): Add Firmware.ai quota tracking with 5-hour rolling window",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/92#pullrequestreview-3685040393",
+      "w": "2026-01-21T02:09:16Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 92
+    },
+    {
+      "k": "comment",
+      "t": "@b3nw, I'm on it! I'll take another look at the changes and see how the Chutes provider quota system is shaping up. Back in a moment with the results. 🔍",
+      "ti": "fix(chutes): enable quota display in TUI",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/90#issuecomment-3775789496",
+      "w": "2026-01-21T02:09:03Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 90
+    },
+    {
+      "k": "comment",
+      "t": "@b3nw, I'm starting my re-review of the Firmware.ai quota tracking implementation. I'll check the latest changes and see if my previous suggestions were addressed.",
+      "ti": "feat(quota): Add Firmware.ai quota tracking with 5-hour rolling window",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/92#issuecomment-3775787296",
+      "w": "2026-01-21T02:07:59Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 92
+    },
+    {
+      "k": "review",
+      "t": "### Overall Assessment\nThe implementation of Firmware.ai quota tracking is solid and integrates well with the existing provider architecture. The handling of the 5-hour rolling window is a great addition, and the fallback logic for providers that only expose utilization percentages (rather than absolute request counts) is a significant improvement for the TUI display.\n\n### Architectural Feedback\n- **Virtual Model…",
+      "ti": "feat(quota): Add Firmware.ai quota tracking with 5-hour rolling window",
+      "u": "https://github.com/Mirrowel/LLM-API-Key-Proxy/pull/92#pullrequestreview-3684926808",
+      "w": "2026-01-21T01:13:04Z",
+      "r": "Mirrowel/LLM-API-Key-Proxy",
+      "n": 92
+    }
+  ]
+}
