@@ -65,7 +65,11 @@ jobs:
     # never even start a runner. The AGENT-identity half of the guard runs
     # inside the routing step (shell, case-insensitive, from the resolved
     # identity set - no login enumeration here, so renames need no edit).
+    # EVENT GUARD: this job reads issue_comment payload shapes only — for
+    # discussion events github.event.issue does not exist (threadNumber
+    # would dispatch empty). The discussion sibling job handles those.
     if: |
+      github.event_name == 'issue_comment' &&
       vars.AGENT_PAUSED != 'true' &&
       !endsWith(github.event.comment.user.login, '[bot]')
     runs-on: ubuntu-latest
@@ -245,7 +249,11 @@ jobs:
   # comment databaseId for comment triggers); nothing trust-relevant rides
   # the dispatch payload.
   route_discussion:
+    # EVENT GUARD: discussion payloads only (the route job handles
+    # issue_comment; without this gate it would run on discussion events
+    # too and dispatch with an empty threadNumber - live-caught).
     if: |
+      (github.event_name == 'discussion_comment' || github.event_name == 'discussion') &&
       vars.AGENT_PAUSED != 'true' &&
       !endsWith(github.event.comment.user.login || github.event.discussion.user.login, '[bot]')
     runs-on: ubuntu-latest

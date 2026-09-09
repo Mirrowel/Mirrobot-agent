@@ -385,6 +385,13 @@ route() { # body is_pr -> flags or "none" — delegates to the shared script
   # re-derivation would resolve against the fixture repo and break in CI.
   printf '%s' "$1" | bash "$SCRIPT_DIR/route-comment.sh" "$2"
 }
+# Event guards: the route job MUST be issue_comment-only and route_discussion
+# discussion-only — without the gate, the route job runs on discussion events
+# with a nonexistent github.event.issue and dispatches empty inputs
+# (live-caught 2026-09-09: red run per discussion comment).
+ROUTER_YML="$SCRIPT_DIR/../workflows/agent-router.yml"
+check "router: route job gated to issue_comment" yes "$(grep -A3 '^  route:' "$ROUTER_YML" | grep -q "github.event_name == 'issue_comment'" && echo yes || echo no)"
+check "router: route_discussion gated to discussion events" yes "$(grep -A3 '^  route_discussion:' "$ROUTER_YML" | grep -q "github.event_name == 'discussion_comment'" && echo yes || echo no)"
 check "router: plain mention (PR)"          "reply"                  "$(route 'hey @mirrobot look at this' true)"
 check "router: plain mention (issue)"       "reply"                  "$(route 'hey @mirrobot look at this' false)"
 check "router: review command (PR)"         "review"                 "$(route 'please /mirrobot-review' true)"
