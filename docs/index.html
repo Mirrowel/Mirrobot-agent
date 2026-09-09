@@ -236,7 +236,7 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
   <div class="avatar rv in"><img src="https://avatars.githubusercontent.com/Mirrobot-Agent?size=290" alt="Mirrobot's avatar" width="148" height="148"></div>
   <div>
     <p class="kicker rv in">open source · lives in <b>GitHub Actions</b> · thinks in OpenCode sessions</p>
-    <h1 class="rv in">Mirrobot<em>, frankly</em><span class="dot">.</span></h1>
+    <h1 class="rv in" id="hero-h1">Mirrobot<em>, frankly</em><span class="dot">.</span></h1>
     <div class="statusline rv in" aria-live="off">
       <span class="prompt">mirrobot@github:~$</span><span class="txt" id="rot"></span><span class="cursor" aria-hidden="true"></span>
     </div>
@@ -246,7 +246,7 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
 
 <section id="what" class="rv">
   <p class="sec-label blue">what this is</p>
-  <h2>An agent that lives in the repository,<br><em>not in a tab you forget to open.</em></h2>
+  <h2 id="what-h2">An agent that lives in the repository,<br><em>not in a tab you forget to open.</em></h2>
   <div class="cols">
     <div>
       <p class="lead">Mirrobot is a GitHub agent with real opinions. It reviews pull requests the way a careful collaborator would — severity-graded, evidence-cited, willing to block. It triages issues, hunts duplicates, reproduces bugs, and tells you when a report doesn't hold up. It answers questions in discussions and mentions, at home or as a guest in other people's repositories.</p>
@@ -265,8 +265,8 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
 </section>
 
 <section id="hum" class="rv">
-  <p class="sec-label red">the hum</p>
-  <h2>Recent noise from <em>home repositories.</em></h2>
+  <p class="sec-label red">recent activity</p>
+  <h2 id="hum-h2">Recent noise from <em>home repositories.</em></h2>
   <div class="hum-box">
     <div class="hum-head"><span><span class="live">live</span> public GitHub activity</span><span id="humrepos"></span></div>
     <div class="hum" id="hum"><div class="gone">listening…</div></div>
@@ -276,7 +276,7 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
 
 <section id="notes" class="rv">
   <p class="sec-label yellow">field notes</p>
-  <h2>Things it has <em>actually said.</em></h2>
+  <h2 id="notes-h2">Things it has <em>actually said.</em></h2>
   <div class="notes" id="notes-grid">
     <div class="note r">
       <q><b>Verdict: changes requested</b> — one must-fix: the unquoted <i>SHARE_CTX_THREAD</i> expression is truncated by YAML at the comment marker and the workflow file no longer loads, killing the bot-reply mission until quoted.</q>
@@ -449,6 +449,46 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
   rot.textContent = LINES[li]; rot.classList.add("on");
   setInterval(tick, 4200);
 
+  /* ---- rotating titles: one pick per page load ---- */
+  var HERO = [
+    ["Mirrobot<em>, frankly</em>", "An agent that lives in the repository,<br><em>not in a tab you forget to open.</em>"],
+    ["The reviewer <em>that never leaves</em>", "It commutes in webhooks and sleeps in concurrency groups.<br><em>Rent-free, by design.</em>"],
+    ["Polite to users.<br><em>Ruthless to diffs.</em>", "Reviews, triage, and answers — running where the code lives,<br><em>not where browser tabs go to die.</em>"],
+    ["It lives <em>here now.</em>", "An agent that moved into the repository,<br><em>started leaving reviews, and never mentioned rent.</em>"],
+    ["Zero tabs <em>were harmed.</em>", "Mentions, reviews, triage — everything happens inside GitHub.<br><em>Open a tab if you want. It will not help.</em>"],
+    ["The housekeeper <em>with opinions.</em>", "Labels your issues, guards your merges,<br><em>and grades off-topic asks one roast each.</em>"],
+    ["Stateless by design.<br><em>Opinions by default.</em>", "Every session starts blank and still somehow shows up<br><em>knowing your codebase.</em>"],
+    ["An engineer <em>made of pipelines.</em>", "It fails closed, cites file:line,<br><em>and considers 'LGTM' a lie.</em>"],
+    ["Your repository's <em>newest collaborator.</em>", "It reads the diffs, hunts the duplicates,<br><em>and argues with evidence when it disagrees.</em>"],
+    ["Frankly, it would rather <em>be reviewing.</em>", "You are reading the landing page.<br><em>Somewhere, a PR is waiting.</em>"]
+  ];
+  var NOTES_H = [
+    "Things it has <em>actually said.</em>",
+    "Exhibits <em>A through H.</em>",
+    "Field notes, <em>unedited.</em>",
+    "Sentences it <em>stands by.</em>",
+    "Things it has said.<br><em>It remembers none of them.</em>",
+    "In its own <em>words.</em>",
+    "The greatest <em>hits.</em>",
+    "On the <em>record.</em>",
+    "Evidence of <em>a personality.</em>",
+    "Quoted verbatim.<br><em>Regretted never.</em>"
+  ];
+  var HUM_H = [
+    "Recent noise from <em>home repositories.</em>",
+    "What it has been <em>doing.</em>",
+    "Fresh from the <em>event log.</em>",
+    "The agent's <em>recent work.</em>",
+    "Live from the <em>repositories.</em>",
+    "Where it has <em>been.</em>",
+    "Its public <em>paper trail.</em>"
+  ];
+  var hp = HERO[Math.floor(Math.random() * HERO.length)];
+  document.getElementById("hero-h1").innerHTML = hp[0] + '<span class="dot">.</span>';
+  document.getElementById("what-h2").innerHTML = hp[1];
+  document.getElementById("notes-h2").innerHTML = NOTES_H[Math.floor(Math.random() * NOTES_H.length)];
+  document.getElementById("hum-h2").innerHTML = HUM_H[Math.floor(Math.random() * HUM_H.length)];
+
   /* ---- reveal on scroll ---- */
   if("IntersectionObserver" in window){
     var io = new IntersectionObserver(function(es){
@@ -579,17 +619,36 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
       });
   });
 
-  /* ---- auto-cards: 8 random excerpts from the harvest pool ---- */
+  /* ---- auto-cards: up to 8 random excerpts from the harvest pool ----
+     Cards draw ONLY from items inside the pool's recency window (days);
+     older backfill material exists in the JSON but never renders. */
+  var BOTNAME = bot || "Mirrobot-Agent";
   fetch("excerpts.json")
     .then(function(res){ if(!res.ok) throw 0; return res.json(); })
     .then(function(pool){
-      var items = (pool && pool.items) || [];
-      if(items.length < 4) throw 0;
+      var days = (pool && pool.days) || 180;
+      var cutoff = Date.now() - days * 86400000;
+      var items = ((pool && pool.items) || []).filter(function(it){
+        return it.w && new Date(it.w).getTime() > cutoff;
+      });
+      var grid = document.getElementById("notes-grid");
+      var mode = document.getElementById("notes-mode");
+      if(items.length === 0){
+        var EMPTY = [
+          "the harvest came back thin this cycle — nothing recent enough to show. either the agent has been uncharacteristically quiet, or something upstream ate its words.",
+          "no fresh quotes survived quality control. the agent insists it is being concise, not silent.",
+          "cards temporarily empty. the machinery is fine. probably. the machinery would say that either way."
+        ];
+        grid.innerHTML = '<div class="note y" style="grid-column:1/-1">'+
+          "<q>"+EMPTY[Math.floor(Math.random()*EMPTY.length)]+"</q>"+
+          '<p class="src">if this keeps up, <a href="https://github.com/Mirrowel/Mirrobot-agent/issues/new" rel="noopener">ask @'+clip97(BOTNAME)+' to go look</a> — mentioning it in an issue is genuinely how you summon it</p></div>';
+        mode.textContent = "0 recent items in the pool ("+days+"-day window) — older material exists but stays in the archive where it belongs";
+        return;
+      }
       for(var i = items.length - 1; i > 0; i--){          // Fisher-Yates
         var j = Math.floor(Math.random() * (i + 1)); var t = items[i]; items[i] = items[j]; items[j] = t;
       }
       var pick = items.slice(0, Math.min(8, items.length));
-      var grid = document.getElementById("notes-grid");
       var CLS = ["r","o","y","b"];
       var KINDN = {review:"PR review", comment:"reply"};
       grid.innerHTML = "";
@@ -602,10 +661,10 @@ footer{padding:64px 0 80px;border-top:1px solid var(--line)}
           '<p class="src"><b>'+KINDN[it.k]+'</b> · <a href="'+clip97(it.u)+'" rel="noopener">'+clip97(it.r)+"#"+it.n+"</a>"+(d?" · "+d:"")+(it.ti?" · "+clip97(it.ti):"")+"</p>";
         grid.appendChild(card);
       });
-      document.getElementById("notes-mode").textContent =
-        "8 of "+items.length+" in this week's harvest — machine-picked at random, quality-gated, every source linked";
+      mode.textContent =
+        pick.length + " of " + items.length + " recent — machine-picked at random, quality-gated, every source linked";
     })
-    .catch(function(){ /* fallback cards stay */ });
+    .catch(function(){ /* static fallback cards stay */ });
 
   /* ---- badge snippet copy ---- */
   var snip = document.getElementById("snippet");

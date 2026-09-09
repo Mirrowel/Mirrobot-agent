@@ -48,18 +48,42 @@ CANDS="$WORK/candidates.tsv"   # repo|number|isPR|title
 RAW="$WORK/raw.jsonl"          # one JSON object per harvested post
 : > "$CANDS"; : > "$RAW"
 
-# ---- 1. candidate threads: search per repo x bot (commenter + reviewed-by) ----
-search_candidates() { # $1 = repo, $2 = qualifier
-  gh api -X GET search/issues --paginate \
-    -f q="repo:$1 $2" -f sort=created -f order=desc -f per_page=30 \
-    --jq ".items[] | [\"$1\", .number, (if has(\"pull_request\") then \"pr\" else \"issue\" end), (.title // \"\")] | @tsv" 2>/dev/null || true
+# ---- 1. candidate threads: search per repo (commenter ORs + reviewed-by ORs) ----
+# One search per kind per repo — repeated qualifiers are OR'ed by GitHub
+# search, so all bot identities ride one query. This keeps search pressure
+# low: the endpoint secondary-rate-limits aggressively (observed live: HTTP
+# 403 after a few rapid harvests), which silently starves the pool.
+# Every search is logged; failures retry once (60s backoff on secondary
+# rate limits) and are counted loudly — they never abort the harvest.
+SEARCH_FAILS=0
+search_candidates() { # $1 = full q= query, $2 = label for logs, $3 = repo (tsv column 1)
+  local out n tries=0 err="$WORK/search.err"
+  while :; do
+    tries=$((tries + 1))
+    if out=$(gh api -X GET search/issues --paginate \
+        -f q="$1" -f sort=created -f order=desc -f per_page=30 \
+        --jq ".items[] | [\"$3\", .number, (if has(\"pull_request\") then \"pr\" else \"issue\" end), (.title // \"\")] | @tsv" 2>"$err"); then
+      n=$(printf '%s' "$out" | grep -c .) || true
+      echo "harvest: search [$2] ok, ${n:-0} thread(s)" >&2
+      printf '%s\n' "$out"
+      return 0
+    fi
+    echo "harvest: search [$2] FAILED (attempt $tries): $(tail -2 "$err" 2>/dev/null | tr '\n' ' ')" >&2
+    [ "$tries" -ge 2 ] && { SEARCH_FAILS=$((SEARCH_FAILS + 1)); return 1; }
+    if grep -qi "secondary rate" "$err" 2>/dev/null; then sleep 65; else sleep 4; fi
+  done
 }
 
 for REPO in $EXCERPT_REPOS; do
+  COMMENT_Q="repo:$REPO"; REVIEW_Q="repo:$REPO"
   for BOT in $(printf '%s' "$EXCERPT_BOTS" | tr ',' ' '); do
-    search_candidates "$REPO" "commenter:$BOT" >> "$CANDS"
-    search_candidates "$REPO" "reviewed-by:$BOT" >> "$CANDS"
+    COMMENT_Q="$COMMENT_Q commenter:$BOT"
+    REVIEW_Q="$REVIEW_Q reviewed-by:$BOT"
   done
+  search_candidates "$COMMENT_Q" "$REPO commenter" "$REPO" >> "$CANDS" || true
+  sleep 2
+  search_candidates "$REVIEW_Q" "$REPO reviewed-by" "$REPO" >> "$CANDS" || true
+  sleep 2
 done
 sort -u -t$'\t' -k1,2 "$CANDS" -o "$CANDS"
 TOTAL_CAND=$(wc -l < "$CANDS")
@@ -95,8 +119,9 @@ fetch_thread() { # $1 = repo, $2 = number, $3 = issue|pr
         | map(select(((.author.login // \"\") | ascii_downcase) as \$a | (\"$BOTS_LOWER\" | split(\",\") | index(\$a)))
           | select((.body // \"\") | length > 0)
           | {k:\"review\", t:(.body // \"\"), ti:\$ti, w:(.submittedAt // \"\"), u:(.url // \"\")})
-        else [] end)" 2>/dev/null || true
+        else [] end)" 2>/dev/null || { echo "harvest: thread $1#$2 fetch FAILED" >&2; FETCH_FAILS=$((FETCH_FAILS + 1)); true; }
 }
+FETCH_FAILS=0
 
 while IFS=$'\t' read -r REPO NUM KIND TITLE; do
   [ -n "${REPO:-}" ] || continue
@@ -124,7 +149,8 @@ jq -s --argjson clip "$EXCERPT_MIN_CLIP" --argjson max "$EXCERPT_MAX" --argjson 
       | if .k == "review"
         then ($body | length <= 2400) and (($bt * 3) < ($body | length))
         else ($body | length >= 150) and ($body | length <= 900) and (($bt * 7) < ($body | length))
-          and (($body | test("^@\\S+ +(thanks|on it|hi |hello|acknowledg)";"i")) | not) end)
+          and ((($body | test("^@\\S+[,:]?\\s+(thanks|on it|i.?m on it|hi\\b|hello|acknowledg)";"i"))
+             or ($body | test("^(you.?re (absolutely )?right|good catch|great (catch|report)|looks good to merge|time to review my own work)";"i"))) | not) end)
     | .t = (if ($body | length) > $clip
       then (($body[0:$clip] | sub("\\s+\\S*$";"")) + "…") else $body end)
     | select((.u | length) > 0)
@@ -140,8 +166,10 @@ jq -s --argjson clip "$EXCERPT_MIN_CLIP" --argjson max "$EXCERPT_MAX" --argjson 
       | $R[0:$max] + (if ($R|length) < $floor then $O[0:($floor - ($R|length))] else [] end)
     else . end)
   | .[0:$max]
-  | {generated: (now | todateiso8601), items: .}
+  | {generated: (now | todateiso8601), days: $days, items: .}
 ' "$RAW" > "$EXCERPT_OUT"
 
 POOL=$(jq '.items | length' "$EXCERPT_OUT")
 echo "harvest: pool = $POOL item(s) -> $EXCERPT_OUT"
+echo "harvest: health — $SEARCH_FAILS search failure(s), $FETCH_FAILS thread-fetch failure(s)"
+[ "$SEARCH_FAILS" -eq 0 ] || echo "harvest: WARNING searches failed — pool may be starved; the page shows only recent items and degrades to a notice when there are none" >&2

@@ -28,7 +28,7 @@ The page deals 8 cards at random per visit from the static JSON — visitors spe
 | `EXCERPT_DAYS` | `180` | recency tier: posts newer than this many days fill the pool first (`0` disables tiering) |
 | `EXCERPT_MIN` | `40` | backfill floor: older posts top up only while the recent tier is under this many items |
 
-Per-thread fetches read the **newest** window (`last:` in GraphQL), so long threads contribute their recent posts, not their 2019-era ones.
+Per-thread fetches read the **newest** window (`last:` in GraphQL), so long threads contribute their recent posts, not their 2019-era ones. Cards render only items inside the recency window (`days` is embedded in `excerpts.json`); when the recent tier is empty the section degrades to a notice that half-jokes about it and suggests summoning the bot to investigate. Searches are combined per repository (repeated `commenter:`/`reviewed-by:` qualifiers are OR'ed), paced, and retried with a 60s backoff on secondary rate limits — the search endpoint 403s aggressively under bursts, which is the fastest way to starve the pool.
 
 The harvester (`.github/scripts/harvest-excerpts.sh`) accepts the same knobs as environment variables for local runs; it needs an authenticated `gh` (search + GraphQL + REST) and `jq`.
 
