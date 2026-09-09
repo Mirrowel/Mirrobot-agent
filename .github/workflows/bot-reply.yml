@@ -182,9 +182,21 @@ jobs:
         env:
           COMMENT_ID_INPUT: ${{ inputs.commentId }}
           THREAD_NUMBER_INPUT: ${{ inputs.threadNumber }}
+          THREAD_TYPE_INPUT: ${{ inputs.threadType || '' }}
+          TARGET_REPO_INPUT: ${{ inputs.targetRepo || '' }}
         run: |
-          if [ -z "$COMMENT_ID_INPUT" ] || [ -z "$THREAD_NUMBER_INPUT" ]; then
-            echo "::error::commentId and threadNumber dispatch inputs are required (got empty values)"
+          # threadNumber: always required. commentId: required only on the
+          # home comment path (no targetRepo, no threadType) — guest body
+          # mentions (commentId-less by nature) and discussion dispatches
+          # (discussion-new has no comment; guest discussion relays carry
+          # none because discussion notifications hold no comment id) all
+          # resolve their trigger content by re-fetch instead.
+          if [ -z "$THREAD_NUMBER_INPUT" ]; then
+            echo "::error::threadNumber dispatch input is required (got empty)"
+            exit 1
+          fi
+          if [ -z "$COMMENT_ID_INPUT" ] && [ -z "$TARGET_REPO_INPUT" ] && [ -z "$THREAD_TYPE_INPUT" ]; then
+            echo "::error::commentId dispatch input is required on the home comment path (got empty)"
             exit 1
           fi
       # Sparse default-branch checkout for the SHARED routing script, so the
