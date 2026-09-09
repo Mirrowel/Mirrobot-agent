@@ -152,7 +152,7 @@ grep -q 'cut -c1-600' .github/workflows/*.yml && { echo 'FAIL: flatten-cut taint
 need cc 'compliance'                           "cc: compliance mission"
 need cc 'file group'                           "cc: file groups wiring"
 need cc 'template'                             "cc: report template wiring"
-need ic 'Initial Analysis Report'              "ic: analysis output shape"
+need ic 'Step 3: Report'                    "ic: report step exists (shape is open)"
 need ic 'thanks'                               "ic: acknowledgment duty"
 
 # ---- context noise filtering + identity (2026-08 rework) ----
@@ -163,6 +163,30 @@ for f in rf ru cc cf; do
 done
 need ru 'your NAME, not an identity'           "ru: name-vs-identity rule"
 need br 'your name, not an identity'           "br: name-vs-identity rule"
+# ---- voice (universal agent trait, every mode) ----
+for f in rf ru br ic cc cf; do
+  need $f 'You are your own person'            "$f: voice: own person"
+  need $f 'never grade the person'             "$f: voice: no praise-grading"
+  need $f 'Pushback is a gift'                 "$f: voice: pushback doctrine"
+  need $f 'Humor is seasoning'                 "$f: voice: humor bounds"
+done
+
+# ---- analyst rework (2026-09-09: open-ended triage, label manager) ----
+need ic 'NEVER apply .Agent Monitored'              "ic: Agent Monitored is collaborator-only"
+need ic 'never redo done work'                      "ic: duplicate stop rule"
+need ic 'Labels: apply them, don.t just suggest'    "ic: labels applied, not suggested"
+need ic 'the repository.s own labels always win'    "ic: repo label customs take precedence"
+need ic 'earn evaluation, not applause'             "ic: feature-worth gate"
+need ic 'quick pass, not an exhaustive audit'       "ic: fast duplicate search"
+need ic 'Confidence belongs in the verdict'         "ic: calibrated confidence"
+neednt ic 'Issue Validation'                        "ic: old verdict form is dead"
+neednt ic 'Reproducibility Assessment'              "ic: old report skeleton is dead"
+neednt ic 'great catch'                             "ic: fawning ack example is dead"
+
+# ---- optional questions cure (2026-09-09: never filler) ----
+need rf 'never as filler'  "rf: questions optional (protocol-first)"
+need ru 'never as filler'  "ru: questions optional (review-submission)"
+
 # ---- severity universal + inline format (agent trait, every mode) ----
 for f in rf ru br ic cc cf; do
   need $f 'Severity System'                      "$f: severity part present"

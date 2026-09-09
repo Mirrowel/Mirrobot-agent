@@ -10,10 +10,12 @@ First-contact triage for newly opened issues.
 
 On a new issue, one agent session that:
 
-- **hunts duplicates** against open+recent issues (and links them),
-- reads the report and sketches a **root-cause hypothesis** with the evidence it could gather,
-- applies **labels** where it's confident,
-- posts a short triage comment: what it understood, what it suspects, what it checked, and, if the fix is obvious and small, a suggested approach (suggestions only; contributions go through bot-reply),
+- classifies what the issue actually is (bug, feature, support ask in disguise, misconfiguration),
+- **hunts duplicates** with a quick pass over open and closed issues (a similar issue's linked PRs count as sources); a duplicate that already has an agent analysis gets linked, labeled, and the agent stops — the work is done. Otherwise everything happens in THIS thread,
+- judges neutrally — neither presuming the filer wrong nor right — reproducing where it can, rooting causes at file:line, and checking whether a fix is already in flight (open PRs, `dev`/`experimental`),
+- **evaluates feature requests** instead of validating them (motivation, existing alternatives, feasibility, impact, worth-building),
+- **applies labels directly** — the repo's own labels always win; the seeded vocabulary (kind, `severity:*`, triage states) is the default palette; `Agent Monitored` is collaborator-only and never applied,
+- posts its analysis in its own shape: verdict + severity + evidence + what's next are the content, the form is not a template,
 - reacts 👀 immediately on pickup.
 
 Issues whose body mentions the bot still route here (Bot Reply listens to *comments*, never issue bodies: a mention in an issue body gets the one analysis post, and the conversation starts with the first comment).
@@ -24,7 +26,7 @@ The agent session (real), or the issue re-fetch (deleted issue). Gray skip = pau
 
 ## Knobs
 
-`AGENT_MODELS_JSON["issue-comment"]`, plus the shared env-block knobs. Triage personality and label vocabulary live in the `mission-issue` prompt parts.
+`AGENT_MODELS_JSON["issue-comment"]`, plus the shared env-block knobs. The triage mission lives in `mission-analyst.md`; the label vocabulary is seeded by Agent Bootstrap (repo label customs always take precedence over the seeded palette).
 
 ## Testing it
 

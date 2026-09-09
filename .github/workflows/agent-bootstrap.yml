@@ -136,6 +136,64 @@ jobs:
           fi
           echo "Bootstrap complete."
 
+      - name: Seed label vocabulary (create-if-missing)
+        # Labels are public repo metadata (unlike variables) - naming what
+        # was created is fine and useful. Existing labels are NEVER touched:
+        # a repo's own label customs always win over the seeded palette.
+        env:
+          GH_TOKEN: ${{ secrets.ACCOUNT_GH_TOKEN || steps.app_token.outputs.token }}
+          REPO: ${{ github.repository }}
+          MODE: ${{ steps.token.outputs.mode }}
+        run: |
+          set -u
+          if [ "$MODE" = "manual" ]; then
+            echo "::notice::No bot token available - labels not seeded (re-run bootstrap after adding a bot identity, or create them from the run summary's label table)."
+            exit 0
+          fi
+          # name|color|description (GitHub-standard labels keep their
+          # canonical colors/descriptions; the rest follow the prefix
+          # conventions of the agent's triage vocabulary).
+          LABELS='
+          bug|d73a4a|Something isn't working
+          duplicate|cfd3d7|This issue or pull request already exists
+          enhancement|a2eeef|New feature or request
+          documentation|0075ca|Improvements or additions to documentation
+          question|d876e3|Support ask or clarification
+          invalid|e4e669|This doesn't seem right
+          wontfix|ffffff|This will not be worked on
+          help wanted|008672|Extra attention is needed
+          good first issue|7057ff|Good for newcomers
+          severity: critical|b60205|Agent severity: critical
+          severity: major|ff7518|Agent severity: major
+          severity: minor|fbca04|Agent severity: minor
+          severity: info|1d76db|Agent severity: info
+          confirmed|0e8a16|Verified by the agent's analysis
+          as-designed|9e9e9e|Behavior is intended; not a bug
+          needs-info|fef2c0|Blocked on more information from the filer
+          needs-decision|d4c5f9|Awaiting a maintainer decision
+          already-fixed|bfd4f2|Fixed on a branch, PR, or release; nothing left to do here
+          accepted|207de5|Feature request evaluated and worth building
+          wish|bfe5bf|Not on the roadmap; maybe someday
+          Agent Monitored|5319e7|Collaborator-applied: PR watched by the agent (the agent never applies this)
+          '
+          gh label list -R "$REPO" --limit 200 --json name --jq '.[].name' > /tmp/existing_labels.txt
+          CREATED=0
+          while IFS='|' read -r name color desc; do
+            [ -z "$name" ] && continue
+            if grep -qxF "$name" /tmp/existing_labels.txt; then
+              continue
+            fi
+            if gh label create "$name" -R "$REPO" --color "$color" --description "$desc" >/dev/null 2>&1; then
+              CREATED=$((CREATED+1))
+            else
+              LABEL_FAILED=1
+            fi
+          done <<< "$LABELS"
+          if [ "${LABEL_FAILED:-0}" = "1" ]; then
+            echo "::warning::Some labels could not be added (token may lack label access). Existing labels were untouched."
+          fi
+          echo "Label seeding done. New labels: $CREATED (existing untouched)."
+
       - name: Static configuration checklist
         # STATIC documentation only - identical output on every repo, every
         # run. Reveals nothing about actual state (by design AND by
@@ -183,6 +241,15 @@ jobs:
           gh secret set OPENCODE_MODEL        -R <owner>/<repo> --body "provider/model"
           gh secret set OPENCODE_CONFIG_JSON  -R <owner>/<repo> < config.min.json
           ```
+
+          ### Labels
+
+          The bootstrap also seeds the triage label vocabulary (existing labels untouched — your repo's own labels always win). The issue-analysis agent applies these automatically; maintainers can use them freely:
+
+          - **Kind:** `bug` `duplicate` `enhancement` `documentation` `question` `invalid` `wontfix` (+ `help wanted`, `good first issue` for contributors)
+          - **Severity (agent-applied with the verdict):** `severity: critical` `severity: major` `severity: minor` `severity: info`
+          - **Triage state:** `confirmed` `as-designed` `needs-info` `needs-decision` `already-fixed` `accepted` `wish`
+          - **Collaborator-only:** `Agent Monitored` (marks PRs watched by the agent — the agent itself never applies it)
 
           ### Manual variable seeding (if the seeding step could not run)
 

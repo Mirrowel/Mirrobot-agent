@@ -11,7 +11,7 @@
 │   │   ├── bot-setup/          # Dual-identity token mint + config layering + deps
 │   │   └── requester-context/  # Factual trust-line output for the security brief
 │   ├── prompts/                # Agent behavior, as composable prose
-│   │   ├── parts/              # 33 instruction parts (the prose)
+│   │   ├── parts/              # 34 instruction parts (the prose)
 │   │   ├── manifests/          # 13 mode manifests (the assembly order)
 │   │   ├── security-brief.md   # Read first in every agent session
 │   │   └── guest-rules.md      # Guest-mode rules, injected after the brief

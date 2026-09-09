@@ -95,7 +95,7 @@ flowchart TB
         S2["2 · Trusted artifacts secured<br/>before any PR checkout"]
         S3["3 · Workspace scrub + taint alarm<br/>(removed files quarantined, readable as data)"]
         S4["4 · Context: 3-block review memory,<br/>diffs, trusted roster, requester trust line"]
-        S5["5 · Prompt assembled from parts<br/>(33 parts → 13 mode manifests)"]
+        S5["5 · Prompt assembled from parts<br/>(34 parts → 13 mode manifests)"]
         S6["6 · OpenCode session<br/>the agent does the work"]
         S7["7 · Verification: footer/SHA checks,<br/>repair, reactions"]
         S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
@@ -302,7 +302,7 @@ The full threat model, defense by defense, with the known residuals: [docs/secur
 │   └── requester-context/            # trust-line context (association + roster)
 ├── prompts/
 │   ├── security-brief.md             # read first in every agent session
-│   ├── parts/                        # 33 instruction parts (the prose)
+│   ├── parts/                        # 34 instruction parts (the prose)
 │   └── manifests/                    # 13 mode manifests (the assembly order)
 ├── scripts/                          # 14 scripts: assembler, scrub, identity
 │                                     # config, discussion fetch, roster, review

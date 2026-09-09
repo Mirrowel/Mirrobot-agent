@@ -11,7 +11,9 @@ Creates every documented **variable** with its safe-off default or prefilled tem
 
 `AGENT_PAUSED=false`, `AGENT_PAUSED_PARTS_JSON` (all four parts `false`), the empty `AGENT_MODELS_JSON` template, `BOT_IDENTITIES` (account mode: the /user-derived login; app mode: the stock fallback names; a flat comma list), `BOT_TRIGGERS="mirrobot, mirrobot-agent"` (both stems, showing the multi-stem shape, so `/mirrobot-review` and `/mirrobot-agent-review` both work), `CONTEXT_LIMITS_JSON` (the full context-budget template), `CONTEXT_FILTER_PATTERNS_JSON=[]`, `FOREIGN_MENTIONS_ENABLED=false`, `OPENCODE_PLUGINS_JSON={}`, `PREVIOUS_BOT_REVIEWS_COUNT=1`.
 
-Then it writes a **static checklist** into the run summary: every variable with its meaning, every secret with where-to-get-it, and copy-paste `gh variable set` commands as the manual fallback.
+Then it seeds the **label vocabulary** (create-if-missing, same never-overwrite contract): the GitHub-standard kind labels, the agent's `severity: critical/major/minor/info`, triage states (`confirmed`, `as-designed`, `needs-info`, `needs-decision`, `already-fixed`, `accepted`, `wish`), and `Agent Monitored` (collaborator-only — the agent never applies it). A repo's existing labels are never touched; its own customs always outrank the seeded palette.
+
+Then it writes a **static checklist** into the run summary: every variable with its meaning, every secret with where-to-get-it, the label vocabulary, and copy-paste `gh variable set` commands as the manual fallback.
 
 Deliberately **not** created: the three empty-default variables (`CONTEXT_IGNORE_AUTHORS`, `TRUSTED_AGENT_USERS`, `FOREIGN_MENTIONS_USERS`), GitHub variables cannot hold empty values (the API rejects empty values with a 422, verified against a live run) and absence already means empty everywhere. Set them only when you have content.
 

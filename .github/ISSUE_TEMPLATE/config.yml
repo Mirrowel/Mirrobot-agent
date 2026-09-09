@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions & Ideas
+    url: https://github.com/Mirrowel/Mirrobot-agent/discussions
+    about: Ask anything or float ideas in Discussions — mention the agent there and it will pick it up.
