@@ -419,15 +419,22 @@ jobs:
                   | ([(($c.replies.nodes // [])[])
                       | select(.isMinimized != true)
                       | select(kept(.author.login // ""))
-                      | select((.body // "") | noise(.) | not)]) as $rk
-                  | ($rk[0:$dr]) as $show
-                  | (($c.replies.totalCount // ($rk | length)) - ($show | length)) as $rdrop
-                  | "- \($c.author.login // "?") (\($c.authorAssociation // "NONE")) at \($c.createdAt):\n\(clip($c.body // ""))"
-                    + (if ($show | length) > 0 then "\n" + ([$show[] | "    ↳ \(.author.login // "?"): \(clip(.body // ""))"] | join("\n")) else "" end)
-                    + (if $rdrop > 0 then "\n    [\($rdrop) replies not shown here (older than the window or filtered) - retrieve via GraphQL replies() if they matter]" else "" end) ]
-                | .[0:$dt]
-                | reverse
-                | join("\n\n")')
+                      | select((.body // "") | noise(.) | not)]
+                      | sort_by(.createdAt) | reverse | .[0:$dr] | sort_by(.createdAt)) as $show
+                  | (($c.replies.totalCount // (($show | length) + 0)) - ($show | length)) as $rdrop
+                  | { at: ($c.createdAt // "0"),
+                      txt: ("- \($c.author.login // "?") (\($c.authorAssociation // "NONE")) at \($c.createdAt):\n\(clip($c.body // ""))"
+                        + (if ($show | length) > 0 then "\n" + ([$show[] | "    ↳ \(.author.login // "?"): \(clip(.body // ""))"] | join("\n")) else "" end)
+                        + (if $rdrop > 0 then "\n    [\($rdrop) replies not shown here (older than the window or filtered) - retrieve via GraphQL replies() if they matter]" else "" end)) } ]
+                # SELECTION keeps the newest dt threads (sort descending,
+                # slice) - the raw page arrives ascending, so slicing it
+                # directly took the OLDEST dt of the window. Render then
+                # the OLDEST dt of the window (live-caught class). Render then
+                # re-sorts chronologically: conversations read top-to-bottom
+                # the way a human would (fetch newest-first, present
+                # oldest-first).
+                | sort_by(.at) | reverse | .[0:$dt] | sort_by(.at)
+                | map(.txt) | join("\n\n")')
             total_threads=$(printf '%s' "$disc_json" | jq -r '.comments.totalCount // (.comments.nodes | length)')
             # Count rendered THREAD HEADS only (shape-pinned: "- Login (ASSOC)
             # at <ts>:") - comment bodies contain their own "- " bullets that
@@ -464,7 +471,7 @@ jobs:
             TC_DELIM="DISC_CTX_EOF_$(openssl rand -hex 8)"
             DISC_BODY=$(printf '%s' "$disc_json" | jq -r '(.body // "") | if length > 8000 then .[0:8000] + "\n[discussion body truncated]" else . end')
             { printf 'THREAD_CONTEXT<<%s\n' "$TC_DELIM"
-              printf '%s\n\nDiscussion body:\n%s\n\nComment threads (newest %s top-level, up to %s replies each, filtered):\n%s%s\n' "$cat_hdr" "$DISC_BODY" "$LIM_DT" "$LIM_DR" "$comments_rendered" "$threads_note"
+              printf '%s\n\nDiscussion body:\n%s\n\nComment threads (the %s most recent top-level, up to %s replies each, oldest-first below, filtered):\n%s%s\n' "$cat_hdr" "$DISC_BODY" "$LIM_DT" "$LIM_DR" "$comments_rendered" "$threads_note"
               printf '%s\n' "$TC_DELIM"; } >> "$GITHUB_ENV"
             # Reply anchoring: a comment-trigger answers INSIDE that comment's
             # thread (replyTo); only new-discussion bodies (or a guest relay
