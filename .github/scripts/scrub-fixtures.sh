@@ -1079,6 +1079,28 @@ check "order: memory-block labels say chronological" yes \
 ORDER_PROBE=$(printf '[{"at":"2026-01-01","t":"old"},{"at":"2026-02-02","t":"mid"},{"at":"2026-03-03","t":"new"}]' | jq -r --argjson dt 2 '[.[] | {at, txt: .t}] | sort_by(.at) | reverse | .[0:$dt] | sort_by(.at) | map(.txt) | join(",")')
 check "order: behavioral probe (newest 2 selected, rendered oldest-first)" "mid,new" "$ORDER_PROBE"
 
+# ---- addressable context: every conversation line carries its id ----------
+# Live-caught via the agent's own workaround: reactions.md teaches
+# POST .../comments/<comment_id>/reactions but NO renderer carried ids, so
+# everything beyond the trigger was taught-yet-unaddressable. Every surface
+# now renders the id: numeric [id N] on issues/PRs (exactly what the REST
+# endpoints want), node ids [DC_...] on discussions (what replyTo/addReaction
+# want).
+check "ids: PR conversation comments carry [id N]" yes \
+  "$(grep -q 'map("- \[id "' "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
+check "ids: bot-reply issue-mode comments carry [id N]" yes \
+  "$(grep -q 'map("- \[id "' "$SCRIPT_DIR/../workflows/bot-reply.yml" && echo yes || echo no)"
+check "ids: issue-comment renders ids in both paths" "2" \
+  "$(grep -c '"- \[id "' "$SCRIPT_DIR/../workflows/issue-comment.yml" | tr -d ' ')"
+check "ids: discussion thread heads carry node ids" yes \
+  "$(grep -qF '"- [\($c.id)]' "$SCRIPT_DIR/../workflows/bot-reply.yml" && echo yes || echo no)"
+check "ids: discussion reply lines carry node ids" yes \
+  "$(grep -qF '"    ↳ [\(.id)]' "$SCRIPT_DIR/../workflows/bot-reply.yml" && echo yes || echo no)"
+check "ids: reactions.md points at the context-line ids" yes \
+  "$(grep -q 'numeric comment id rides every conversation line' "$SCRIPT_DIR/../prompts/parts/reactions.md" && grep -q 'addReaction' "$SCRIPT_DIR/../prompts/parts/reactions.md" && echo yes || echo no)"
+check "ids: posting.md arbitrary-reply lane uses context node ids" yes \
+  "$(grep -q 'f r=\"<that comment' "$SCRIPT_DIR/../prompts/parts/posting.md" && echo yes || echo no)"
+
 # ---- HIDDEN = GONE: minimized reviews/comments never count as coverage ------
 # Live-caught: hiding a review left its marker anchoring the next review -
 # hide means wanted-deleted. One shared GraphQL source (minimized-nodes.sh)
