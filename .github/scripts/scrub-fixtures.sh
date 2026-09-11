@@ -378,6 +378,47 @@ check "permission: legit jq flows unaffected" 0 "$pt"
 pt=0; for t in "${denied_tests[@]}"; do hit=0; for r in "${deny_rules[@]}"; do [[ $t == $r ]] && hit=1; done; [ $hit -eq 0 ] && pt=1; done
 check "permission: all env-dump forms denied" 0 "$pt"
 
+# ---- gh api permission matrix (REAL rules, ORDERED, last-match-wins) -------
+# Replicates opencode semantics: rules evaluated in file order, last match
+# wins. Anchored REST-path denies + graphql allow LAST. Live-caught seed:
+# the bare *actions* deny blocked any query carrying the reactions FIELD.
+gh_rules=$(jq -r '.permission.bash | to_entries[] | "\(.value)\t\(.key)"' "$SCRIPT_DIR/../actions/bot-setup/permissions.example.json" | tr -d '\r')
+gh_verdict() { # command -> final verdict via ordered evaluation
+  local t="$1" v="allow" line pat
+  while IFS=$'\t' read -r verdict pat; do
+    [ -n "$pat" ] || continue
+    # shellcheck disable=SC2254
+    case "$t" in $pat) v="$verdict" ;; esac
+  done <<RULES
+$gh_rules
+RULES
+  printf '%s' "$v"
+}
+check "perm-gh: graphql reactions field allowed (live-caught collision)" allow \
+  "$(gh_verdict "gh api graphql -f query='query { repository { discussion(number:5) { comments { nodes { author { login } reactions { content } } } } } } }'")"
+check "perm-gh: graphql addDiscussionComment reply mutation allowed" allow \
+  "$(gh_verdict "gh api graphql -f query='mutation(\$b: String!, \$d: ID!, \$r: ID) { addDiscussionComment(input: {discussionId: \$d, body: \$b, replyTo: \$r}) { comment { id } } }' -f body=@/tmp/b.md")"
+check "perm-gh: reading a file named dispatcher.py allowed" allow \
+  "$(gh_verdict "gh api repos/Mirrowel/LLM-API-Key-Proxy/contents/src/dispatcher.py")"
+check "perm-gh: code search for 'variables' allowed" allow \
+  "$(gh_verdict "gh api search/code?q=variables%20repo:Mirrowel/LLM-API-Key-Proxy")"
+check "perm-gh: REST actions runs denied" deny \
+  "$(gh_verdict "gh api /repos/Mirrowel/LLM-API-Key-Proxy/actions/runs")"
+check "perm-gh: repository_dispatch POST denied" deny \
+  "$(gh_verdict "gh api -X POST /repos/Mirrowel/LLM-API-Key-Proxy/dispatches -f event_type=x")"
+check "perm-gh: actions variables write denied" deny \
+  "$(gh_verdict "gh api /repos/Mirrowel/LLM-API-Key-Proxy/actions/variables/PROD")"
+check "perm-gh: repo secrets read denied" deny \
+  "$(gh_verdict "gh api /repos/Mirrowel/LLM-API-Key-Proxy/secrets")"
+check "perm-gh: environment secrets denied" deny \
+  "$(gh_verdict "gh api /repos/Mirrowel/LLM-API-Key-Proxy/environment-secrets/DEPLOY_KEY")"
+check "perm-precision: os.environ import-alias exfil denied" deny \
+  "$(gh_verdict "python -c \"from os import environ as e; print(e['GH_TOKEN'])\"")"
+check "perm-precision: ps eww env-dump denied" deny \
+  "$(gh_verdict "ps eww")"
+check "perm-precision: plus-refspec force push denied" deny \
+  "$(gh_verdict "git push origin +main")"
+
 # ---- agent-router decision matrix (exercises the REAL route-comment.sh) ----
 route() { # body is_pr -> flags or "none" — delegates to the shared script
   # SCRIPT_DIR is the absolute path computed at script start (line 9); do NOT
