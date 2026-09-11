@@ -81,7 +81,8 @@ So the default value gives you `@mirrobot`, `@mirrobot-agent`, `/mirrobot-review
   "thread-comments": 10,
   "orphan-threads": 20,
   "orphan-thread-comments": 10,
-  "discussion-comments": 70,
+  "discussion-threads": 40,
+  "discussion-replies": 30,
   "body-chars": 3000
 }
 ```
@@ -97,7 +98,8 @@ How much thread context the agent reads, per fetch:
 | `thread-comments` | Replies per fetched thread (oldest dropped) |
 | `orphan-threads` | Review-less threads ("Add single comment" notes), newest first |
 | `orphan-thread-comments` | Replies per orphaned thread |
-| `discussion-comments` | Discussion-thread comments (GitHub Discussions; the largest window — discussions have no reviews/threads competing for budget). Foreign discussion sessions scan a small window for the mentioning comment |
+| `discussion-threads` | Newest top-level comment-threads rendered in a discussion session (GitHub Discussions). Filtering (hidden/noise/ignored) runs before the window caps |
+| `discussion-replies` | Newest replies rendered per discussion comment-thread. Threads with more content than shown carry an explicit "N replies not shown" marker so the agent can retrieve the rest |
 | `body-chars` | Per-post body cap (comments AND review summaries). Longer bodies are cut with a visible `[body truncated]` marker. Count caps alone cannot bound a single 50KB comment; this does |
 
 Everything is *up to*, newest-first, deduped. **Filter before cap, everywhere:** hidden (minimized) content never consumes a slot; resolved/outdated content never does outside the elevated block; and the fetch itself overfills each window (3x) with a cursor catch-up page when noise truncates one, so the numbers below count *content shown*, never content wasted on filtered posts. Lower the numbers on noisy repos for smaller first prompts; this is the primary cost knob alongside per-agent models. Malformed JSON: warning + per-key defaults (a broken knob is visible, not fatal).
