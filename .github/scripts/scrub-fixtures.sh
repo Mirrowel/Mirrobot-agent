@@ -944,7 +944,7 @@ rm -rf "$SD_TMP"
 
 # ---- per-body budget (body-chars) ------------------------------------------
 check "body-chars: default parsed in fetch-pr-discussion" yes \
-  "$(grep -q '"body-chars" // 3000' "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
+  "$(grep -q '"body-chars" // 4000' "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
 check "body-chars: clip applied to all four body sites" "4" \
   "$(grep -c 'clip((' "$SCRIPT_DIR/fetch-pr-discussion.sh" | tr -d ' ')"
 check "body-chars: issue-mode comments clip + patterns + budget" yes \

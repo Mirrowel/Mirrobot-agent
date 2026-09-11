@@ -83,7 +83,7 @@ So the default value gives you `@mirrobot`, `@mirrobot-agent`, `/mirrobot-review
   "orphan-thread-comments": 10,
   "discussion-threads": 40,
   "discussion-replies": 30,
-  "body-chars": 3000
+  "body-chars": 4000
 }
 ```
 

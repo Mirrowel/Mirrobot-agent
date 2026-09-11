@@ -27,7 +27,7 @@
 #     "orphan-threads": 20,         // review-less threads ("Add single
 #                                    //   comment"), newest first
 #     "orphan-thread-comments": 10, // replies per orphaned thread
-#     "body-chars": 3000            // per-post body cap (comments AND review
+#     "body-chars": 4000            // per-post body cap (comments AND review
 #                                    //   summaries); longer bodies are cut
 #                                    //   with a visible [body truncated]
 #                                    //   marker - count caps alone cannot
@@ -100,7 +100,7 @@ if [ -n "${CONTEXT_LIMITS_JSON:-}" ]; then
     LIM_THREAD_COMMENTS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."thread-comments" // 10')
     LIM_ORPHAN_THREADS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."orphan-threads" // 20')
     LIM_ORPHAN_THREAD_COMMENTS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."orphan-thread-comments" // 10')
-    LIM_BODY_CHARS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."body-chars" // 3000')
+    LIM_BODY_CHARS=$(printf '%s' "$CONTEXT_LIMITS_JSON" | jq -r '."body-chars" // 4000')
   else
     echo "::warning::CONTEXT_LIMITS_JSON is not a JSON object; using per-key defaults."
   fi

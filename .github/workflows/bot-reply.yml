@@ -282,7 +282,7 @@ jobs:
             [ -z "$CLJ" ] && CLJ='{}'
             LIM_DT=$(printf '%s' "$CLJ" | jq -r '."discussion-threads" // 40')
             LIM_DR=$(printf '%s' "$CLJ" | jq -r '."discussion-replies" // 30')
-            LIM_BC=$(printf '%s' "$CLJ" | jq -r '."body-chars" // 3000')
+            LIM_BC=$(printf '%s' "$CLJ" | jq -r '."body-chars" // 4000')
             # Overfill 3x for filter-before-cap, clamped to GraphQL's 100 max.
             TCOUNT=$LIM_DT; [ $((TCOUNT * 3)) -le 100 ] && TCOUNT=$((LIM_DT * 3)) || TCOUNT=100
             RCOUNT=$LIM_DR; [ $((RCOUNT * 3)) -le 100 ] && RCOUNT=$((LIM_DR * 3)) || RCOUNT=100
@@ -948,7 +948,7 @@ jobs:
             created_at=$(echo "$issue_data" | jq -r .createdAt)
             state=$(echo "$issue_data" | jq -r .state)
             title=$(echo "$issue_data" | jq -r .title)
-            body=$(echo "$issue_data" | jq -r --argjson bc "$(printf '%s' "${CONTEXT_LIMITS_JSON:-}" | jq -r '."body-chars" // 3000')" '(.body // "(No description provided)") | if length > $bc then .[0:$bc] + "\n[body truncated]" else . end')
+            body=$(echo "$issue_data" | jq -r --argjson bc "$(printf '%s' "${CONTEXT_LIMITS_JSON:-}" | jq -r '."body-chars" // 4000')" '(.body // "(No description provided)") | if length > $bc then .[0:$bc] + "\n[body truncated]" else . end')
             # Prepare comments - SAME discipline as fetch-pr-discussion.sh:
             # filter-before-cap (ignored authors + AI-reviewer noise patterns
             # never consume a slot), then newest-N survivors, then per-body
@@ -963,7 +963,7 @@ jobs:
               --arg ignore_authors "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" \
               --argjson patterns "$FILTER_PATTERNS_JSON" \
               --argjson limComments "$(printf '%s' "${CONTEXT_LIMITS_JSON:-}" | jq -r '.comments // 30')" \
-              --argjson bodyChars "$(printf '%s' "${CONTEXT_LIMITS_JSON:-}" | jq -r '."body-chars" // 3000')" '
+              --argjson bodyChars "$(printf '%s' "${CONTEXT_LIMITS_JSON:-}" | jq -r '."body-chars" // 4000')" '
               ($ignore_authors | split(",") | map(select(length > 0))) as $ignored |
               def noisy: ((.body // "") as $b | [ $patterns[] | . as $p | select($b | test("(?i)" + $p)) ] | length > 0);
               def clip($s): if ($s | length) > $bodyChars then ($s[0:$bodyChars] + "\n[body truncated]") else $s end;
