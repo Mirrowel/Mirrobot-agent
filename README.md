@@ -148,8 +148,11 @@ Both work identically downstream; presence of the account token selects account 
 python minify_json_secret.py .github/actions/bot-setup/permissions.example.json > config.min.json
 
 gh secret set OPENCODE_MODEL       -R <owner>/<repo> --body "anthropic/claude-sonnet-4"
-gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < config.min.json
+gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < config.min.json        # bash/macOS/Linux
 gh secret set ACCOUNT_GH_TOKEN     -R <owner>/<repo>   # paste the PAT when prompted
+```
+```powershell
+Get-Content config.min.json | gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo>   # PowerShell
 ```
 
 For orientation, a minimal config looks like:
@@ -316,7 +319,7 @@ The full threat model, defense by defense, with the known residuals: [docs/secur
 minify_json_secret.py                 # JSON → single-line secret string
 ```
 
-**Changing behavior:** find the part (`grep -r .github/prompts/parts/`), edit it, re-pin if the wording is load-bearing, verify locally:
+**Changing behavior:** find the part (`grep -r .github/prompts/parts/`), edit it, re-pin if the wording is load-bearing, verify locally (Windows: run these from Git Bash or WSL):
 
 ```bash
 bash .github/scripts/assemble-prompt.sh --verify        # manifests resolve

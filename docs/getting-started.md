@@ -55,8 +55,11 @@ If you rename anything, read [customization.md](customization.md#renaming-the-ag
 
 ```bash
 gh secret set OPENCODE_MODEL       -R <owner>/<repo> --body "anthropic/claude-sonnet-4"
-gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < config.min.json
+gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < config.min.json   # bash/macOS/Linux
 gh secret set ACCOUNT_GH_TOKEN     -R <owner>/<repo>   # paste when prompted
+```
+```powershell
+Get-Content config.min.json | gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo>   # PowerShell
 ```
 
 Every optional secret (fast model, share-link key, and the full identity rules (PAT scope requirements, why the `workflow` scope is forbidden)) is documented in [configuration.md](configuration.md#secrets).

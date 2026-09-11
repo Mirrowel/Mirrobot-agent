@@ -24,7 +24,7 @@ Behavior changes carry their pin changes in the same commit. A red suite after y
 
 ## When it goes red
 
-Read the failing check's name first; they're written as sentences ("rollback below fork era -> ALARM"). The `want=`/`got=` lines below each failure show the divergence. Local run: `bash .github/scripts/scrub-fixtures.sh` (creates nothing outside mktemp + /tmp logs).
+Read the failing check's name first; they're written as sentences ("rollback below fork era -> ALARM"). The `want=`/`got=` lines below each failure show the divergence. Local run: `bash .github/scripts/scrub-fixtures.sh` (Windows: Git Bash or WSL; creates nothing outside mktemp + /tmp logs).
 
 ## Testing it
 

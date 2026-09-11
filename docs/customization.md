@@ -29,7 +29,7 @@ Workflows call `bash /tmp/assemble-prompt.sh <mode> | envsubst "$VARS"`. The ass
 ### Rules of the road
 
 - **Shared parts are shared byte-for-byte.** If two modes need different rules, that's *two parts*, not one part with mode-dependent prose. This is what keeps duplicated guidance from drifting apart.
-- **Battery pins cover the prompt rules.** After editing parts, run `bash .github/scripts/prompt-rule-fixtures.sh`. If a pin fails, you changed pinned behavior, update the pin in the same commit *because you decided to*, not to make it shut up.
+- **Battery pins cover the prompt rules.** After editing parts, run `bash .github/scripts/prompt-rule-fixtures.sh` (Windows: Git Bash or WSL). If a pin fails, you changed pinned behavior, update the pin in the same commit *because you decided to*, not to make it shut up.
 - **Render any mode's full prompt yourself** (`bash .github/scripts/assemble-prompt.sh <mode>`) to read exactly what the agent will read.
 - Envsubst variables are per-mode whitelists in the workflow (`VARS='...'`), a new `$SOMETHING` in a part needs the variable added to the mode's list, or it ships literally.
 

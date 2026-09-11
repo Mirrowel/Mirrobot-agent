@@ -136,14 +136,33 @@ Rules:
 { "myplugin/myplugin.js": "<the file's entire content, JSON-escaped>" }
 ```
 
-Build the value without hand-escaping:
+Build the value without hand-escaping. Any of these produce the identical envelope (`gh variable set` reads the value from stdin — no body flag needed). Pick by what your machine already has, in this order:
 
-```bash
-python -c "import json,pathlib;print(json.dumps({'myplugin/myplugin.js': pathlib.Path('myplugin.js').read_text()}))" \
-  | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo> --body-file -
+**Windows — PowerShell 7+ (pwsh; the preinstalled 5.1 mangles non-ASCII when piping to gh):**
+```powershell
+@{'myplugin/myplugin.js'=Get-Content -Raw myplugin.js}|ConvertTo-Json -Compress|gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
 ```
 
-Then reference the materialized path in your `OPENCODE_CONFIG_JSON` secret's `plugin` array:
+**macOS / Linux, or anywhere with jq**:
+```bash
+jq -cRs --arg k 'myplugin/myplugin.js' '{$k: .}' myplugin.js | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
+```
+Several files in one variable (a multi-file plugin; jq 1.6+):
+```bash
+jq -cn --rawfile a path/a.js --rawfile b path/b.js '{("myplugin/a.js"):$a,("myplugin/b.js"):$b}' | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
+```
+
+**python** (any OS; `python3` on a clean macOS):
+```bash
+python -c "import json,pathlib;print(json.dumps({'myplugin/myplugin.js':pathlib.Path('myplugin.js').read_text(encoding='utf-8')}))" | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
+```
+
+**node** (any OS):
+```bash
+node -e "const fs=require('fs');process.stdout.write(JSON.stringify({'myplugin/myplugin.js':fs.readFileSync('myplugin.js','utf8')}))" | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
+```
+
+Then reference the materialized path in your `OPENCODE_CONFIG_JSON` secret's `plugin` array. Files land under `$HOME/.mirrobot-plugins/` — on GitHub-hosted runners that is `/home/runner/.mirrobot-plugins/myplugin/myplugin.js`:
 
 ```json
 "plugin": ["/home/runner/.mirrobot-plugins/myplugin/myplugin.js"]
@@ -205,7 +224,10 @@ Your complete [OpenCode config](https://opencode.ai/docs/config), minified to on
 
 ```bash
 python minify_json_secret.py my-config.json   # RFC 8259-strict minifier
-gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < my-config.min.json
+gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < my-config.min.json    # bash, macOS, Linux
+```
+```powershell
+Get-Content my-config.min.json | gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo>   # PowerShell
 ```
 
 Runtime lifecycle: written `chmod 600`, every credential leaf inside it (provider API keys, MCP header values, credential-bearing URLs) registered with `::add-mask::` so no later step can echo one, then **deleted seconds after opencode boots** (opencode reads the config once at startup; the fixture suite verifies deletion mid-session is safe). bot-setup warns when the secret's permission block drifts from the committed example. The warning is informational; the secret always wins.
@@ -226,7 +248,7 @@ Global `small_model`, used for session-title generation. Per-agent `"fast"` over
 Present account token → account mode; else App pair → app mode; else workflows fail with a clear error.
 
 ### `SHARE_LINK_PUBKEY` (optional)
-RSA **public** key (PEM) for encrypted session share links. Without it, share URLs are still captured and masked but not recoverable. One-command setup: `python decrypt_share_link.py setup` (generates the pair, sets the secret, keeps the private key locally). See [security.md](security.md#encrypted-share-links).
+RSA **public** key (PEM) for encrypted session share links. Without it, share URLs are still captured and masked but not recoverable. One-command setup: `python decrypt_share_link.py setup` — generates the pair, sets the secret, keeps the private key locally. See [security.md](security.md#encrypted-share-links).
 
 ## Interaction cheatsheet
 
