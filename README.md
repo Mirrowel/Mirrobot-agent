@@ -264,6 +264,7 @@ Enable (account mode only): add `notifications` scope to the PAT, set `FOREIGN_M
 | **Agent Bootstrap** | dispatch (write access) | main | One-time setup: seeds every variable, prints the secrets checklist; state-silent (logs never reveal state) |
 | **Mention Poller** | dispatch only | main | Cross-repo guest mode entry (see [the worker](tools/mention-worker/README.md)) |
 | **Scrub Fixture Suite** | `.github/` changes | the branch under test | The batteries: security fixtures + prompt-rule pins + strict YAML validation (run against the pushed branch's own copy) |
+| **Excerpts Refresh** | Weekly schedule + manual dispatch | Default branch | Rebuilds the landing page's card pool from the agent's real posts and deploys `docs/` to Pages as an artifact |
 
 **The "Runs from" column is the platform's spine:** everything that *thinks* (agents, prompts, scrub, routing) always executes from `main`, on every PR (the fixture suite is the one deliberate exception: it's CI, and it tests whatever copy it runs on). Only the two zero-secret marker/dispatcher workflows execute from the PR's base branch (a GitHub rule for `pull_request[_target]` triggers), and their downstream dispatches always target `main`. Platform updates land on `main`; your integration branch needs no per-batch sync. The one exception to that: auto-load content (AGENTS.md and friends) evolves **on the integration branch** with the work it describes. The full sync doctrine lives in [design.md](docs/design.md#the-update-doctrine).
 
