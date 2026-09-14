@@ -96,7 +96,7 @@ Cross-repo guest mode adds a third identity context: the *guest*, the same accou
 
 ## Where the batteries live
 
-Every rule in this document that can rot is pinned: `.github/scripts/scrub-fixtures.sh` (scrub semantics, routing matrix, workflow contracts, YAML strictness) and `.github/scripts/prompt-rule-fixtures.sh` (prompt rules and assembly contracts). They run in CI on every change to `.github/**`. If you change behavior, change the pin in the same commit; a failing suite after your edit is the system working.
+Every rule in this document that can rot is checked: `.github/scripts/scrub-fixtures.sh` (scrub semantics, routing matrix, workflow contracts, YAML strictness) and `.github/scripts/prompt-rule-fixtures.sh` (machine contracts: assembly render smoke, placeholder-vs-renderer completeness, workflow marker couplings). They run in CI on every change to `.github/**`. If you change behavior, change the check in the same commit; a failing suite after your edit is the system working. Prompt prose itself is deliberately unpinned — editing wording, rules, or formats never breaks CI.
 
 ## Design axioms
 

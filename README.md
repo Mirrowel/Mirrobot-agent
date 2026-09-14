@@ -108,7 +108,7 @@ flowchart TB
 
 **The core security principle: PR content is only ever data.** Privileged workflows always execute the default branch's copy of themselves; a malicious PR cannot redefine the pipeline that reviews it. Untrusted text never touches a shell except through environment variables. Everything the agent auto-loads from a checkout (instruction files, agent configs, skills) survives only when its bytes match a state a trusted branch shipped; otherwise it's removed, logged, and quarantined for the agent to read as data. The details are in [security](docs/security.md); read them before you open this to strangers.
 
-And the platform checks itself: a fixture suite and prompt-rule pins run in CI on every change to `.github/`, so drift shows up as a red build instead of a silent change.
+And the platform checks itself: a fixture suite and prompt structural checks run in CI on every change to `.github/`, so drift shows up as a red build instead of a silent change. CI enforces machine contracts only (assembly integrity, placeholder completeness, marker couplings, security behavior) — prompt prose is never pinned, so forks can reword anything.
 
 ---
 
@@ -263,7 +263,7 @@ Enable (account mode only): add `notifications` scope to the PAT, set `FOREIGN_M
 | **Bot Reply on Mention** | dispatch only | main | The general agent: conversations, investigations, on-demand reviews, contributions |
 | **Agent Bootstrap** | dispatch (write access) | main | One-time setup: seeds every variable, prints the secrets checklist; state-silent (logs never reveal state) |
 | **Mention Poller** | dispatch only | main | Cross-repo guest mode entry (see [the worker](tools/mention-worker/README.md)) |
-| **Scrub Fixture Suite** | `.github/` changes | the branch under test | The batteries: security fixtures + prompt-rule pins + strict YAML validation (run against the pushed branch's own copy) |
+| **Scrub Fixture Suite** | `.github/` changes | the branch under test | The batteries: security fixtures + prompt structural checks + strict YAML validation (run against the pushed branch's own copy) |
 | **Excerpts Refresh** | Weekly schedule + manual dispatch | Default branch | Rebuilds the landing page's card pool from the agent's real posts and deploys `docs/` to Pages as an artifact |
 
 **The "Runs from" column is the platform's spine:** everything that *thinks* (agents, prompts, scrub, routing) always executes from `main`, on every PR (the fixture suite is the one deliberate exception: it's CI, and it tests whatever copy it runs on). Only the two zero-secret marker/dispatcher workflows execute from the PR's base branch (a GitHub rule for `pull_request[_target]` triggers), and their downstream dispatches always target `main`. Platform updates land on `main`; your integration branch needs no per-batch sync. The one exception to that: auto-load content (AGENTS.md and friends) evolves **on the integration branch** with the work it describes. The full sync doctrine lives in [design.md](docs/design.md#the-update-doctrine).
@@ -326,8 +326,8 @@ minify_json_secret.py                 # JSON → single-line secret string
 bash .github/scripts/assemble-prompt.sh --verify        # manifests resolve
 bash .github/scripts/assemble-prompt.sh --list          # see every mode
 bash .github/scripts/assemble-prompt.sh pr-review-first # read a full prompt
-bash .github/scripts/prompt-rule-fixtures.sh            # prompt pins green
-bash .github/scripts/scrub-fixtures.sh                  # security fixtures green
+bash .github/scripts/prompt-rule-fixtures.sh            # prompt structure green
+bash .github/scripts/scrub-fixtures.sh                  # security fixtures green (add --quick/--only/--parallel for local speed)
 ```
 
 **Contributing:** fork → branch → change → batteries green → PR. Your PR will get the full treatment, automated review and compliance check before merge.

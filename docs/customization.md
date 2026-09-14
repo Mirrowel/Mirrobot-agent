@@ -29,7 +29,7 @@ Workflows call `bash /tmp/assemble-prompt.sh <mode> | envsubst "$VARS"`. The ass
 ### Rules of the road
 
 - **Shared parts are shared byte-for-byte.** If two modes need different rules, that's *two parts*, not one part with mode-dependent prose. This is what keeps duplicated guidance from drifting apart.
-- **Battery pins cover the prompt rules.** After editing parts, run `bash .github/scripts/prompt-rule-fixtures.sh` (Windows: Git Bash or WSL). If a pin fails, you changed pinned behavior, update the pin in the same commit *because you decided to*, not to make it shut up.
+- **Prompt prose is never pinned.** Edit any part's wording, rules, or formats freely — CI checks machine contracts only. After editing parts, run `bash .github/scripts/prompt-rule-fixtures.sh` (Windows: Git Bash or WSL): it verifies your parts still assemble, every `${VAR}` placeholder you use is in the renderer's envsubst list, and any workflow marker coupling still holds. A failure there means a mechanical break (an unlisted placeholder reaches the agent as a literal `${X}`), not a wording complaint.
 - **Render any mode's full prompt yourself** (`bash .github/scripts/assemble-prompt.sh <mode>`) to read exactly what the agent will read.
 - Envsubst variables are per-mode whitelists in the workflow (`VARS='...'`), a new `$SOMETHING` in a part needs the variable added to the mode's list, or it ships literally.
 
@@ -72,9 +72,9 @@ The platform is configurable **and** universal, but it is not zero-edit for ever
 | **Scrub trust branches** | `AUTOLOAD_BRANCHES` in `scrub-workspace.sh` | Which branches vouch for auto-load content, `main dev` by default; the taint anchor is main-only. |
 | **Maintained base branches** | `MAINTAINED_BASE_BRANCHES` env in `pr-review.yml` | Which PR targets count as "maintained" for trust-context wording. |
 | **CI integration** | `scrub-fixtures.yml` paths filter | Which paths trigger the battery. |
-| **Prompt voice** | `parts/*.md` | The agent's tone and procedures, per-repo flavor is expected, pinned wording is not. |
+| **Prompt voice** | `parts/*.md` | The agent's tone and procedures, per-repo flavor is expected; nothing in CI pins the wording. |
 
-What you should **not** need to edit: the router mechanics, the scrub algorithm, the share filter, bot-setup's identity logic, the fixture suite (except pins that reference renamed stock identities). Per [What NOT to customize per-repo](#what-not-to-customize-per-repo), a per-repo fork of the security boundary rots.
+What you should **not** need to edit: the router mechanics, the scrub algorithm, the share filter, bot-setup's identity logic, the fixture suite (except checks that reference renamed stock identities). Per [What NOT to customize per-repo](#what-not-to-customize-per-repo), a per-repo fork of the security boundary rots.
 
 ## Renaming the agent
 
