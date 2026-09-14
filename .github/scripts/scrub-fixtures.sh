@@ -300,7 +300,8 @@ check "setup: numbered plugin vars merge (collision errors)" yes "$(grep -q 'Dup
 # Drift check is PERMISSION-ONLY: the example is a full-config template, so
 # comparing against the whole file would false-warn on every repo whose
 # config lacks the example's providers/mcp/plugin shape.
-check "setup: drift compares .permission both sides" yes "$(grep -q "jq -S '.permission // empty'" "$ACTION" && echo yes || echo no)"
+check "setup: drift is deny-subset (deny-select present)" yes "$(grep -q 'select(.value == "deny")' "$ACTION" && echo yes || echo no)"
+check "setup: drift warning carries no rule specifics" yes "$(grep 'OPENCODE_CONFIG_JSON permission block is missing' "$ACTION" | grep -qE 'to_entries|\.permission\.' && echo no || echo yes)"
 # The example must look like a full config, carry the GENERIC plugin entry,
 # and never name a real router/provider anywhere in the repo.
 check "example: full-config shape (has \$schema)"  yes "$(grep -q '"\$schema"' "$EXAMPLE" && echo yes || echo no)"
@@ -418,6 +419,82 @@ check "perm-precision: ps eww env-dump denied" deny \
   "$(gh_verdict "ps eww")"
 check "perm-precision: plus-refspec force push denied" deny \
   "$(gh_verdict "git push origin +main")"
+
+# ---- edit/write tool matrices (REAL rules, ORDERED, last-match-wins) -----
+# The write tool CREATES files the edit denies only guard existing copies of
+# (rm + recreate is the bypass) - both sections mirror the full agent-surface
+# deny set. Live-motivated: the write section was missing entirely and edit
+# carried only 3 .github rules.
+ew_eval() { # section command -> verdict
+  local sec="$1" cmd="$2" v="allow" verdict pat
+  while IFS=$'\t' read -r verdict pat; do
+    [ -n "$pat" ] || continue
+    # shellcheck disable=SC2254
+    case "$cmd" in $pat) v="$verdict" ;; esac
+  done < <(jq -r --arg s "$sec" '.permission[$s] // {} | to_entries[] | "\(.value)\t\(.key)"' "$EXAMPLE" | tr -d '\r')
+  printf '%s' "$v"
+}
+check "perm-ew: edit workflows denied"            deny "$(ew_eval edit ".github/workflows/pr-review.yml")"
+check "perm-ew: edit platform scripts denied"     deny "$(ew_eval edit ".github/scripts/scrub-fixtures.sh")"
+check "perm-ew: edit agent config denied"         deny "$(ew_eval edit "~/.config/opencode/opencode.json")"
+check "perm-ew: edit git hooks denied"            deny "$(ew_eval edit ".git/hooks/pre-commit")"
+check "perm-ew: edit git config denied"           deny "$(ew_eval edit ".git/config")"
+check "perm-ew: edit plugins denied"              deny "$(ew_eval edit "/home/runner/.mirrobot-plugins/x.js")"
+check "perm-ew: edit repo source allowed"         allow "$(ew_eval edit "src/foo.py")"
+check "perm-ew: write new workflow denied (recreate bypass)" deny "$(ew_eval write ".github/workflows/evil.yml")"
+check "perm-ew: write new platform script denied" deny "$(ew_eval write ".github/scripts/evil.sh")"
+check "perm-ew: rewrite agent config denied"      deny "$(ew_eval write "~/.config/opencode/opencode.json")"
+check "perm-ew: write new git hook denied"        deny "$(ew_eval write ".git/hooks/post-checkout")"
+check "perm-ew: write repo source allowed"        allow "$(ew_eval write "src/new_feature.py")"
+
+# ---- drift check: deny-subset, count-only warning (bot-setup contract) -----
+# Operator additions and stricter flips are silent; a missing/loosened
+# example deny warns. The warning must NEVER name rules (public run logs).
+drift_count() { # live-config-json -> mismatch count via the REAL jq
+  jq -n --argjson live "$1" --slurpfile ex "$EXAMPLE" '
+    ($ex[0].permission // {}) as $e | ($live.permission // {}) as $l |
+    [ ($e | to_entries[]) | select(.value | type == "object") as $sec
+      | (.value | to_entries[])
+      | select(.value == "deny") | select(($l[$sec.key][.key] // "") != "deny") ] | length'
+}
+SUPERSET=$(jq -S '.permission.bash["curl*"] = "deny" | .permission.bash["evil-cmd*"] = "deny"' "$EXAMPLE")
+check "drift: superset config silent (0 mismatches)" 0 "$(drift_count "$SUPERSET")"
+LOOSEened=$(jq -S 'del(.permission.edit[".git/*"]) | del(.permission.write["~/.config/*"])' "$EXAMPLE")
+check "drift: loosened config counted" 2 "$(drift_count "$LOOSEened")"
+check "drift: warning line carries no rule specifics" yes \
+  "$(grep -A3 "mismatch=\$(jq" "$ACTION" | grep "::warning::" | grep -qE '\$\(jq|to_entries|\.key' && echo no || echo yes)"
+
+# ---- model resolution: config model satisfies the requirement -------------
+# One of OPENCODE_MODEL or the config's own "model" field must exist; the
+# API key applies to the active model's provider only when provided.
+MR_SANDBOX="$(mktemp -d)"; MR_HARNESS="$MR_SANDBOX/h.sh"
+{
+  echo 'configure_model() { echo "called:$1"; }'
+  awk '/# Model resolution: OPENCODE_MODEL/{flag=1} flag && index($0, "FAST_MODEL") && index($0, "if ["){exit} flag{print}' "$ACTION"
+  echo 'echo "FINAL:$(printf "%s" "$CONFIG" | jq -c .)"'
+} > "$MR_HARNESS"
+# The harness must stop at the model block: an over-capturing extraction once
+# executed composite-action YAML as bash (created a .venv mid-battery).
+[ "$(grep -c "FINAL:" "$MR_HARNESS")" = "1" ] || { echo "model harness extraction overflowed"; exit 1; }
+# Belt after the suspenders: extracted code may NEVER touch the real HOME.
+# An earlier overflow executed the action's finalization and overwrote the
+# operator's real ~/.config/opencode/opencode.json (live incident, rolled
+# back by hand). The harness must contain no HOME writes, and mr_run points
+# HOME into the sandbox regardless.
+grep -qE '> *~/.config|HOME.*\.config/opencode|> *\$HOME' "$MR_HARNESS" \
+  && { echo "model harness touches HOME - refusing to run"; exit 1; }
+mr_run() { ( cd "$MR_SANDBOX" && HOME="$MR_SANDBOX" MAIN_MODEL="$1" DEFAULT_API_KEY="$2" CONFIG="$3" bash "$MR_HARNESS" ) 2>&1; }
+check "model: secret model wins (override path)" yes \
+  "$(mr_run "prov/m" "" '{"model":"other/x"}' | grep "called:prov/m" >/dev/null && echo yes || echo no)"
+check "model: config model inherited, no override call" yes \
+  "$(mr_run "" "" '{"model":"cfg/p"}' | grep -v "called:" | grep -q . && echo yes || echo no)"
+check "model: config model + provided key applied to its provider" yes \
+  "$(mr_run "" "sk-x" '{"model":"cfg/p"}' | grep "FINAL:" | sed 's/^FINAL://' | jq -r '.provider.cfg.options.apiKey // "miss"' | grep sk-x >/dev/null && echo yes || echo no)"
+check "model: neither source errors loudly" yes \
+  "$( (mr_run "" "" '{"other":1}' || true) | grep "No model configured" >/dev/null && echo yes || echo no)"
+check "model: model field without provider slash rejected" yes \
+  "$( (mr_run "" "" '{"model":"noprovider"}' || true) | grep "No model configured" >/dev/null && echo yes || echo no)"
+rm -rf "$MR_SANDBOX"
 
 # ---- agent-router decision matrix (exercises the REAL route-comment.sh) ----
 route() { # body is_pr -> flags or "none" — delegates to the shared script

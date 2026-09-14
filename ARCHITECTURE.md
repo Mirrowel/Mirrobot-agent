@@ -15,7 +15,7 @@
 - **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
 - **Open-triggering gate, opt-out**: `OPEN_TRIGGERING=false` limits on-demand summons (mentions + commands through the router) to collaborators and the `TRUSTED_AGENT_USERS` roster, with a visible decline notice; auto paths (PR auto-reviews, issues-opened analysis, cross-repo mentions with their own allowlist) stay open, and the check is zero API cost (association rides the event payload, the roster is a variable)
 - **Graceful pause ladder**: one kill switch (`AGENT_PAUSED`) plus per-part switches (`AGENT_PAUSED_PARTS_JSON`); the status stubs deliberately keep running so a paused agent never makes a PR mergeable
-- **Batteries in CI**: 231 security fixtures + 393 pinned prompt rules run on every `.github/` change, so drift turns CI red
+- **Batteries in CI**: 258 security fixtures + 393 pinned prompt rules run on every `.github/` change, so drift turns CI red
 
 ## Layers
 
@@ -28,14 +28,14 @@
 
 **Agent Workflow Layer:**
 - Purpose: The privileged workflows that assemble context, run the LLM session, and post verified output (reviews, replies, compliance reports)
-- Location: `.github/workflows/` (`pr-review.yml`, `bot-reply.yml`, `compliance-check.yml`, `issue-comment.yml`, plus support workflows `mention-poller.yml`, `agent-bootstrap.yml`, `scrub-fixtures.yml`)
+- Location: `.github/workflows/` (`pr-review.yml`, `bot-reply.yml`, `compliance-check.yml`, `issue-comment.yml`, plus support workflows `mention-poller.yml`, `agent-bootstrap.yml`, `scrub-fixtures.yml`, `excerpts-refresh.yml`)
 - Contains: Dispatch-only workflow YAML with editable knob blocks, inline verification steps
 - Depends on: Composite actions (`.github/actions/`), scripts (`.github/scripts/`), prompt doctrine (`.github/prompts/`), the `OPENCODE_*` secrets
 - Used by: The dispatch layer, GitHub schedules, manual dispatch
 
 **Shared Machinery Layer:**
-- Purpose: All reusable logic, identity/token minting, bot identity+trigger resolution, workspace scrub, context assembly, routing, reactions, share-link filtering, config cleanup
-- Location: `.github/scripts/` (14 bash scripts) and `.github/actions/` (2 composite actions: `bot-setup/`, `requester-context/`)
+- Purpose: All reusable logic, identity/token minting, bot identity+trigger resolution, workspace scrub, context assembly, routing, reactions, share-link filtering, config cleanup, excerpt harvesting
+- Location: `.github/scripts/` (15 bash scripts) and `.github/actions/` (2 composite actions: `bot-setup/`, `requester-context/`)
 - Contains: Bash scripts with strict env-contract headers; composite action YAML; `split-diff.sh` turns oversized diffs into navigable parts + an index (never truncates)
 - Depends on: `gh` CLI, `git`, `jq`, env variables only (never event payloads interpolated)
 - Used by: All agent workflows and some CI fixtures (`scrub-fixtures.sh` tests `scrub-workspace.sh` + `fetch-roster.sh` directly)
@@ -79,8 +79,8 @@
 1. PR event → `pr-review-trigger.yml` stub (runs from the PR's **base branch**, zero secrets, no checkout) decides if a review is wanted and posts the pending merge-blocker status; declined events dispatch nothing
 2. Dispatch → `pr-review.yml` (runs from `main`): runtime input validation, fast "eyes" reaction in account mode, identity minting via `.github/actions/bot-setup/action.yml`
 3. `scrub-workspace.sh` scrubs the workspace **before** any PR checkout; split-trust rules quarantine untrusted auto-load content to `/tmp/scrub-quarantine/` and raise the `.github` taint alarm (evil-merge safe)
-4. Context assembly: `.github/scripts/fetch-pr-discussion.sh` (three-block separation: previous bot reviews / older review history / thread context, with noise filtering), `.github/scripts/fetch-roster.sh` (trusted-people roster), requester-context action (factual trust line)
-5. `generate-review-kit.sh` produces the diff files, review type (FIRST/FOLLOW-UP from the agent's own last review marker), and baked instruction sets under `/tmp/kit/<pr>/`
+4. Context assembly: `.github/scripts/fetch-pr-discussion.sh` (three-block separation: previous bot reviews / older review history / thread context, with noise filtering), `.github/scripts/fetch-roster.sh` (trusted-people roster), requester-context action (factual trust line; manual-dispatch actors resolve via the collaborator permission API, and an unresolvable association is worded unknown, never dressed up as a GitHub-verified NONE)
+5. `generate-review-kit.sh` produces the diff files, review type (FIRST/FOLLOW-UP via the rebase ladder: the newest reviewed marker that is an ancestor of HEAD is the incremental base; when a force-push makes every marker unreachable the run keeps FOLLOW-UP awareness + FULL diff + a `REBASE_CONTEXT` block instead of silently downgrading to FIRST), changed files (paginated REST files API rendered as compact per-file status+counts lines — `gh pr view --json files` caps at one page and lies about larger PRs), and baked instruction sets under `/tmp/kit/<pr>/`
 6. `.github/scripts/assemble-prompt.sh <manifest>` concatenates the mode's parts (fail-closed: a missing part exits 1 rather than sending a short prompt); caller pipes through `envsubst`
 7. The OpenCode session (`opencode run --share`) does the work; concurrency groups serialize reviews per PR
 8. Verification: footer/SHA checks with repair, `.github/scripts/react.sh` closes the reaction lifecycle, `.github/scripts/share-filter.sh` masks the raw share URL and republishes it RSA-OAEP-encrypted (`MRB1.<base64>`)
@@ -91,7 +91,7 @@
 3. Qualifying notifications relay via `repository_dispatch` → `mention-poller.yml` → `.github/scripts/handle-mentions.sh`, the **sole authority**: reason filter → skip matrix (platform-repos of the home owner are no-ops) → mark-read-before-dispatch → subject re-fetch from the API → bot-loop guard → summoner allowlist → genuine-mention verification (for review requests: trust the timeline *actor*, not the PR author) → per-run cap → `bot-reply.yml` in guest mode with `guest-rules.md` injected; Discussion subjects take a GraphQL branch (discussions have no REST endpoints): the subject is re-fetched via GraphQL, the genuine-mention scan runs over the body and recent comments, and the dispatch carries `threadType=discussion` with no comment id
 
 **Compliance Gating:**
-1. A stem-derived compliance command (default `/mirrobot-check`) → router → `compliance-check.yml` runs the merge audit and posts the `compliance-check` status + report (`FILE_GROUPS_JSON` in the workflow defines which files must stay consistent)
+1. A stem-derived compliance command (default `/mirrobot-check`) → router → `compliance-check.yml` runs the merge audit and posts the `compliance-check` status + report (`FILE_GROUPS_JSON` in the workflow defines which files must stay consistent; a repo-specific `compliance-groups.json` next to the workflow replaces the default groups when present and valid — `compliance-groups.EXAMPLE.json` documents the schema and is never loaded)
 2. In parallel, `compliance-gate.yml` (base-branch stub) redundantly posts the pending status with backoff and **goes red** rather than letting a swallowed status POST make a PR look mergeable
 3. Branch protection requires the `compliance-check` status; pausing the agent (globally or per part) never makes a PR mergeable because both stubs keep posting pending
 
@@ -120,7 +120,7 @@
 **Identity & trigger resolution (bot-config.sh):**
 - Purpose: One resolver for "who am I" and "what summons me", consumed by the router, the mention pipeline, the stub, and every loop guard
 - Location: `.github/scripts/bot-config.sh`
-- Pattern: Identities = `BOT_IDENTITIES` variable (comma-separated logins) ∪ the live `/user` login (account mode), with the stock names as fallback only when both are absent; trigger stems = `BOT_TRIGGERS` variable, else identity-derived, else the stock words; each stem derives `@stem`, `/stem-review`, `/stem-check` forms. Also exports `BOT_IDENTITY_LIST` / `BOT_IDENTITY_PRIMARY` (display case preserved, deduped) so prompt parts self-check identities via envsubst instead of hardcoding them. No identity or trigger word is hardcoded in workflows, scripts, or the worker; a renamed or forked bot changes one variable
+- Pattern: Identities = `BOT_IDENTITIES` variable (comma-separated logins) ∪ the live `/user` login (account mode), with the stock names as fallback only when both are absent; trigger stems = `BOT_TRIGGERS` variable, else identity-derived, else the stock words; each stem derives `@stem`, `/stem-review`, `/stem-check` forms. Also exports `BOT_IDENTITY_LIST` / `BOT_IDENTITY_PRIMARY` (display case preserved, deduped) so prompt parts self-check identities via envsubst instead of hardcoding them. Consumers match against the lowercased `BOT_NAMES_JSON` array, which one unconditional early Normalize-identity step per agent workflow owns (flat `BOT_IDENTITIES` → lowercased JSON array); workflows never re-declare `BOT_NAMES_JSON` in `env:` (fixture-pinned — a job-level declaration would shadow the export). No identity or trigger word is hardcoded in workflows, scripts, or the worker; a renamed or forked bot changes one variable
 
 **Review kit:**
 - Purpose: Self-serve review context for ANY PR, from any thread, used both by `pr-review.yml` and by the agent itself on demand ("review PR #42" from an unrelated issue)
@@ -130,7 +130,7 @@
 **Three-block discussion context:**
 - Purpose: Single source of truth for what the reviewer remembers, its own newest N reviews (elevated: only resolved/outdated markers bypassed), older review history (fully filtered), and everything else (correlated, noise-filtered) plus orphaned inline threads
 - Location: `.github/scripts/fetch-pr-discussion.sh`
-- Pattern: Hidden/minimized content stays hidden everywhere (own content included); filtering happens *before* capping so filtered content never consumes fetch budget; budget slots count content shown, never content fetched: windows overfill 3x in the same single GraphQL request, and at most one cursor catch-up page runs when noise truncated a window while slots stayed unfilled (the common case stays exactly one request); a `body-chars` budget clips every rendered body (comments, inline threads, review summaries) with a visible `[body truncated]` marker instead of silent loss; the own-newest-reviews window is a safeguard that always applies even beyond the general review cap; all window sizes come from the `CONTEXT_LIMITS_JSON` variable; filter variables `CONTEXT_IGNORE_AUTHORS` / `CONTEXT_FILTER_PATTERNS_JSON` come from repo variables with baked AI-reviewer noise defaults
+- Pattern: Hidden/minimized content stays hidden everywhere (own content included); filtering happens *before* capping so filtered content never consumes fetch budget; budget slots count content shown, never content fetched: windows overfill 3x in the same single GraphQL request, and at most one cursor catch-up page runs when noise truncated a window while slots stayed unfilled (the common case stays exactly one request); a `body-chars` budget clips every rendered body (comments, inline threads, review summaries) with a visible `[body truncated]` marker instead of silent loss; the own-newest-reviews window is a safeguard that always applies even beyond the general review cap; all window sizes come from the `CONTEXT_LIMITS_JSON` variable; filter variables `CONTEXT_IGNORE_AUTHORS` / `CONTEXT_FILTER_PATTERNS_JSON` come from repo variables with baked AI-reviewer noise defaults (a set array — including `[]` — replaces the baked defaults; bootstrap seeds the real pattern list, pinned byte-for-byte against the script)
 
 ## Entry Points
 
@@ -161,7 +161,7 @@
 
 **Compliance Check / Compliance Gate:**
 - Location: `.github/workflows/compliance-check.yml`, `.github/workflows/compliance-gate.yml`
-- Triggers: dispatch (routed `/mirrobot-check`) / PR events (base branch)
+- Triggers: dispatch (routed `/mirrobot-check`) / `pull_request_target` PR events (the workflow file always executes from the base branch; fork PRs run immediately — no maintainer-approval hostage window, no fork skip)
 - Responsibilities: End-of-life merge audit + status posting; the gate is the redundant second poster of the pending status, status insurance against API outages
 
 **Mention Poller:**
@@ -172,12 +172,17 @@
 **Agent Bootstrap:**
 - Location: `.github/workflows/agent-bootstrap.yml`
 - Triggers: `workflow_dispatch` (write access) only
-- Responsibilities: One-time setup, seeds every variable with safe defaults/templates (never overwrites), including the identity/trigger defaults derived from the repo's own bot identity; seeds the triage label vocabulary create-if-missing (existing labels are never touched — a repo's own customs win); prints the secrets checklist into the run summary; state-silent (logs can never reveal which variables or secrets exist)
+- Responsibilities: One-time setup, seeds every variable with safe defaults/templates (never overwrites), including the identity/trigger defaults derived from the repo's own bot identity and the built-in noise-filter pattern list (an empty array would disable filtering, so bootstrap seeds the real list instead); seeds the triage label vocabulary create-if-missing (existing labels are never touched — a repo's own customs win); prints the secrets checklist into the run summary; state-silent (logs can never reveal which variables or secrets exist)
 
 **Scrub Fixture Suite:**
 - Location: `.github/workflows/scrub-fixtures.yml`
 - Triggers: any `.github/` change
-- Responsibilities: The batteries, 231 security fixtures (`scrub-fixtures.sh`), 393 pinned prompt rules (`prompt-rule-fixtures.sh`), strict YAML validation
+- Responsibilities: The batteries, 258 security fixtures (`scrub-fixtures.sh`), 393 pinned prompt rules (`prompt-rule-fixtures.sh`), strict YAML validation
+
+**Excerpts Refresh:**
+- Location: `.github/workflows/excerpts-refresh.yml`
+- Triggers: weekly schedule + manual dispatch (default branch only; no PR triggers)
+- Responsibilities: Rebuilds the informational landing page's card pool — `.github/scripts/harvest-excerpts.sh` collects the agent's own posts across the home repos (search + GraphQL, read-only), drops hidden content, applies a quality gate, and writes the capped newest-first pool `docs/excerpts.json`; then deploys `docs/` to GitHub Pages as a workflow artifact, so the regenerated pool never needs a push to `main` (the repo's branch rules stay untouched); zero secrets (`GITHUB_TOKEN` only). Repo-local page tooling, not part of the agent's trust boundary
 
 ## Error Handling
 
