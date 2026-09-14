@@ -15,7 +15,7 @@
 - **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
 - **Open-triggering gate, opt-out**: `OPEN_TRIGGERING=false` limits on-demand summons (mentions + commands through the router) to collaborators and the `TRUSTED_AGENT_USERS` roster, with a visible decline notice; auto paths (PR auto-reviews, issues-opened analysis, cross-repo mentions with their own allowlist) stay open, and the check is zero API cost (association rides the event payload, the roster is a variable)
 - **Graceful pause ladder**: one kill switch (`AGENT_PAUSED`) plus per-part switches (`AGENT_PAUSED_PARTS_JSON`); the status stubs deliberately keep running so a paused agent never makes a PR mergeable
-- **Batteries in CI**: 258 security fixtures + 393 pinned prompt rules run on every `.github/` change, so drift turns CI red
+- **Batteries in CI**: 342 security fixtures + 393 pinned prompt rules run on every `.github/` change, so drift turns CI red
 
 ## Layers
 
@@ -34,9 +34,9 @@
 - Used by: The dispatch layer, GitHub schedules, manual dispatch
 
 **Shared Machinery Layer:**
-- Purpose: All reusable logic, identity/token minting, bot identity+trigger resolution, workspace scrub, context assembly, routing, reactions, share-link filtering, config cleanup, excerpt harvesting
-- Location: `.github/scripts/` (15 bash scripts) and `.github/actions/` (2 composite actions: `bot-setup/`, `requester-context/`)
-- Contains: Bash scripts with strict env-contract headers; composite action YAML; `split-diff.sh` turns oversized diffs into navigable parts + an index (never truncates)
+- Purpose: All reusable logic, identity/token minting, bot identity+trigger resolution, workspace scrub, context assembly, routing, hidden-node resolution, reactions, share-link filtering, config cleanup, excerpt harvesting
+- Location: `.github/scripts/` (16 bash scripts) and `.github/actions/` (2 composite actions: `bot-setup/`, `requester-context/`)
+- Contains: Bash scripts with strict env-contract headers; composite action YAML; `split-diff.sh` turns oversized diffs into navigable parts + an index (never truncates); `minimized-nodes.sh` resolves hidden (minimized) review/comment node ids once so HIDDEN=GONE holds platform-wide
 - Depends on: `gh` CLI, `git`, `jq`, env variables only (never event payloads interpolated)
 - Used by: All agent workflows and some CI fixtures (`scrub-fixtures.sh` tests `scrub-workspace.sh` + `fetch-roster.sh` directly)
 
@@ -56,8 +56,8 @@
 
 **Admin-Side Tooling Layer:**
 - Purpose: Local (non-CI) utilities for the repository operator
-- Location: Repository root (`decrypt_share_link.py`, `minify_json_secret.py`, `test-config.py`)
-- Contains: Python scripts, share-link keygen/decrypt TUI, JSON→single-line secret minifier, config emulator/test harness
+- Location: Repository root (`decrypt_share_link.py`, `minify_json_secret.py`)
+- Contains: Python scripts, share-link keygen/decrypt TUI, JSON→single-line secret minifier
 - Depends on: Python 3, `openssl` on PATH (decrypt tool), `gh` CLI (setup mode)
 - Used by: Humans only; nothing in CI imports these
 
@@ -79,8 +79,8 @@
 1. PR event → `pr-review-trigger.yml` stub (runs from the PR's **base branch**, zero secrets, no checkout) decides if a review is wanted and posts the pending merge-blocker status; declined events dispatch nothing
 2. Dispatch → `pr-review.yml` (runs from `main`): runtime input validation, fast "eyes" reaction in account mode, identity minting via `.github/actions/bot-setup/action.yml`
 3. `scrub-workspace.sh` scrubs the workspace **before** any PR checkout; split-trust rules quarantine untrusted auto-load content to `/tmp/scrub-quarantine/` and raise the `.github` taint alarm (evil-merge safe)
-4. Context assembly: `.github/scripts/fetch-pr-discussion.sh` (three-block separation: previous bot reviews / older review history / thread context, with noise filtering), `.github/scripts/fetch-roster.sh` (trusted-people roster), requester-context action (factual trust line; manual-dispatch actors resolve via the collaborator permission API, and an unresolvable association is worded unknown, never dressed up as a GitHub-verified NONE)
-5. `generate-review-kit.sh` produces the diff files, review type (FIRST/FOLLOW-UP via the rebase ladder: the newest reviewed marker that is an ancestor of HEAD is the incremental base; when a force-push makes every marker unreachable the run keeps FOLLOW-UP awareness + FULL diff + a `REBASE_CONTEXT` block instead of silently downgrading to FIRST), changed files (paginated REST files API rendered as compact per-file status+counts lines — `gh pr view --json files` caps at one page and lies about larger PRs), and baked instruction sets under `/tmp/kit/<pr>/`
+4. Context assembly: `.github/scripts/fetch-pr-discussion.sh` (three-block separation: previous bot reviews / older review history / thread context, with noise filtering, chronological rendering (newest-N selected after filtering, oldest-first presentation), and an addressable id on every conversation line — `[id N]` for REST comments/reviews, `[DC_...]` for discussion nodes), `.github/scripts/fetch-roster.sh` (trusted-people roster), requester-context action (factual trust line; manual-dispatch actors resolve via the collaborator permission API, and an unresolvable association is worded unknown, never dressed up as a GitHub-verified NONE)
+5. `generate-review-kit.sh` produces the diff files, review type (FIRST/FOLLOW-UP via the rebase ladder shared by the kit, `bot-reply.yml`, and `compliance-check.yml`: the newest reviewed marker that is an ancestor of HEAD is the incremental base; when a force-push makes every marker unreachable the run keeps FOLLOW-UP awareness + FULL diff + a rebase note instead of silently downgrading to FIRST), changed files (paginated REST files API rendered as compact per-file status+counts lines — `gh pr view --json files` caps at one page and lies about larger PRs), and baked instruction sets under `/tmp/kit/<pr>/`
 6. `.github/scripts/assemble-prompt.sh <manifest>` concatenates the mode's parts (fail-closed: a missing part exits 1 rather than sending a short prompt); caller pipes through `envsubst`
 7. The OpenCode session (`opencode run --share`) does the work; concurrency groups serialize reviews per PR
 8. Verification: footer/SHA checks with repair, `.github/scripts/react.sh` closes the reaction lifecycle, `.github/scripts/share-filter.sh` masks the raw share URL and republishes it RSA-OAEP-encrypted (`MRB1.<base64>`)
@@ -130,7 +130,7 @@
 **Three-block discussion context:**
 - Purpose: Single source of truth for what the reviewer remembers, its own newest N reviews (elevated: only resolved/outdated markers bypassed), older review history (fully filtered), and everything else (correlated, noise-filtered) plus orphaned inline threads
 - Location: `.github/scripts/fetch-pr-discussion.sh`
-- Pattern: Hidden/minimized content stays hidden everywhere (own content included); filtering happens *before* capping so filtered content never consumes fetch budget; budget slots count content shown, never content fetched: windows overfill 3x in the same single GraphQL request, and at most one cursor catch-up page runs when noise truncated a window while slots stayed unfilled (the common case stays exactly one request); a `body-chars` budget clips every rendered body (comments, inline threads, review summaries) with a visible `[body truncated]` marker instead of silent loss; the own-newest-reviews window is a safeguard that always applies even beyond the general review cap; all window sizes come from the `CONTEXT_LIMITS_JSON` variable; filter variables `CONTEXT_IGNORE_AUTHORS` / `CONTEXT_FILTER_PATTERNS_JSON` come from repo variables with baked AI-reviewer noise defaults (a set array — including `[]` — replaces the baked defaults; bootstrap seeds the real pattern list, pinned byte-for-byte against the script)
+- Pattern: Hidden state is resolved once by `.github/scripts/minimized-nodes.sh` (fail-closed, `QUERY_REPO`-aware for guest PRs) and shared by every consumer, so hidden/minimized content stays hidden everywhere (own content included) — HIDDEN=GONE platform-wide; filtering happens *before* capping so filtered content never consumes fetch budget; budget slots count content shown, never content fetched: windows overfill 3x in the same single GraphQL request, and at most one cursor catch-up page runs when noise truncated a window while slots stayed unfilled (the common case stays exactly one request); a `body-chars` budget (default 4000) clips every rendered body (comments, inline threads, review summaries) with a visible `[body truncated]` marker instead of silent loss; selection is newest-first and presentation is chronological (oldest-first) at every level; every rendered conversation line carries its addressable id (`[id N]` REST comments/reviews, `[DC_...]` discussion nodes); the own-newest-reviews window is a safeguard that always applies even beyond the general review cap; all window sizes come from the `CONTEXT_LIMITS_JSON` variable; filter variables `CONTEXT_IGNORE_AUTHORS` / `CONTEXT_FILTER_PATTERNS_JSON` come from repo variables with baked AI-reviewer noise defaults (a set array — including `[]` — replaces the baked defaults; bootstrap seeds the real pattern list, pinned byte-for-byte against the script)
 
 ## Entry Points
 
@@ -152,7 +152,7 @@
 **Bot Reply on Mention:**
 - Location: `.github/workflows/bot-reply.yml`
 - Triggers: dispatch only (router, mention pipeline, manual)
-- Responsibilities: The general agent, conversations, investigations, on-demand reviews (via the review kit), contributor strategy (branch → implement → self-review → PR, never touching `.github/workflows`), repository management; strategy instruction sets load on demand. The `threadType` input selects the thread kind: `issue` (default), `discussion` (mention in a discussion comment), `discussion-new` (mention in a new discussion's body) — discussion mode is all-GraphQL (one fetch resolves trigger + budgeted context; posting via `addDiscussionComment`; reactions on GraphQL node ids), and discussion runs carry a `disc-` concurrency prefix since discussion numbers are a separate counter from issues
+- Responsibilities: The general agent, conversations, investigations, on-demand reviews (via the review kit), contributor strategy (branch → implement → self-review → PR, never touching `.github/workflows`), repository management; strategy instruction sets load on demand. The `threadType` input selects the thread kind: `issue` (default), `discussion` (mention in a discussion comment), `discussion-new` (mention in a new discussion's body) — discussion mode is all-GraphQL (one fetch resolves trigger + budgeted context; posting via `addDiscussionComment`; reactions on GraphQL node ids), replies anchor to the owning top-level comment node (the API refuses a reply anchored inside an existing thread), and discussion runs carry a `disc-` concurrency prefix since discussion numbers are a separate counter from issues
 
 **Issue Analysis:**
 - Location: `.github/workflows/issue-comment.yml`
@@ -177,7 +177,7 @@
 **Scrub Fixture Suite:**
 - Location: `.github/workflows/scrub-fixtures.yml`
 - Triggers: any `.github/` change
-- Responsibilities: The batteries, 258 security fixtures (`scrub-fixtures.sh`), 393 pinned prompt rules (`prompt-rule-fixtures.sh`), strict YAML validation
+- Responsibilities: The batteries, 342 security fixtures (`scrub-fixtures.sh`), 393 pinned prompt rules (`prompt-rule-fixtures.sh`), strict YAML validation
 
 **Excerpts Refresh:**
 - Location: `.github/workflows/excerpts-refresh.yml`
@@ -201,7 +201,7 @@
 
 **No untrusted interpolation:** Untrusted text reaches shells only as environment variables; a pinned CI audit proves it. Dispatch inputs never carry requester content; targets re-fetch from the API by id.
 
-**Share-link hygiene:** Session share URLs are masked, never logged raw, and re-published RSA-OAEP-encrypted with public context (repo, PR, head SHA, review type, run, actor); only the admin-side private key (`decrypt_share_link.py`, key never leaves the admin machine) recovers them.
+**Share-link hygiene:** Session share URLs are masked, never logged raw, and re-published RSA-OAEP-encrypted with public context (repo, PR, head SHA, review type, run, actor); the opencode model-header line is stripped from the stream and the model token masked; only the admin-side private key (`decrypt_share_link.py`, key never leaves the admin machine) recovers them.
 
 **Auditability:** The router's step summary is the dispatch decision record; agent usage surfaces as a bare `opencode stats` report in the run summary (model stats stay hidden); reactions follow a mechanical workflow-owned lifecycle (`react.sh`) distinct from the agent's discretionary reactions.
 
