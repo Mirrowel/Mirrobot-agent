@@ -9,5 +9,8 @@ __pycache__/
 custom_providers.json
 tools/mention-worker/.wrangler/
 
+# Local fixture-battery cache (template snapshots; machine-local, never sync)
+.fixture-cache/
+
 # Local operator token (never commit)
 token.txt
