@@ -10,7 +10,7 @@ The platform's ears outside its home. Lets the agent answer genuine @mentions of
 
 1. **Account mode identity** (`ACCOUNT_GH_TOKEN` secret), guest mode runs as the user account; App-only installations can't do cross-repo.
 2. The PAT carries the `notifications` scope (plus `public_repo`) and `actions:read`.
-3. Variables: `FOREIGN_MENTIONS_ENABLED=true` (the master switch, absent/false = off) and `FOREIGN_MENTIONS_USERS` (comma logins allowed to summon; unioned with home collaborators, owner included).
+3. Variables: `FOREIGN_MENTIONS_ENABLED=true` (the master switch, absent/false = off), `FOREIGN_MENTIONS_USERS` (comma logins allowed to summon; unioned with home collaborators, owner included), and optionally `GUEST_REPO_RULES` (ordered `glob:deny|allow` rules deciding which repos guest mode may operate in — see [configuration](configuration.md#guest_repo_rules); the platform repo is always local-only and denied repos go acked + unsubscribed, so locally-handled threads stop generating poller runs entirely).
 4. **The mention worker deployed**: see [tools/mention-worker/README.md](../../tools/mention-worker/README.md). Worker-first is the default: a self-scheduling Durable Object polls the account's notifications every 30s (conditional requests, ETag-cached) and relays qualifying mentions as `repository_dispatch`. An in-repo cron fallback exists but is left unset.
 
 ## The gauntlet (why random strangers can't summon your agent)

@@ -34,13 +34,18 @@ logs one structured `[poll] src=...` line, plus RELAYED/DECLINED/SILENCED/
 JUNK audit lines, in Workers → Logs).
 
 **Pre-filter gauntlet (deny-only, fail-open):** before relaying anything,
-the worker fetches the triggering content (1 call) and checks bot-own
-identity, the author/requester allowlist, and the genuine
-`@mirrobot-agent` token. Declines are ACKED and **never wake Actions**
-(strangers' mentions cost 2–3 API calls instead of a full run + runner
-minutes). Any uncertainty (fetch error, roster unavailable) fails OPEN —
-relay anyway; the in-repo gauntlet (`.github/scripts/handle-mentions.sh`,
-battery-tested) re-verifies everything and stays the sole authority. A
+the worker applies the **repo rules** (`GUEST_REPO_RULES` variable: ordered
+`glob:deny|allow`, last match wins, default allow, platform repo hard-wired
+deny) — a denied repo is acked + unsubscribed + skipped before any content
+fetch, so locally-handled repos never generate poller runs at all. Surviving
+notifications get the content gauntlet: the worker fetches the triggering
+content (1 call) and checks bot-own identity, the author/requester
+allowlist, and the genuine `@mirrobot-agent` token. Declines are ACKED and
+**never wake Actions** (strangers' mentions cost 2–3 API calls instead of a
+full run + runner minutes). Any uncertainty (fetch error, roster
+unavailable, rules unreadable) fails OPEN — relay anyway; the in-repo
+gauntlet (`.github/scripts/handle-mentions.sh`, battery-tested) re-verifies
+everything with identical rule semantics and stays the sole authority. A
 fully compromised worker gains nothing: it could already choose not to
 relay, and it still cannot make the agent act.
 

@@ -22,7 +22,10 @@
 // and passed back verbatim as If-Modified-Since, so idle polls are free.
 //
 // PRE-FILTER GAUNTLET (deny-only, fail-open): before relaying anything, the
-// worker fetches the triggering content (1 call) and checks: bot-own
+// worker applies the GUEST_REPO_RULES repo filter FIRST (ordered
+// glob:deny|allow, last-match-wins, default allow, platform repo hard-wired
+// deny - identical semantics to handle-mentions.sh repo_allowed()), then
+// fetches the triggering content (1 call) and checks: bot-own
 // identity, author/requester allowlist (platform-repo collaborators +
 // FOREIGN_MENTIONS_USERS repo variable), and the genuine @mirrobot-agent
 // token. Declines are ACKED (mark-read) and NEVER wake Actions. Any
@@ -137,6 +140,65 @@ async function getRoster(env, state) {
   }
   if (ok) await state.storage.put("rosterCache", { names, ts: Date.now() });
   return { names: new Set(names), ok };
+}
+
+// ---- guest repo rules (GUEST_REPO_RULES variable) --------------------------
+// Ordered "<owner/repo glob>:deny|allow" entries, comma-separated; evaluate
+// in order, LAST MATCH WINS, default allow. The platform repo itself is
+// hard-wired deny (its local instance always owns it). Semantics mirror
+// handle-mentions.sh repo_allowed() exactly (parity fixture-pinned).
+// Absent variable = "" = default allow everywhere except the platform repo.
+// Read failure = fail-open (rule suspended for the cycle; the in-repo
+// gauntlet re-verifies).
+async function getGuestRules(env, state) {
+  const cached = (await state.storage.get("guestRulesCache")) || {};
+  if (cached.value !== undefined && Date.now() - cached.ts < ROSTER_TTL_MS) {
+    return { value: cached.value, ok: true };
+  }
+  let value = "";
+  let ok = true;
+  try {
+    const res = await gh(
+      `/repos/${env.PLATFORM_REPO}/actions/variables/GUEST_REPO_RULES`,
+      env.DISPATCH_PAT,
+    );
+    if (res.status === 404) {
+      // absent = legitimate default-allow config, not an error
+    } else if (!res.ok) {
+      throw new Error(`variable ${res.status}`);
+    } else {
+      value = (await res.json()).value || "";
+    }
+  } catch (e) {
+    console.log(`[poll] guest-rules variable unreadable (fail-open): ${e}`);
+    ok = false;
+  }
+  if (ok) await state.storage.put("guestRulesCache", { value, ts: Date.now() });
+  return { value, ok };
+}
+
+// glob match: '*' = any chars within one segment (repo slugs never contain
+// '/'), case-insensitive. Pattern and repo both lowercased.
+function globMatch(pat, repo) {
+  const esc = pat.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]+");
+  return new RegExp(`^${esc}$`, "i").test(repo);
+}
+
+// last-match-wins verdict; malformed entries are skipped individually.
+function guestAllowed(repo, rulesValue, platformRepo) {
+  const r = String(repo || "").toLowerCase();
+  if (r && platformRepo && r === String(platformRepo).toLowerCase()) return false;
+  let verdict = "allow";
+  for (const raw of String(rulesValue || "").split(",")) {
+    const entry = raw.trim().toLowerCase();
+    const m = entry.match(/^(.+):(deny|allow)$/);
+    if (!m) {
+      if (entry) console.log(`[poll] guest-rules malformed entry ignored: '${entry}'`);
+      continue;
+    }
+    if (globMatch(m[1], r)) verdict = m[2];
+  }
+  return verdict === "allow";
 }
 
 // ---- pre-filter for ONE notification. Deny-only, fail-open.
@@ -395,10 +457,27 @@ async function pollOnce(env, state, src) {
   }
 
   const roster = await getRoster(env, state);
+  const guestRules = await getGuestRules(env, state);
   const relay = [];
   for (const n of qualifying) {
-    const verdict = await prefilter(env, state, n, roster);
     const ref = threadRef(n);
+    // repo rules FIRST: a denied repo is locally handled (or unwanted) -
+    // skip before any content fetch, ack + silence so plain follow-ups
+    // never deliver (real mentions still break through; the local
+    // instance's webhooks handle them).
+    const nrepo = String(n.repository?.full_name || "");
+    if (guestRules.ok && !guestAllowed(nrepo, guestRules.value, env.PLATFORM_REPO)) {
+      try {
+        const ack = await gh(`/notifications/threads/${n.id}`, env.BOT_PAT, { method: "PATCH" });
+        diag.declined.push(`${ref} rule=repo-deny`);
+        console.log(`[poll] src=${src} DENIED-REPO ${ref} repo=${nrepo} ack=${ack.status}`);
+      } catch (e) {
+        console.log(`[poll] src=${src} DENIED-REPO-ACK-FAILED ${ref} repo=${nrepo}: ${e}`);
+      }
+      await silenceThread(env, src, n, diag);
+      continue;
+    }
+    const verdict = await prefilter(env, state, n, roster);
     if (verdict.decline) {
       // positive evidence: ack + never wake Actions
       try {

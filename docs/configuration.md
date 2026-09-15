@@ -15,6 +15,7 @@ gh variable set AGENT_PAUSED -R <owner>/<repo> --body "true"
 | Data shape | Format | Examples |
 |---|---|---|
 | Lists of simple tokens (logins, stems) | comma-separated | `BOT_IDENTITIES`, `BOT_TRIGGERS`, `TRUSTED_AGENT_USERS`, `FOREIGN_MENTIONS_USERS`, `CONTEXT_IGNORE_AUTHORS` |
+| Ordered allow-deny rule lists | comma-separated `glob:verdict` (last match wins) | `GUEST_REPO_RULES` |
 | Lists whose elements can contain commas or quotes (regex) | JSON array | `CONTEXT_FILTER_PATTERNS_JSON` |
 | Maps (key to value, nested) | JSON object | `CONTEXT_LIMITS_JSON`, `AGENT_MODELS_JSON` |
 | Prefilled editable menus (flip, don't construct) | JSON object, seeded by Bootstrap | `AGENT_PAUSED_PARTS_JSON` |
@@ -211,6 +212,24 @@ Must be exactly `true` to arm the mention poller. Everything guest-mode: [workfl
 **Default:** absent (= empty). **Type:** comma-separated logins.
 
 Who may summon the agent *cross-repo* (unioned with home collaborators, owner included). Separate from `TRUSTED_AGENT_USERS`: cross-repo summoning is its own, stricter privilege; home trust does not travel.
+
+### `GUEST_REPO_RULES`
+**Default:** absent (= guest mode allowed everywhere except the platform repo itself). **Type:** comma-separated ordered rules, `<owner/repo glob>:deny` or `:allow`.
+
+Which repositories guest mode may operate in — OpenCode-permission semantics: entries evaluate in order, **last match wins**, default **allow**. The repo this workflow runs in (the platform repo) is hard-wired deny: its local instance always owns it, and no rule can re-allow it. Denied repos are skipped *and* their notification threads acked and unsubscribed, so locally-handled threads never generate poller noise again. Globs use `*` within a segment; both sides are case-insensitive (GitHub slugs). Malformed entries are logged and ignored individually — never a total lockout. The worker prefilter and the in-repo gauntlet run identical semantics (parity is fixture-pinned).
+
+```bash
+# deny both deployed repos, guest mode everywhere else
+gh variable set GUEST_REPO_RULES -R <owner>/<platform-repo> --body "Owner/MyAgent:deny, Owner/OtherRepo:deny"
+
+# guest mode off everywhere except one repo
+gh variable set GUEST_REPO_RULES -R <owner>/<platform-repo> --body "*/*:deny, anomalyco/opencode:allow"
+
+# all your own repos local-only with one entry
+gh variable set GUEST_REPO_RULES -R <owner>/<platform-repo> --body "Owner/*:deny"
+```
+
+Migrate to this rule when you install the platform on another repo: add that repo to the deny list (or deny `Owner/*` once), or mentions there will be handled twice — once by the local instance, once by guest mode.
 
 ## Secrets
 

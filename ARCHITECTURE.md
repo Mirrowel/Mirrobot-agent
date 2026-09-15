@@ -15,7 +15,7 @@
 - **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
 - **Open-triggering gate, opt-out**: `OPEN_TRIGGERING=false` limits on-demand summons (mentions + commands through the router) to collaborators and the `TRUSTED_AGENT_USERS` roster, with a visible decline notice; auto paths (PR auto-reviews, issues-opened analysis, cross-repo mentions with their own allowlist) stay open, and the check is zero API cost (association rides the event payload, the roster is a variable)
 - **Graceful pause ladder**: one kill switch (`AGENT_PAUSED`) plus per-part switches (`AGENT_PAUSED_PARTS_JSON`); the status stubs deliberately keep running so a paused agent never makes a PR mergeable
-- **Batteries in CI**: 330 security fixtures + 75 prompt structural checks run on every `.github/` change, so drift turns CI red
+- **Batteries in CI**: 340 security fixtures + 75 prompt structural checks run on every `.github/` change, so drift turns CI red
 
 ## Layers
 
@@ -177,7 +177,7 @@
 **Scrub Fixture Suite:**
 - Location: `.github/workflows/scrub-fixtures.yml`
 - Triggers: any `.github/` change
-- Responsibilities: The batteries, 330 security fixtures (`scrub-fixtures.sh`), 75 prompt structural checks (`prompt-rule-fixtures.sh`), strict YAML validation
+- Responsibilities: The batteries, 340 security fixtures (`scrub-fixtures.sh`), 75 prompt structural checks (`prompt-rule-fixtures.sh`), strict YAML validation
 
 **Excerpts Refresh:**
 - Location: `.github/workflows/excerpts-refresh.yml`
