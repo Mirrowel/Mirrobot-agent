@@ -10,12 +10,12 @@
 - **Privileged execution from the default branch only**: everything that *thinks* (agents, prompts, scrub, routing) runs from `main` on every PR; the only `pull_request*`-triggered workflows (`pr-review-trigger.yml`, `compliance-gate.yml`) are zero-secret, no-checkout marker/dispatcher stubs, so a tampered PR branch cannot redefine the pipeline that reviews it
 - **PR content is only ever data**: comment bodies, PR titles, and file contents reach shells only through environment variables, never `${{ }}` interpolation
 - **Split-trust workspace scrub**: auto-load content (e.g. `AGENTS.md`, `.claude/`) survives only when its bytes match a state a trust branch (`main` ∪ `dev`) shipped; `.github` platform changes trigger a taint alarm anchored to `main` alone
-- **Prompts are parts**: 34 instruction parts assembled per mode (13 manifests) by a fail-closed assembler; load-bearing wording is pinned by CI fixtures
+- **Prompts are parts**: 35 instruction parts assembled per mode (14 manifests) by a fail-closed assembler; prompt prose is never pinned — CI checks machine contracts only (assembly integrity, placeholder-vs-renderer completeness, workflow marker couplings)
 - **Dual identity, automatic**: `ACCOUNT_GH_TOKEN` present selects account mode; otherwise `BOT_APP_ID` + `BOT_PRIVATE_KEY` selects App mode; neither fails fast
 - **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
 - **Open-triggering gate, opt-out**: `OPEN_TRIGGERING=false` limits on-demand summons (mentions + commands through the router) to collaborators and the `TRUSTED_AGENT_USERS` roster, with a visible decline notice; auto paths (PR auto-reviews, issues-opened analysis, cross-repo mentions with their own allowlist) stay open, and the check is zero API cost (association rides the event payload, the roster is a variable)
 - **Graceful pause ladder**: one kill switch (`AGENT_PAUSED`) plus per-part switches (`AGENT_PAUSED_PARTS_JSON`); the status stubs deliberately keep running so a paused agent never makes a PR mergeable
-- **Batteries in CI**: 340 security fixtures + 75 prompt structural checks run on every `.github/` change, so drift turns CI red
+- **Batteries in CI**: 380 security fixtures + 80 prompt structural checks run on every `.github/` change, so drift turns CI red
 
 ## Layers
 
@@ -28,7 +28,7 @@
 
 **Agent Workflow Layer:**
 - Purpose: The privileged workflows that assemble context, run the LLM session, and post verified output (reviews, replies, compliance reports)
-- Location: `.github/workflows/` (`pr-review.yml`, `bot-reply.yml`, `compliance-check.yml`, `issue-comment.yml`, plus support workflows `mention-poller.yml`, `agent-bootstrap.yml`, `scrub-fixtures.yml`, `excerpts-refresh.yml`)
+- Location: `.github/workflows/` (`pr-review.yml`, `bot-reply.yml`, `bot-reply-guest.yml` — the foreign-repo guest lane, `compliance-check.yml`, `issue-comment.yml`, plus support workflows `mention-poller.yml`, `agent-bootstrap.yml`, `scrub-fixtures.yml`, `excerpts-refresh.yml`)
 - Contains: Dispatch-only workflow YAML with editable knob blocks, inline verification steps
 - Depends on: Composite actions (`.github/actions/`), scripts (`.github/scripts/`), prompt doctrine (`.github/prompts/`), the `OPENCODE_*` secrets
 - Used by: The dispatch layer, GitHub schedules, manual dispatch
@@ -42,10 +42,10 @@
 
 **Prompt Doctrine Layer:**
 - Purpose: The agent's behavior, as composable prose
-- Location: `.github/prompts/`, `parts/` (34 files), `manifests/` (13 files), `security-brief.md`, `guest-rules.md`
+- Location: `.github/prompts/`, `parts/` (35 files), `manifests/` (14 files), `security-brief.md` (home), `security-brief-guest.md` (guest lane)
 - Contains: Markdown instruction parts; manifest files listing part names in assembly order
 - Depends on: Nothing (pure content); resolved by `assemble-prompt.sh`
-- Used by: All four agent workflows; pinned by `prompt-rule-fixtures.sh`
+- Used by: All five agent workflows; structurally checked by `prompt-rule-fixtures.sh` (machine contracts only — prose is never pinned)
 
 **External Workers Layer:**
 - Purpose: Cross-repo mention intake (moves polling off GitHub Actions so Actions run only when something happened) and a cron-health canary
@@ -88,7 +88,7 @@
 **Cross-Repo Mention (guest mode):**
 1. GitHub turns mentions of the account / review requests in any public repo into account notifications
 2. `tools/mention-worker/worker.js` polls via a self-rescheduling Durable Object alarm with conditional requests (`If-None-Match` → free 304 idle polls, 30-120s adaptive cadence), applies a deny-only **fail-open** pre-filter (bot-own identity derived from the cached `/user` login, requester allowlist, genuine-mention token); declines are acked and never wake Actions
-3. Qualifying notifications relay via `repository_dispatch` → `mention-poller.yml` → `.github/scripts/handle-mentions.sh`, the **sole authority**: reason filter → skip matrix (platform-repos of the home owner are no-ops) → mark-read-before-dispatch → subject re-fetch from the API → bot-loop guard → summoner allowlist → genuine-mention verification (for review requests: trust the timeline *actor*, not the PR author) → per-run cap → `bot-reply.yml` in guest mode with `guest-rules.md` injected; Discussion subjects take a GraphQL branch (discussions have no REST endpoints): the subject is re-fetched via GraphQL, the genuine-mention scan runs over the body and recent comments, and the dispatch carries `threadType=discussion` with no comment id
+3. Qualifying notifications relay via `repository_dispatch` → `mention-poller.yml` → `.github/scripts/handle-mentions.sh`, the **sole authority**: reason filter → skip matrix (platform-repos of the home owner are no-ops) → mark-read-before-dispatch → subject re-fetch from the API → bot-loop guard → summoner allowlist → genuine-mention verification (for review requests: trust the timeline *actor*, not the PR author) → GUEST_REPO_RULES repo filter (ordered `glob:deny|allow`, last match wins, platform repo hard-wired deny; identical semantics in the worker prefilter and the gauntlet, parity fixture-pinned) → per-run cap → `bot-reply-guest.yml` (the natively-guest lane: its own security brief `security-brief-guest.md`, its own `bot-reply-guest` manifest with the `mission-guest` monolith, kit via `KIT_REPO`, foreign checkout with TOCTOU SHA pinning + post-phase action restore); Discussion subjects take a GraphQL branch (discussions have no REST endpoints): the subject is re-fetched via GraphQL, the genuine-mention scan runs over the body and recent comments, and the dispatch carries `threadType=discussion` with no comment id
 
 **Compliance Gating:**
 1. A stem-derived compliance command (default `/mirrobot-check`) → router → `compliance-check.yml` runs the merge audit and posts the `compliance-check` status + report (`FILE_GROUPS_JSON` in the workflow defines which files must stay consistent; a repo-specific `compliance-groups.json` next to the workflow replaces the default groups when present and valid — `compliance-groups.EXAMPLE.json` documents the schema and is never loaded)
@@ -103,7 +103,7 @@
 - Pattern: Plain markdown; referenced by name in manifests; a part edit propagates to every mode that uses it
 
 **Mode manifest:**
-- Purpose: The assembly order of parts for one agent mode (13 modes, e.g. `pr-review-first`, `bot-reply`, `agentlib-investigate`)
+- Purpose: The assembly order of parts for one agent mode (14 modes, e.g. `pr-review-first`, `bot-reply`, `bot-reply-guest`, `agentlib-investigate`)
 - Location: `.github/prompts/manifests/*.manifest`
 - Pattern: One part name per line, `#` comments allowed; verified by `assemble-prompt.sh --verify` (no missing parts, no orphans, no duplicate headings outside code fences)
 
@@ -151,8 +151,13 @@
 
 **Bot Reply on Mention:**
 - Location: `.github/workflows/bot-reply.yml`
-- Triggers: dispatch only (router, mention pipeline, manual)
-- Responsibilities: The general agent, conversations, investigations, on-demand reviews (via the review kit), contributor strategy (branch → implement → self-review → PR, never touching `.github/workflows`), repository management; strategy instruction sets load on demand. The `threadType` input selects the thread kind: `issue` (default), `discussion` (mention in a discussion comment), `discussion-new` (mention in a new discussion's body) — discussion mode is all-GraphQL (one fetch resolves trigger + budgeted context; posting via `addDiscussionComment`; reactions on GraphQL node ids), replies anchor to the owning top-level comment node (the API refuses a reply anchored inside an existing thread), and discussion runs carry a `disc-` concurrency prefix since discussion numbers are a separate counter from issues
+- Triggers: dispatch only (router, manual)
+- Responsibilities: The general agent, conversations, investigations, on-demand reviews (via the review kit), contributor strategy (branch → implement → self-review → PR, never touching `.github/workflows`), repository management; strategy instruction sets load on demand. The `threadType` input selects the thread kind: `issue` (default), `discussion` (mention in a discussion comment), `discussion-new` (mention in a new discussion's body) — discussion mode is all-GraphQL (one fetch resolves trigger + budgeted context; posting via `addDiscussionComment`; reactions on GraphQL node ids), replies anchor to the owning top-level comment node (the API refuses a reply anchored inside an existing thread), and discussion runs carry a `disc-` concurrency prefix since discussion numbers are a separate counter from issues. Home only — foreign-repo sessions dispatch `bot-reply-guest.yml` instead
+
+**Guest Bot Reply:**
+- Location: `.github/workflows/bot-reply-guest.yml`
+- Triggers: dispatch only (the Mention Poller's gauntlet; manual); never `pull_request*`, and an explicit never-matching `push` trigger suppresses phantom runs
+- Responsibilities: The guest lane — agent sessions in **foreign** repositories, natively guest so no home-mode conditional can leak. It assembles from `/tmp` trusted artifacts staged **before** the foreign checkout replaces the workspace (assembler, scrub, kit, reactions, share filter, `bot-config.sh`), carries its own `security-brief-guest.md` and `bot-reply-guest` manifest (the `mission-guest` monolith plus the universal parts), runs the review kit with `KIT_REPO="$TARGET_REPO"`, points `gh`/`GH_REPO` at the summoned repo, checks out the foreign tree at an API-recorded SHA (PR head, else default-branch HEAD — never a moving ref; a fetch failure is loud), and runs the scrub `--foreign` (nothing abroad is auto-load-trusted; the removal count feeds `SCRUB_REMOVALS_SUMMARY`). The `threadType` input selects `issue` (default), `discussion`, or `discussion-new`; every signal is re-fetched and re-verified from the foreign repo's APIs — the poller's decision is never trusted on its own
 
 **Issue Analysis:**
 - Location: `.github/workflows/issue-comment.yml`
@@ -167,7 +172,7 @@
 **Mention Poller:**
 - Location: `.github/workflows/mention-poller.yml`
 - Triggers: `repository_dispatch` from the mention-worker, manual `workflow_dispatch` (on-demand poll), documented opt-in schedule
-- Responsibilities: Runs the `handle-mentions.sh` gauntlet on relayed/polled notifications (issues/PRs and foreign Discussions); single writer of notification read-state
+- Responsibilities: Runs the `handle-mentions.sh` gauntlet on relayed/polled notifications (issues/PRs and foreign Discussions) and dispatches `bot-reply-guest.yml` for validated summons; single writer of notification read-state
 
 **Agent Bootstrap:**
 - Location: `.github/workflows/agent-bootstrap.yml`
@@ -177,7 +182,7 @@
 **Scrub Fixture Suite:**
 - Location: `.github/workflows/scrub-fixtures.yml`
 - Triggers: any `.github/` change
-- Responsibilities: The batteries, 340 security fixtures (`scrub-fixtures.sh`), 75 prompt structural checks (`prompt-rule-fixtures.sh`), strict YAML validation
+- Responsibilities: The batteries, 380 security fixtures (`scrub-fixtures.sh`), 80 prompt structural checks (`prompt-rule-fixtures.sh` — machine contracts only), strict YAML validation; local speed flags (`--only`/`--quick`/`--parallel`/`--list`/`--timing`) and the `.fixture-cache/` template cache keep dev loops fast
 
 **Excerpts Refresh:**
 - Location: `.github/workflows/excerpts-refresh.yml`

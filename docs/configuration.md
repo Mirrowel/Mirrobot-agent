@@ -31,6 +31,8 @@ A `_JSON` suffix appears only on variables that actually are JSON.
 *When to use it:* incidents, migrations, "the bot is being weird and I want it quiet while I look." Flip back to `false` (or delete the variable) to resume.
 
 ### `AGENT_PAUSED_PARTS_JSON`
+
+Lane keys: `pr-review`, `bot-reply`, `bot-reply-guest` (the foreign-repo lane), `compliance-check`, `issue-comment`, `stub`, `router`.
 **Default:** all `false` (seeded). **Type:** per-part pause.
 
 ```json

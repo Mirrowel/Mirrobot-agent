@@ -10,7 +10,8 @@ One page per workflow. Each page covers: what triggers it, where it executes fro
 | Compliance Check | The end-of-life merge audit (`/mirrobot-check`) | [compliance-check.md](compliance-check.md) |
 | Compliance Gate | Redundant pending-marker poster, insurance against silent API outages | [compliance-gate.md](compliance-gate.md) |
 | Issue Analysis | Issue triage on open (duplicates, root cause, labels) | [issue-comment.md](issue-comment.md) |
-| Bot Reply on Mention | The general agent, conversations, investigations, contributions, guest mode | [bot-reply.md](bot-reply.md) |
+| Bot Reply on Mention | The general agent at HOME, conversations, investigations, contributions | [bot-reply.md](bot-reply.md) |
+| Bot Reply (Guest) | The guest lane: agent sessions in FOREIGN repos (cross-repo mentions, foreign reviews/discussions) | [bot-reply-guest.md](bot-reply-guest.md) |
 | Mention Poller | Cross-repo ears: the account's notifications → guest sessions | [mention-poller.md](mention-poller.md) |
 | Agent Bootstrap | One-dispatch setup: seeds every variable, prints the secrets checklist | [agent-bootstrap.md](agent-bootstrap.md) |
 | Excerpts Refresh | Weekly rebuild of the landing page's auto-card pool | [excerpts-refresh.md](excerpts-refresh.md) |

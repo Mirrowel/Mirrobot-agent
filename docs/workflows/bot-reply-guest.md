@@ -1,0 +1,19 @@
+# Bot Reply (Guest)
+
+**File:** `.github/workflows/bot-reply-guest.yml` · **Executes from:** the default branch (dispatched by `mention-poller.yml` via `handle-mentions.sh`)
+
+The **guest lane**: conversational agent sessions in FOREIGN repositories (cross-repo mentions, foreign review requests, foreign discussions). Split from `bot-reply.yml` (2026-09-15) after the first live guest review exposed that a home workflow with guest branches leaks home assumptions everywhere — the platform silently ignores `GITHUB_REPOSITORY` overrides, the home security brief taught home merge/roster rules abroad, and the local action's post step broke when the foreign checkout replaced the workspace tree.
+
+**Dispatch inputs:** `targetRepo` (required, `owner/name`), `threadNumber`, `commentId` (empty for body mentions and guest relays), `threadType` (`issue` | `discussion` | `discussion-new`), `triggerKind` (`mention` | `review-request`).
+
+**Pipeline (all signals re-fetched from the foreign repo's APIs — the poller's decision is never trusted):**
+
+1. **Resolve and validate**: trigger content by id (or newest-mention reconstruction for guest discussion relays), bot-loop guard, genuine `@identity` token, and the summoner allowlist re-verification (home collaborators ∪ `FOREIGN_MENTIONS_USERS`, fail closed). Threads render with full home parity: filter-before-cap (hidden + ignored authors + AI-reviewer noise), `[id N]` addressable lines, per-body clips, newest-N selected and rendered chronologically; issue threads carry the title/state/author header + timeline cross-references, PR threads export the API-recorded `PR_HEAD_SHA`. Body-mention dispatches (no comment) get eyes on the foreign issue/discussion body itself.
+2. **Uniform checkout**: every dispatch lands the agent inside the summoned repo. PR threads check out the **PR head at the API-recorded SHA**; issue and discussion threads check out the **default branch at its resolve-time HEAD SHA** (same TOCTOU discipline — recorded SHA or loud failure, never a moving ref). A real `origin` remote is re-added (the session's orientation probes must not come back empty), the local `bot-setup` action is backed up to `$RUNNER_TEMP` and **restored in a final `if: always()` step**, and the session's `gh` defaults to the foreign repo (`GH_REPO` — the gh CLI's own variable; the platform restriction covers `GITHUB_*`/`RUNNER_*` only). Other repositories still need explicit `--repo` / `KIT_REPO`.
+3. **Scrub (`--foreign`)**: NOTHING abroad is auto-load-trusted — every auto-load surface is removed unconditionally and quarantined; the real removal count is exported into the brief (`SCRUB_REMOVALS_SUMMARY`) so disclosure is a given, not a discovery. The platform's own tree never survives to a session.
+4. **Kit (`KIT_REPO=$TARGET_REPO`)**: the review kit targets the foreign repo directly (never a `GITHUB_REPOSITORY` override — the platform ignores those). Kit failures are LOUD: the error text rides the log and the fallback summary. Instruction sets: `investigate` + `contribute` (review sets come from the kit). PR context includes linked-issues bodies (4KB-capped) + cross-references.
+5. **Prompt**: `security-brief-guest.md` + the `bot-reply-guest` manifest — natively guest (no home roster, no merge section, no compliance-check ownership; the summoner line states what was actually verified). PR threads get the full three-block discussion context + review memory via `fetch-pr-discussion.sh` (`QUERY_REPO`-qualified). Share-link encryption carries the guest context (repo #thread, head SHA, trigger kind).
+
+**Pause:** `AGENT_PAUSED` (global) and `AGENT_PAUSED_PARTS_JSON["bot-reply-guest"]` (lane-local); malformed JSON fails loudly.
+
+**Concurrency:** `guest-reply-<owner/name>-<thread>` (discussion threads carry a `disc-` prefix — foreign numbers are their own namespace).
