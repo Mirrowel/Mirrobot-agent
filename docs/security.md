@@ -40,14 +40,15 @@ Any `.github/` change on a PR's side of the merge-base (detected as a **union** 
 
 The `OPENCODE_CONFIG_JSON` secret is the most sensitive object in the pipeline, so it gets defense in depth:
 
-1. Every credential leaf inside it (provider API keys, MCP headers, credential-bearing URLs) is registered with `::add-mask::` at boot; no later step can echo one unmasked.
+1. Every credential leaf inside it (provider API keys, MCP headers, credential-bearing URLs) is registered with `::add-mask::` at boot — and the same sweep covers opencode's own `auth.json` (oauth refresh/access tokens, provider keys) wherever it exists; no later step can echo one unmasked.
 2. OpenCode reads the config exactly once at startup (the fixture suite verifies deletion mid-session is safe).
 3. The config **and** any materialized plugin files are deleted seconds after boot (a sentinel on the first output line proves boot finished; a hard timeout bounds the window; an `if: always()` step backstops every exit path).
 4. The agent's permission profile separately denies reads of `~/.config` and the plugins dir.
+5. Git authentication flows through gh's credential helper (reading `GH_TOKEN` from the environment on demand) — no credential is ever embedded in a URL or config value (a global `url.<token>.insteadOf` rewrite was removed after it printed the PAT into a public share via `git remote -v`).
 
 ## Encrypted share links
 
-Agent sessions run with `--share`, a URL exposing the full session (thoughts included). The output stream is piped through `share-filter.sh`: the raw URL is masked and never reaches the public log; instead an RSA-OAEP-encrypted form (`MRB1.<base64>`) is published inline, as an annotation, and in the run summary, bundled with public metadata (repo, PR, head SHA, run, actor). Only the private-key holder (you, locally, `decrypt_share_link.py`) can recover links. The public key is a secret (`SHARE_LINK_PUBKEY`), so PR content can't swap it.
+Agent sessions run with `--share`, a URL exposing the full session (thoughts included). The output stream is piped through `share-filter.sh`: the raw URL is masked and never reaches the public log; instead an RSA-OAEP-encrypted form (`MRB1.<base64>`) is published inline, as an annotation, and in the run summary, bundled with public metadata (repo, PR, head SHA, run, actor). Only the private-key holder (you, locally, `decrypt_share_link.py`) can recover links. The public key is a secret (`SHARE_LINK_PUBKEY`), so PR content can't swap it. A second, shape-based layer redacts credential-shaped content from any output line before it can reach a log or share: GitHub token families, provider key prefixes (`cr_`, `sk-`, `xai-`, ...), and JSON key/value credential pairs — masked and replaced with `[REDACTED]` — so a leak needs both an unknown shape and a broken rule to land.
 
 ## Scope-of-action rules
 

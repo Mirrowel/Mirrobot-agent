@@ -75,6 +75,15 @@ Two degradation rules keep this from being brittle: an optional trust branch tha
 
 The scrub also **quarantines** every removed file to `/tmp/scrub-quarantine/` (resolved content, in-repo targets only): the agent can read your PR's AGENTS.md as *data* (often genuinely useful context) without those bytes ever being auto-loaded as instructions.
 
+## Opinions and reviews: two treatments
+
+A quality ask ("check this PR out", "is this a good solution?") and a review ask ("review this PR") are different asks, and get different treatments:
+
+- **An opinion** is the default for quality asks: a thread comment (the ack edited into the full reply — one bot comment), findings classified with severity but delivered as prose or as *standalone* inline comments (placement, not review objects), an honest scope note of what was read, run, and skipped. Depth is derived, not picked: the asker's words set the scope, the stakes set the evidence bar claims must meet, deeper work costs one named doubt, and mid-work deepening is bounded by "would this change my answer".
+- **A review** — the full pipeline (kit instruction set, severity-grouped report, verdict, footer markers) — fires only on explicit review intent: the word "review" as a request, a review command, or a review-request event. The automatic PR-review workflow is a different trigger path entirely and is unaffected.
+
+The separation is enforced at the artifact level: no amount of diligence converts an opinion into a review, opinions carry no review markers (so FIRST/FOLLOW-UP tracking only ever sees real reviews), and the review protocol's rigor clauses explicitly do not apply to opinions. The rules live in `parts/opinion-mode.md`, loaded by both conversational lanes.
+
 ## The prompt system
 
 A mode's prompt is an *assembly*, built at run time. `.github/prompts/parts/` holds every block of prose (shared rules, per-mode missions, protocols); `.github/prompts/manifests/` holds ordered part-name lists; a manifest **is** a mode (`pr-review-first`, `bot-reply`, `compliance-followup`, ...). At run time, `assemble-prompt.sh` concatenates the manifest's parts and `envsubst` injects the run's context variables (thread context, diffs, trust warnings). Modes that share a part share it byte-identically by construction, so duplicated guidance cannot drift.

@@ -10,7 +10,7 @@
 - **Privileged execution from the default branch only**: everything that *thinks* (agents, prompts, scrub, routing) runs from `main` on every PR; the only `pull_request*`-triggered workflows (`pr-review-trigger.yml`, `compliance-gate.yml`) are zero-secret, no-checkout marker/dispatcher stubs, so a tampered PR branch cannot redefine the pipeline that reviews it
 - **PR content is only ever data**: comment bodies, PR titles, and file contents reach shells only through environment variables, never `${{ }}` interpolation
 - **Split-trust workspace scrub**: auto-load content (e.g. `AGENTS.md`, `.claude/`) survives only when its bytes match a state a trust branch (`main` ∪ `dev`) shipped; `.github` platform changes trigger a taint alarm anchored to `main` alone
-- **Prompts are parts**: 35 instruction parts assembled per mode (14 manifests) by a fail-closed assembler; prompt prose is never pinned — CI checks machine contracts only (assembly integrity, placeholder-vs-renderer completeness, workflow marker couplings)
+- **Prompts are parts**: 36 instruction parts assembled per mode (14 manifests) by a fail-closed assembler - including opinion-mode.md, the calibrated-judgment system separating opinions (comments + standalone anchors) from reviews (explicit-intent artifacts); prompt prose is never pinned — CI checks machine contracts only (assembly integrity, placeholder-vs-renderer completeness, workflow marker couplings)
 - **Dual identity, automatic**: `ACCOUNT_GH_TOKEN` present selects account mode; otherwise `BOT_APP_ID` + `BOT_PRIVATE_KEY` selects App mode; neither fails fast
 - **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
 - **Open-triggering gate, opt-out**: `OPEN_TRIGGERING=false` limits on-demand summons (mentions + commands through the router) to collaborators and the `TRUSTED_AGENT_USERS` roster, with a visible decline notice; auto paths (PR auto-reviews, issues-opened analysis, cross-repo mentions with their own allowlist) stay open, and the check is zero API cost (association rides the event payload, the roster is a variable)
@@ -42,7 +42,7 @@
 
 **Prompt Doctrine Layer:**
 - Purpose: The agent's behavior, as composable prose
-- Location: `.github/prompts/`, `parts/` (35 files), `manifests/` (14 files), `security-brief.md` (home), `security-brief-guest.md` (guest lane)
+- Location: `.github/prompts/`, `parts/` (36 files), `manifests/` (14 files), `security-brief.md` (home), `security-brief-guest.md` (guest lane)
 - Contains: Markdown instruction parts; manifest files listing part names in assembly order
 - Depends on: Nothing (pure content); resolved by `assemble-prompt.sh`
 - Used by: All five agent workflows; structurally checked by `prompt-rule-fixtures.sh` (machine contracts only — prose is never pinned)

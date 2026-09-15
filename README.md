@@ -47,6 +47,7 @@ The **[Ask Mirrobot](#landing-page--badge)** badge in the row above is this proj
 | 🧠 **Review every pull request** | Severity-graded findings (🔴 🟠 🟡 🔵), inline on the exact lines, with a justified verdict in plain words |
 | ✅ **Audit merge readiness** | On `/mirrobot-check`: documentation, consistency, good practices, gating the merge via a real status check |
 | 💬 **Answer anywhere** | `@mirrobot-agent` in any issue or PR: questions answered, code investigated, other PRs reviewed on demand |
+| 🌡️ **Judge without ceremony** | "Check this PR, is it good?" gets a calibrated opinion — a verdict-first comment, findings anchored inline where they earn it, an honest scope note — never a heavyweight review object unless you actually ask for a review |
 | 🔧 **Contribute code** | "Fix this" → it branches, implements, self-reviews, and opens a PR, never touching your workflows |
 | 🛡️ **Refuse to be exploited** | Injection-hardened, adversarially tested, scrubbed workspaces, least-privilege tokens |
 

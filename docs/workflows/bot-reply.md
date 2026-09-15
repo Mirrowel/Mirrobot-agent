@@ -8,6 +8,10 @@ The general agent at HOME: anything that isn't a structured review or compliance
 
 **Inputs:** `commentId` (the triggering comment, re-fetched from the API) and `threadType` (`discussion`/`discussion-new` for home discussion threads).
 
+## Opinion Mode (quality asks)
+
+When the ask is a quality judgment without the word "review" ("check this PR out", "is this good?"), the run answers with an opinion instead of the review pipeline: one thread comment (the ack edited into the full reply), findings in prose or as standalone inline comments (severity icon, no verdict language), and an honest scope note of what was read, run, and skipped. The full review treatment — kit instruction set, severity-grouped report, verdict, footer markers — fires only on explicit review intent (the word "review", a review command, a review-request event). Rules: `parts/opinion-mode.md`.
+
 ## Home mode
 
 A mention in an issue or PR thread (`@mirrobot`, `@mirrobot-agent`) → router dispatch → this workflow:

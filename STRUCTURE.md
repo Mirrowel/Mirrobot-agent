@@ -12,7 +12,7 @@
 │   │   └── requester-context/  # Factual trust-line output for the security brief
 │   ├── ISSUE_TEMPLATE/         # Issue forms (bug/feature/support) feeding the triage agent
 │   ├── prompts/                # Agent behavior, as composable prose
-│   │   ├── parts/              # 35 instruction parts (the prose)
+│   │   ├── parts/              # 36 instruction parts (the prose)
 │   │   ├── manifests/          # 14 mode manifests (the assembly order)
 │   │   ├── security-brief.md   # Read first in every home agent session
 │   │   └── security-brief-guest.md  # Read first in every guest session

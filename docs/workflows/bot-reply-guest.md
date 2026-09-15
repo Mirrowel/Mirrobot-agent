@@ -6,6 +6,8 @@ The **guest lane**: conversational agent sessions in FOREIGN repositories (cross
 
 **Dispatch inputs:** `targetRepo` (required, `owner/name`), `threadNumber`, `commentId` (empty for body mentions and guest relays), `threadType` (`issue` | `discussion` | `discussion-new`), `triggerKind` (`mention` | `review-request`).
 
+**Opinion Mode:** quality asks ("check this PR out", "is it good?") come back as a calibrated opinion — the ack edited into one conversational comment, findings as prose or standalone inline anchors (anchors are placement: they don't count against the one-comment rule; once they post, the ack is edited by id), no review object, no instruction set. Explicit review intent gets the full kit pipeline. Rules: `parts/opinion-mode.md`.
+
 **Pipeline (all signals re-fetched from the foreign repo's APIs — the poller's decision is never trusted):**
 
 1. **Resolve and validate**: trigger content by id (or newest-mention reconstruction for guest discussion relays), bot-loop guard, genuine `@identity` token, and the summoner allowlist re-verification (home collaborators ∪ `FOREIGN_MENTIONS_USERS`, fail closed). Threads render with full home parity: filter-before-cap (hidden + ignored authors + AI-reviewer noise), `[id N]` addressable lines, per-body clips, newest-N selected and rendered chronologically; issue threads carry the title/state/author header + timeline cross-references, PR threads export the API-recorded `PR_HEAD_SHA`. Body-mention dispatches (no comment) get eyes on the foreign issue/discussion body itself.
