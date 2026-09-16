@@ -10,12 +10,12 @@
 - **Privileged execution from the default branch only**: everything that *thinks* (agents, prompts, scrub, routing) runs from `main` on every PR; the only `pull_request*`-triggered workflows (`pr-review-trigger.yml`, `compliance-gate.yml`) are zero-secret, no-checkout marker/dispatcher stubs, so a tampered PR branch cannot redefine the pipeline that reviews it
 - **PR content is only ever data**: comment bodies, PR titles, and file contents reach shells only through environment variables, never `${{ }}` interpolation
 - **Split-trust workspace scrub**: auto-load content (e.g. `AGENTS.md`, `.claude/`) survives only when its bytes match a state a trust branch (`main` ∪ `dev`) shipped; `.github` platform changes trigger a taint alarm anchored to `main` alone
-- **Prompts are parts**: 36 instruction parts assembled per mode (14 manifests) by a fail-closed assembler - including opinion-mode.md, the calibrated-judgment system separating opinions (comments + standalone anchors) from reviews (explicit-intent artifacts); prompt prose is never pinned — CI checks machine contracts only (assembly integrity, placeholder-vs-renderer completeness, workflow marker couplings)
+- **Prompts are parts**: 36 instruction parts assembled per mode (14 manifests) by a fail-closed assembler — including opinion-mode.md, the calibrated-judgment system separating opinions (comments + standalone anchors) from reviews (explicit-intent artifacts); prompt prose is never pinned — CI checks machine contracts only (assembly integrity, placeholder-vs-renderer completeness, workflow marker couplings)
 - **Dual identity, automatic**: `ACCOUNT_GH_TOKEN` present selects account mode; otherwise `BOT_APP_ID` + `BOT_PRIVATE_KEY` selects App mode; neither fails fast
 - **Configurable identity & summons**: the agent knows who it is and what summons it from `BOT_IDENTITIES` ∪ the live `/user` login (account mode), and answers to trigger stems from `BOT_TRIGGERS` (derived into `@stem`, `/stem-review`, `/stem-check`); the stock names apply only when nothing is set
 - **Open-triggering gate, opt-out**: `OPEN_TRIGGERING=false` limits on-demand summons (mentions + commands through the router) to collaborators and the `TRUSTED_AGENT_USERS` roster, with a visible decline notice; auto paths (PR auto-reviews, issues-opened analysis, cross-repo mentions with their own allowlist) stay open, and the check is zero API cost (association rides the event payload, the roster is a variable)
 - **Graceful pause ladder**: one kill switch (`AGENT_PAUSED`) plus per-part switches (`AGENT_PAUSED_PARTS_JSON`); the status stubs deliberately keep running so a paused agent never makes a PR mergeable
-- **Batteries in CI**: 380 security fixtures + 80 prompt structural checks run on every `.github/` change, so drift turns CI red
+- **Batteries in CI**: 401 security fixtures + 80 prompt structural checks run on every `.github/` change, so drift turns CI red
 
 ## Layers
 
@@ -125,7 +125,7 @@
 **Review kit:**
 - Purpose: Self-serve review context for ANY PR, from any thread, used both by `pr-review.yml` and by the agent itself on demand ("review PR #42" from an unrelated issue)
 - Location: `.github/scripts/generate-review-kit.sh`
-- Pattern: Kit-scoped files under `/tmp/kit/<pr>/` (never clobbers the thread's own state); stdout `KIT RESULT` summary is the caller's selector
+- Pattern: Kit-scoped files under `/tmp/kit/<pr>/` (never clobbers the thread's own state); stdout `KIT RESULT` summary is the caller's selector; a kit that cannot pin the PR head SHA (REST `.head.sha` vs GraphQL `.headRefOid`) exits loudly rather than writing a null marker downstream flows trust, and the transient `context.env` byproduct is deleted once review memory is extracted
 
 **Three-block discussion context:**
 - Purpose: Single source of truth for what the reviewer remembers, its own newest N reviews (elevated: only resolved/outdated markers bypassed), older review history (fully filtered), and everything else (correlated, noise-filtered) plus orphaned inline threads
@@ -182,7 +182,7 @@
 **Scrub Fixture Suite:**
 - Location: `.github/workflows/scrub-fixtures.yml`
 - Triggers: any `.github/` change
-- Responsibilities: The batteries, 380 security fixtures (`scrub-fixtures.sh`), 80 prompt structural checks (`prompt-rule-fixtures.sh` — machine contracts only), strict YAML validation; local speed flags (`--only`/`--quick`/`--parallel`/`--list`/`--timing`) and the `.fixture-cache/` template cache keep dev loops fast
+- Responsibilities: The batteries, 401 security fixtures (`scrub-fixtures.sh`), 80 prompt structural checks (`prompt-rule-fixtures.sh` — machine contracts only), strict YAML validation; local speed flags (`--only`/`--quick`/`--parallel`/`--list`/`--timing`) and the `.fixture-cache/` template cache keep dev loops fast
 
 **Excerpts Refresh:**
 - Location: `.github/workflows/excerpts-refresh.yml`
@@ -202,11 +202,11 @@
 
 ## Cross-Cutting Concerns
 
-**Secrets & masking:** Credential leaves inside `OPENCODE_CONFIG_JSON` (provider keys, MCP headers, credential-bearing URLs) are each `::add-mask::`ed at boot by bot-setup; the config is written `chmod 600` outside the workspace, and (together with any materialized plugin files (`OPENCODE_PLUGINS_JSON*` variables)) deleted seconds after opencode boots (once-at-boot semantics; `opencode-cleanup.sh` provides the waiter/now cleanup with an `if: always()` guarantee). Git auth rides an in-process extraheader, never `.git/config`; `persist-credentials: false` on every token-bearing checkout.
+**Secrets & masking:** Credential leaves inside `OPENCODE_CONFIG_JSON` (provider keys, MCP headers, credential-bearing URLs) — plus opencode's own `auth.json` (oauth refresh/access tokens, provider `key` entries) whenever it exists — are each `::add-mask::`ed at boot by bot-setup; the config is written `chmod 600` outside the workspace, and (together with any materialized plugin files (`OPENCODE_PLUGINS_JSON*` variables)) deleted seconds after opencode boots (once-at-boot semantics; `opencode-cleanup.sh` provides the waiter/now cleanup with an `if: always()` guarantee). Git auth never materializes a credential: bot-setup installs gh's credential helper (reads `GH_TOKEN` from the session environment on demand) and token-bearing fetches ride an in-process extraheader, so nothing credential-shaped lands in a URL, a config value, or printed output (never `.git/config`); `persist-credentials: false` on every token-bearing checkout.
 
 **No untrusted interpolation:** Untrusted text reaches shells only as environment variables; a pinned CI audit proves it. Dispatch inputs never carry requester content; targets re-fetch from the API by id.
 
-**Share-link hygiene:** Session share URLs are masked, never logged raw, and re-published RSA-OAEP-encrypted with public context (repo, PR, head SHA, review type, run, actor); the opencode model-header line is stripped from the stream and the model token masked; only the admin-side private key (`decrypt_share_link.py`, key never leaves the admin machine) recovers them.
+**Share-link hygiene:** Session share URLs are masked, never logged raw, and re-published RSA-OAEP-encrypted with public context (repo, PR, head SHA, review type, run, actor); the opencode model-header line is stripped from the stream and the model token masked; a shape-based redaction layer catches credential-shaped content no registered mask anticipated (GitHub token families, provider key prefixes such as `cr_`/`sk-`/`xai-`, JSON key/value credential pairs) and replaces it with `[REDACTED]` before it can reach the log or the share; only the admin-side private key (`decrypt_share_link.py`, key never leaves the admin machine) recovers them.
 
 **Auditability:** The router's step summary is the dispatch decision record; agent usage surfaces as a bare `opencode stats` report in the run summary (model stats stay hidden); reactions follow a mechanical workflow-owned lifecycle (`react.sh`) distinct from the agent's discretionary reactions.
 
