@@ -62,6 +62,46 @@ shows a colored dot (green/blue/red).
 session item; the viewer hides everything from that message while the
 marker is set.
 
+## Branding
+
+The deployment skin is config-first: **`openshare.config.json`** next to
+`wrangler.toml` (bundled at deploy) holds `name`, `logoUrl`,
+`wordmarkUrl`, `linkUrl`, `accent`, `faviconUrl`, `backgroundUrl` — all
+optional, all defaulting to the neutral upstream look. `BRAND_*` env
+vars override the file when both exist (same ENV > file > defaults
+chain as the plugin config). Edit the file, redeploy, done — no code.
+
+Identity model on the page: **left header = the deployment** (logo,
+links to its git when `linkUrl` is set), **right header = Open(code)
+Share itself** (github mark → repo, fixed in source so the product
+always promotes itself), **version badge = the tool that ran** (opencode
+mark + version), **footer** = brand wordmark image or styled text
+("Open(code)Share" by default).
+
+## Viewer settings (cookie)
+
+The gear in the header opens the settings panel — persisted in a
+`osh_settings` cookie, applied pre-paint (no theme flash):
+
+- **Theme**: system (default), forced light/dark, plus premades —
+  `mirrobot` (the landing-page paper-terminal look, included by
+  default), `midnight`, `sepia`, `nord`. Forced themes work via
+  attribute-scoped token copies emitted by
+  `tools/share-viewer/scripts/build-themes.mjs` at build time.
+- **Text size**: compact / normal / roomy (root font scale).
+- **Continuous mode**: render every prompt in one scroll instead of
+  one-turn-at-a-time with the left selector — continuity reading.
+- **Follow live scroll**: during a live share the view keeps the newest
+  content visible, but only while you are already at the bottom — it
+  never fights your reading position.
+- **Reasoning expanded**: default open instead of collapsed (applies to
+  rendered blocks immediately).
+- **Background image**: on/off toggle, present only when the deployment
+  sets `backgroundUrl` (rendered under a dark readability overlay).
+- **Session search**: prompt filter (Ctrl+K).
+
+Header extras: copy session as markdown, j/k prompt navigation.
+
 ## Read auth (optional, casual-eyes resistance)
 
 `authLogin`/`authPassword` in the plugin config gate the share pages:

@@ -9,14 +9,8 @@ preview_urls = false
 [vars]
 # Hard cap for per-share ttlDays overrides (client may request less).
 MAX_TTL_DAYS = "90"
-# Branding (this deploy = the mirrobot example skin; empty = the neutral
-# upstream-derived default every other deployment gets for free).
-BRAND_NAME = "mirrobot"
-BRAND_LOGO_URL = "/branding/mirrobot-mark.svg"
-BRAND_WORDMARK_URL = "/branding/mirrobot-wordmark.svg"
-BRAND_LINK_URL = "https://github.com/Mirrowel/Mirrobot-agent"
-BRAND_ACCENT = "#7aa2f7"
-BRAND_FAVICON_URL = "/branding/mirrobot-mark.svg"
+# Branding: edit openshare.config.json (bundled at deploy) — that is the
+# primary skin. BRAND_* env vars here override it if you ever need both.
 
 [[kv_namespaces]]
 binding = "SHARE_INDEX"

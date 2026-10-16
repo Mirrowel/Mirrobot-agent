@@ -35,6 +35,21 @@
 
 const encoder = new TextEncoder()
 
+// Neutral code defaults for every deployment. THIS deployment's skin lives
+// in openshare.config.json (bundled at build); BRAND_* env vars override
+// both — same ENV > file > defaults chain as the plugin config.
+import defaultBrandingFile from "./openshare.config.json"
+const DEFAULT_BRANDING = {
+  name: "",
+  logoUrl: "",
+  wordmarkUrl: "",
+  linkUrl: "",
+  accent: "",
+  faviconUrl: "",
+  backgroundUrl: "",
+  ...defaultBrandingFile,
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url)
@@ -48,13 +63,18 @@ export default {
       if (path === "/health") return json(200, { ok: true, service: "openshare" })
 
       if (path === "/branding") {
+        const b = (field) => {
+          const envKey = "BRAND_" + field.replace(/[A-Z]/g, (c) => "_" + c).toUpperCase()
+          return env[envKey] || DEFAULT_BRANDING[field] || ""
+        }
         return new Response(JSON.stringify({
-          name: env.BRAND_NAME ?? "",
-          logoUrl: env.BRAND_LOGO_URL ?? "",
-          wordmarkUrl: env.BRAND_WORDMARK_URL ?? "",
-          linkUrl: env.BRAND_LINK_URL ?? "",
-          accent: env.BRAND_ACCENT ?? "",
-          faviconUrl: env.BRAND_FAVICON_URL ?? "",
+          name: b("name"),
+          logoUrl: b("logoUrl"),
+          wordmarkUrl: b("wordmarkUrl"),
+          linkUrl: b("linkUrl"),
+          accent: b("accent"),
+          faviconUrl: b("faviconUrl"),
+          backgroundUrl: b("backgroundUrl"),
         }), {
           headers: { "content-type": "application/json", "cache-control": "public, max-age=300" },
         })

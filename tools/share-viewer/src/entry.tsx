@@ -1,5 +1,8 @@
 // @refresh reload
 import { render } from "solid-js/web"
+import { applySettings, readSettings } from "./settings"
+// pre-paint: apply the settings cookie before anything renders (no theme flash)
+applySettings(readSettings())
 import { Font } from "@opencode-ai/ui/font"
 import { MetaProvider } from "@solidjs/meta"
 import { MarkedProvider } from "@opencode-ai/ui/context/marked"
