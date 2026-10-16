@@ -1,39 +1,64 @@
-// mirrobot-share-worker — event-driven session sharing.
+// openshare-worker — Open(code)Share: self-hosted session sharing for
+// opencode ("re:share"). Event-driven over hibernating WebSockets.
 //
 // Protocol:
 //   HTTP (fallback + curl/testing):
-//     POST   /api/share            {sessionID, ttlDays?}  Bearer CREATE_TOKEN -> {id, secret}
+//     POST   /api/share            {sessionID, ttlDays?, authLogin?, authPassword?}
+//                                  Bearer CREATE_TOKEN -> {id, secret}
 //     POST   /api/share/:id/sync   {secret, data, status?} -> {ok, rev, status}
-//     GET    /api/share/:id/data   -> {data, status, rev}
+//     GET    /api/share/:id/data   -> {data, status, rev}   (401 authRequired if gated)
+//     POST   /api/share/:id/auth   {login, password} -> cookie token (rate-limited)
 //     DELETE /api/share/:id        {secret}
+//     GET    /branding             -> BRAND_* vars as JSON (viewer skin)
 //   WebSocket (primary):
-//     viewer:  GET /s/../api route /api/share/:id/ws — terminates in ShareDO
-//              (hibernating); every plugin sync broadcasts
-//              {op:"frame", status, rev, items} to all viewers.
-//     plugin:  GET /api/ws?token=<CREATE_TOKEN> — terminates in a fresh
-//              ControlDO (hibernating). Frames:
-//                -> {op:"init", create:{sessionID, ttlDays?}} | {op:"init", attach:{id, secret}}
-//                <- {op:"init", ok, id, secret, rev, status, data?}
-//                -> {op:"sync", items, status?}   <- {op:"ack", rev, status}
-//                -> {op:"delete"}                 <- {op:"deleted"}
-//              Both socket kinds hibernate between frames (zero cost);
-//              outgoing messages are free.
+//     viewer:  GET /api/share/:id/ws — hibernating; auth cookie checked;
+//              pushes {op:"frame", status, rev, items} after every sync
+//     plugin:  GET /api/ws?token=<CREATE_TOKEN> — one socket per process:
+//              init create {sessionID, ttlDays?, authLogin?, authPassword?}
+//              init attach {id, secret, authLogin?, authPassword?}
+//                 (attach with empty auth values REMOVES the read gate)
+//              sync {items, status?} -> ack {rev}; delete
 //
-// Resumability: every accepted sync bumps a monotonic rev; plugins replay
-// their unacked spool on reconnect. TTL is per-share (create frame, capped
-// at MAX_TTL_DAYS, default 90); the sweeper respects each share's own TTL.
+// Read auth (casual-eyes resistance): per-share PBKDF2-SHA256 hashes
+// (10k iterations, per-share salt — free-tier CPU friendly; the hash
+// never leaves the DO), session cookie tokens (7d, up to 5 devices),
+// exponential lockout per IP (5 fails -> 1min doubling to 24h) and
+// per-share total (20 fails -> 24h). Writes are gated separately by
+// CREATE_TOKEN (creation) and the per-share secret (sync/delete).
+//
+// Viewer privacy: session items never leave with their `metadata` field
+// (the plugin stores its share binding there — belt and suspenders).
+//
+// Resumability: every accepted sync bumps a monotonic rev; plugins ack
+// and replay. TTL is per-share (capped at MAX_TTL_DAYS); the sweeper
+// respects each share's own TTL.
+
+const encoder = new TextEncoder()
 
 export default {
   async fetch(req, env) {
     const url = new URL(req.url)
     const path = url.pathname
-    const json = (code, body) => new Response(JSON.stringify(body), {
+    const json = (code, body, headers = {}) => new Response(JSON.stringify(body), {
       status: code,
-      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      headers: { "content-type": "application/json", "cache-control": "no-store", ...headers },
     })
 
     try {
-      if (path === "/health") return json(200, { ok: true })
+      if (path === "/health") return json(200, { ok: true, service: "openshare" })
+
+      if (path === "/branding") {
+        return new Response(JSON.stringify({
+          name: env.BRAND_NAME ?? "",
+          logoUrl: env.BRAND_LOGO_URL ?? "",
+          wordmarkUrl: env.BRAND_WORDMARK_URL ?? "",
+          linkUrl: env.BRAND_LINK_URL ?? "",
+          accent: env.BRAND_ACCENT ?? "",
+          faviconUrl: env.BRAND_FAVICON_URL ?? "",
+        }), {
+          headers: { "content-type": "application/json", "cache-control": "public, max-age=300" },
+        })
+      }
 
       // ---- plugin control socket: forward the upgrade into a fresh DO ----
       if (path === "/api/ws") {
@@ -46,6 +71,20 @@ export default {
       const wm = path.match(/^\/api\/share\/([0-9a-f]+)\/ws$/)
       if (wm && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
         return shareStub(env, wm[1]).fetch(new Request(`https://do/ws`, req))
+      }
+
+      const am = path.match(/^\/api\/share\/([0-9a-f]+)\/auth$/)
+      if (am && req.method === "POST") {
+        const body = await req.json().catch(() => ({}))
+        const r = await shareStub(env, am[1]).fetch("https://do/auth", {
+          method: "POST",
+          headers: { "x-ip": req.headers.get("cf-connecting-ip") ?? "unknown" },
+          body: JSON.stringify({ login: body.login ?? "", password: body.password ?? "" }),
+        })
+        const out = await r.json()
+        const headers = {}
+        if (out.setCookie) headers["set-cookie"] = out.setCookie
+        return json(r.status, out.body ?? out, headers)
       }
 
       const sm = path.match(/^\/api\/share\/([0-9a-f]+)(\/sync|\/data|)$/)
@@ -61,7 +100,13 @@ export default {
         const newId = randomId()
         const r = await shareStub(env, newId).fetch("https://do/init", {
           method: "POST",
-          body: JSON.stringify({ id: newId, sessionID: body.sessionID, ttlDays: clampTtl(body.ttlDays, env) }),
+          body: JSON.stringify({
+            id: newId,
+            sessionID: body.sessionID,
+            ttlDays: clampTtl(body.ttlDays, env),
+            authLogin: body.authLogin ?? "",
+            authPassword: body.authPassword ?? "",
+          }),
         })
         return json(r.status, await r.json())
       }
@@ -76,7 +121,8 @@ export default {
       }
 
       if (req.method === "GET" && op === "/data") {
-        const r = await shareStub(env, id).fetch("https://do/data")
+        const token = bearer(req) || cookieToken(req, id)
+        const r = await shareStub(env, id).fetch(`https://do/data?token=${encodeURIComponent(token)}`)
         return new Response(await r.text(), {
           status: r.status,
           headers: { "content-type": "application/json", "cache-control": "no-store" },
@@ -100,6 +146,19 @@ export default {
   },
 }
 
+function bearer(req) {
+  return req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? ""
+}
+
+function cookieToken(req, shareId) {
+  const raw = req.headers.get("cookie") ?? ""
+  for (const part of raw.split(";")) {
+    const [k, ...v] = part.trim().split("=")
+    if (k === `osh_${shareId}`) return v.join("=")
+  }
+  return ""
+}
+
 function randomId() {
   const b = new Uint8Array(16)
   crypto.getRandomValues(b)
@@ -116,9 +175,21 @@ function shareStub(env, id) {
   return env.SHARE_DO.get(env.SHARE_DO.idFromName(id))
 }
 
+// PBKDF2-SHA256 (10k iterations: ~5ms CPU, inside the free-tier per-request
+// budget; the hash stays in the DO so offline cracking isn't the threat —
+// the online lockout is).
+async function pbkdf2(value, salt) {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(value), "PBKDF2", false, ["deriveBits"])
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: encoder.encode(salt), iterations: 10000 },
+    key,
+    256,
+  )
+  return Array.from(new Uint8Array(bits), (b) => b.toString(16).padStart(2, "0")).join("")
+}
+
 // ---------------------------------------------------------------------------
 // ControlDO — one per plugin socket. Owns create/attach + forwards syncs.
-// Hibernates between frames.
 // ---------------------------------------------------------------------------
 export class ControlDO {
   constructor(state, env) {
@@ -159,6 +230,8 @@ export class ControlDO {
               id,
               sessionID: frame.create.sessionID,
               ttlDays: clampTtl(frame.create.ttlDays, this.env),
+              authLogin: frame.create.authLogin ?? "",
+              authPassword: frame.create.authPassword ?? "",
             }),
           })
           const body = await r.json()
@@ -170,7 +243,11 @@ export class ControlDO {
         if (frame.attach) {
           const r = await this.env.SHARE_DO.get(this.env.SHARE_DO.idFromName(frame.attach.id)).fetch("https://do/attach", {
             method: "POST",
-            body: JSON.stringify({ secret: frame.attach.secret ?? "" }),
+            body: JSON.stringify({
+              secret: frame.attach.secret ?? "",
+              authLogin: frame.attach.authLogin,
+              authPassword: frame.attach.authPassword,
+            }),
           })
           const body = await r.json()
           if (!body.ok) return send({ op: "init", ok: false, error: body.error })
@@ -218,7 +295,7 @@ export class ControlDO {
 }
 
 // ---------------------------------------------------------------------------
-// ShareDO — one per share: items, rev, status, hibernating viewer sockets.
+// ShareDO — one per share: items, rev, status, auth, viewer sockets.
 // ---------------------------------------------------------------------------
 export class ShareDO {
   constructor(state, env) {
@@ -232,16 +309,22 @@ export class ShareDO {
     const json = (code, body) => new Response(JSON.stringify(body), { status: code, headers: { "content-type": "application/json" } })
 
     if (path === "/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      const meta = await this.state.storage.get("meta")
+      if (!meta) return new Response("gone", { status: 404 })
+      if (meta.auth) {
+        // browsers authenticate the WS with the session cookie
+        const token = (req.headers.get("cookie") ?? "").split(";")
+          .map((c) => c.trim().split("="))
+          .filter(([k]) => k === `osh_${this.state.id.name}`)
+          .map(([, ...v]) => v.join("="))[0] ?? ""
+        if (!(await this.validToken(token))) return new Response("auth required", { status: 401 })
+      }
       const pair = new WebSocketPair()
       this.state.acceptWebSocket(pair[1], ["viewer"])
-      // push current state so late joiners render without /data
-      const meta = await this.state.storage.get("meta")
-      if (meta) {
-        const items = (await this.state.storage.get("items")) ?? {}
-        try {
-          pair[1].send(JSON.stringify({ op: "frame", status: meta.status, rev: meta.rev ?? 0, items: Object.values(items) }))
-        } catch {}
-      }
+      const items = (await this.state.storage.get("items")) ?? {}
+      try {
+        pair[1].send(JSON.stringify({ op: "frame", status: meta.status, rev: meta.rev ?? 0, items: redactItems(Object.values(items)) }))
+      } catch {}
       return new Response(null, { status: 101, webSocket: pair[0] })
     }
 
@@ -250,6 +333,7 @@ export class ShareDO {
       if (!body?.id || !body?.sessionID) return json(400, { ok: false, error: "id and sessionID required" })
       const secret = randomId() + randomId()
       const now = Date.now()
+      const auth = body.authLogin && body.authPassword ? await this.makeAuth(body.authLogin, body.authPassword) : null
       await this.state.storage.put("meta", {
         secret,
         sessionID: body.sessionID,
@@ -258,6 +342,9 @@ export class ShareDO {
         lastActive: now,
         rev: 0,
         status: "live",
+        auth,
+        tokens: [],
+        attempts: { ips: {}, total: 0, lockUntil: 0 },
       })
       await this.state.storage.put("items", {})
       try {
@@ -274,51 +361,104 @@ export class ShareDO {
       const meta = await this.state.storage.get("meta")
       if (!meta) return json(404, { ok: false, error: "share not found" })
       if (body.secret !== meta.secret) return json(403, { ok: false, error: "bad secret" })
+
+      // resume retroactively applies/updates/clears the read gate
+      if (body.authLogin !== undefined && body.authPassword !== undefined) {
+        const wantAuth = body.authLogin && body.authPassword
+        const sameAuth = wantAuth && meta.auth
+          && meta.auth.loginHash === await pbkdf2(body.authLogin, meta.auth.salt)
+          && meta.auth.passHash === await pbkdf2(body.authPassword, meta.auth.salt)
+        if (wantAuth && !sameAuth) {
+          meta.auth = await this.makeAuth(body.authLogin, body.authPassword)
+          meta.tokens = [] // credentials changed: viewers re-login
+          console.log("[attach] auth updated, tokens rotated")
+        } else if (!wantAuth && meta.auth) {
+          meta.auth = null
+          console.log("[attach] auth removed (owner action)")
+        }
+        await this.state.storage.put("meta", meta)
+      }
+
       const items = (await this.state.storage.get("items")) ?? {}
       return json(200, {
         ok: true,
         rev: meta.rev ?? 0,
         status: meta.status,
         sessionID: meta.sessionID,
-        data: Object.values(items),
+        data: redactItems(Object.values(items)),
       })
     }
 
-    if (path === "/sync" && req.method === "POST") {
+    if (path === "/auth" && req.method === "POST") {
       const body = await req.json()
+      const ip = req.headers.get("x-ip") ?? "unknown"
       const meta = await this.state.storage.get("meta")
       if (!meta) return json(404, { ok: false, error: "share not found" })
-      if (body.secret !== meta.secret) return json(403, { ok: false, error: "bad secret" })
-      const items = (await this.state.storage.get("items")) ?? {}
-      const batch = []
-      for (const it of body.data ?? []) {
-        const key = itemKey(it)
-        if (!key) continue
-        items[key] = it
-        batch.push(it)
+      if (!meta.auth) return json(200, { ok: true, note: "no auth required" })
+
+      const now = Date.now()
+      const attempts = meta.attempts ?? { ips: {}, total: 0, lockUntil: 0 }
+      const ipState = attempts.ips[ip] ?? { fails: 0, lockUntil: 0, streak: 0 }
+      attempts.ips[ip] = ipState
+
+      const lockedFor = Math.max(ipState.lockUntil - now, attempts.lockUntil - now)
+      if (lockedFor > 0) {
+        return json(429, { ok: false, error: "locked", retryAfterMs: lockedFor })
       }
-      const rev = (meta.rev ?? 0) + 1
-      meta.rev = rev
-      meta.lastActive = Date.now()
-      if (body.status && STATUSES.has(body.status)) meta.status = body.status
-      await this.state.storage.put("items", items)
+
+      const [loginHash, passHash] = await Promise.all([
+        pbkdf2(body.login ?? "", meta.auth.salt),
+        pbkdf2(body.password ?? "", meta.auth.salt),
+      ])
+      if (loginHash !== meta.auth.loginHash || passHash !== meta.auth.passHash) {
+        ipState.fails += 1
+        ipState.streak += 1
+        attempts.total += 1
+        if (ipState.fails >= 5) {
+          ipState.lockUntil = now + Math.min(60000 * 2 ** (ipState.streak - 5), 86400000)
+          ipState.fails = 0
+        }
+        if (attempts.total >= 20) attempts.lockUntil = now + 86400000
+        meta.attempts = attempts
+        await this.state.storage.put("meta", meta)
+        const retryAfterMs = Math.max(ipState.lockUntil - now, attempts.lockUntil - now, 0)
+        return json(401, { ok: false, error: "wrong credentials", retryAfterMs })
+      }
+
+      // success: reset this IP, mint a session token (max 5, LRU)
+      delete attempts.ips[ip]
+      attempts.total = Math.max(0, attempts.total - 1)
+      const token = randomId() + randomId()
+      const tokens = [{ token, expires: now + 7 * 86400000 }, ...(meta.tokens ?? [])].slice(0, 5)
+      meta.tokens = tokens
+      meta.attempts = attempts
       await this.state.storage.put("meta", meta)
-      await this.broadcast({ op: "frame", status: meta.status, rev, items: batch })
-      return json(200, { ok: true, rev, status: meta.status })
+      const cookie = `osh_${this.state.id.name}=${token}; Path=/; Max-Age=${7 * 86400}; HttpOnly; Secure; SameSite=Lax`
+      // the router translates this into a real Set-Cookie header
+      return json(200, { setCookie: cookie, body: { ok: true } })
+    }
+
+    if ((path === "/sync" || path === "/sync-ws") && req.method === "POST") {
+      const body = await req.json()
+      const r = await this.apply(body)
+      return json(r[0], r[1])
     }
 
     if (path === "/data") {
       const meta = await this.state.storage.get("meta")
       if (!meta) return json(404, { data: [], status: "gone", rev: 0 })
+      if (meta.auth && !(await this.validToken(url.searchParams.get("token") ?? ""))) {
+        return json(401, { authRequired: true })
+      }
       const items = (await this.state.storage.get("items")) ?? {}
-      return json(200, { data: Object.values(items), status: meta.status, rev: meta.rev ?? 0 })
+      return json(200, { data: redactItems(Object.values(items)), status: meta.status, rev: meta.rev ?? 0 })
     }
 
     if (path === "/meta" && req.method === "GET") {
       const meta = await this.state.storage.get("meta")
       if (!meta) return json(404, { error: "not found" })
-      const { secret, ...rest } = meta
-      return json(200, rest)
+      const { secret, auth, tokens, ...rest } = meta
+      return json(200, { ...rest, auth: auth ? { set: true } : null, tokens: tokens?.length ?? 0 })
     }
 
     if (path === "/remove" && req.method === "POST") {
@@ -333,8 +473,7 @@ export class ShareDO {
     }
 
     if (path === "/remove-all" && req.method === "POST") {
-      // Internal-only (sweeper): the public router never routes here; DOs
-      // are addressable only from this script's worker and other DOs.
+      // Internal-only (sweeper): the public router never routes here.
       await this.broadcast({ op: "frame", status: "gone", rev: 1, items: [] })
       await this.state.storage.deleteAll()
       try { await this.env.SHARE_INDEX.delete(`share:${this.state.id.name}`) } catch {}
@@ -342,6 +481,48 @@ export class ShareDO {
     }
 
     return json(404, { error: "not found" })
+  }
+
+  async makeAuth(login, password) {
+    const salt = randomId() + randomId()
+    const [loginHash, passHash] = await Promise.all([pbkdf2(login, salt), pbkdf2(password, salt)])
+    return { salt, loginHash, passHash }
+  }
+
+  async validToken(token) {
+    if (!token) return false
+    const meta = await this.state.storage.get("meta")
+    const now = Date.now()
+    const tokens = (meta?.tokens ?? []).filter((t) => t.expires > now)
+    const hit = tokens.find((t) => t.token === token)
+    if (!hit) return false
+    if (tokens.length !== (meta?.tokens ?? []).length) {
+      meta.tokens = tokens
+      await this.state.storage.put("meta", meta)
+    }
+    return true
+  }
+
+  async apply(body) {
+    const meta = await this.state.storage.get("meta")
+    if (!meta) return [404, { ok: false, error: "share not found" }]
+    if (body.secret !== meta.secret) return [403, { ok: false, error: "bad secret" }]
+    const items = (await this.state.storage.get("items")) ?? {}
+    const batch = []
+    for (const it of body.data ?? []) {
+      const key = itemKey(it)
+      if (!key) continue
+      items[key] = it
+      batch.push(it)
+    }
+    const rev = (meta.rev ?? 0) + 1
+    meta.rev = rev
+    meta.lastActive = Date.now()
+    if (body.status && STATUSES.has(body.status)) meta.status = body.status
+    await this.state.storage.put("items", items)
+    await this.state.storage.put("meta", meta)
+    await this.broadcast({ op: "frame", status: meta.status, rev, items: redactItems(batch) })
+    return [200, { ok: true, rev, status: meta.status }]
   }
 
   async broadcast(frame) {
@@ -368,6 +549,18 @@ function itemKey(item) {
   if (t === "model") return "model/" + (item.sessionID ?? d?.sessionID ?? "")
   if (t === "prefs") return "prefs"
   return
+}
+
+// Session items never leave with their metadata (the plugin stores its
+// share binding — incl. the write secret — in session metadata).
+function redactItems(items) {
+  return items.map((it) => {
+    if (it?.type === "session" && it.data?.metadata) {
+      const { metadata, ...rest } = it.data
+      return { ...it, data: rest }
+    }
+    return it
+  })
 }
 
 // ---------------------------------------------------------------------------

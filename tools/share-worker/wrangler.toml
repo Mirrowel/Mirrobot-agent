@@ -1,4 +1,4 @@
-name = "mirrobot-share-worker"
+name = "openshare-worker"
 main = "worker.js"
 compatibility_date = "2026-01-15"
 workers_dev = true
@@ -9,6 +9,14 @@ preview_urls = false
 [vars]
 # Hard cap for per-share ttlDays overrides (client may request less).
 MAX_TTL_DAYS = "90"
+# Branding (this deploy = the mirrobot example skin; empty = the neutral
+# upstream-derived default every other deployment gets for free).
+BRAND_NAME = "mirrobot"
+BRAND_LOGO_URL = "/branding/mirrobot-mark.svg"
+BRAND_WORDMARK_URL = "/branding/mirrobot-wordmark.svg"
+BRAND_LINK_URL = "https://github.com/Mirrowel/Mirrobot-agent"
+BRAND_ACCENT = "#7aa2f7"
+BRAND_FAVICON_URL = "/branding/mirrobot-mark.svg"
 
 [[kv_namespaces]]
 binding = "SHARE_INDEX"
@@ -42,4 +50,4 @@ new_sqlite_classes = ["ControlDO"]
 directory = "../share-viewer/dist"
 html_handling = "auto-trailing-slash"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*", "/health"]
+run_worker_first = ["/api/*", "/health", "/branding"]

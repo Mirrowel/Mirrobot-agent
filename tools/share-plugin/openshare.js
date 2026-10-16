@@ -1,22 +1,33 @@
-// mirrobot-share — self-hosted replacement for the discontinued opencode
-// share. Streams session events over one WebSocket per main session to the
-// mirrobot-share-worker; viewers watch via hibernating sockets.
+// Open(code)Share — re:share, session sharing for opencode. Self-hosted
+// replacement for the discontinued opencode share. Streams session events
+// over one WebSocket per main session to an openshare-worker; viewers
+// watch via hibernating sockets.
 //
-// Design contract (2026-10-16):
-//  - Dumb plugin: it forwards events, never diffs. Delivery reliability =
-//    ack + retain-until-acked spool (disk), replayed on reconnect.
-//  - One share per MAIN session; child sessions (info.parentID) route into
-//    the parent's share. Child->parent map from session lifecycle events.
-//  - Status = last signal: busy -> "live"; idle -> "completed", or "error"
-//    if any part error / retry was seen during the prompt. Always resumable
-//    (the next busy flips live again; old viewer pages wake in place).
-//  - Model label: config template ($Provider/$Model placeholders, literals,
-//    "" hides) resolved from the user message's actual model and sent as a
-//    model item on every user message (rides the same update - robust).
-//  - Config: env > mirrobot-share.config.json (next to this file) > code
-//    defaults. Keys: workerUrl, createToken, debounceMs, modelLabel,
-//    ttlDays, openTasksInNewTab, spoolDir.
-//  - Undo/revert needs nothing here: opencode publishes info.revert on the
+// Design contract:
+//  - Dumb forwarder: it forwards events, never diffs. Delivery reliability
+//    = ack + retain-until-acked disk spool (temporary buffer, replayed on
+//    reconnect) + the share binding persisted INSIDE opencode (session
+//    metadata) so recovery never depends on the spool.
+//  - One share per MAIN session; child sessions (session info.parentID)
+//    route into the parent's share. (message info.parentID is the
+//    replied-to message — NOT a subagent marker.)
+//  - Status = last signal: busy -> live; idle -> completed, or error if
+//    any part error / retry was seen. Always resumable.
+//  - Model label: config template ($Provider/$Model placeholders,
+//    literals as-is, "" hides) resolved from the user message's actual
+//    model; rides every user message (robust, free).
+//  - Optional read auth: authLogin/authPassword are sent on create AND
+//    attach (resume retroactively applies/updates credentials; empty on
+//    attach REMOVES protection — an intentional owner action).
+//  - Config: env (OPENSHARE_*) > openshare.config.json (next to this
+//    file) > code defaults. Keys: workerUrl, createToken, debounceMs,
+//    modelLabel, ttlDays, openTasksInNewTab, authLogin, authPassword,
+//    spoolDir.
+//  - Mismatch protocol: attach refused / share gone / worker rev below
+//    our acked rev -> fresh create (never merge into a bad base); nacked
+//    or dropped frames -> spool replay; stale extras -> left for the
+//    next prompt's keyed merge to correct. All logged loudly.
+//  - Undo needs nothing here: opencode publishes info.revert on the
 //    session item; the viewer hides the reverted range while it is set.
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs"
@@ -24,46 +35,51 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.pathname ?? import.meta.url))
+const METADATA_KEY = "openshare"
 
 const DEFAULTS = {
-  workerUrl: "https://mirrobot-share-worker.mirrowel-zz.workers.dev",
+  workerUrl: "https://openshare-worker.mirrowel-zz.workers.dev",
   createToken: "",
   debounceMs: 10000,
   modelLabel: "$Provider/$Model",
   ttlDays: 90,
   openTasksInNewTab: true,
+  authLogin: "",
+  authPassword: "",
   spoolDir: "",
 }
 
 function loadConfig() {
   const cfg = { ...DEFAULTS }
   try {
-    const raw = JSON.parse(readFileSync(join(PLUGIN_DIR, "mirrobot-share.config.json"), "utf8"))
+    const raw = JSON.parse(readFileSync(join(PLUGIN_DIR, "openshare.config.json"), "utf8"))
     if (raw && typeof raw === "object") Object.assign(cfg, raw)
   } catch {}
-  if (process.env.SHARE_WORKER_URL) cfg.workerUrl = process.env.SHARE_WORKER_URL
-  if (process.env.SHARE_CREATE_TOKEN) cfg.createToken = process.env.SHARE_CREATE_TOKEN
-  if (process.env.SHARE_DEBOUNCE_MS) cfg.debounceMs = Number(process.env.SHARE_DEBOUNCE_MS) || cfg.debounceMs
-  if (process.env.SHARE_MODEL_LABEL !== undefined) cfg.modelLabel = process.env.SHARE_MODEL_LABEL
-  if (process.env.SHARE_TTL_DAYS) cfg.ttlDays = Number(process.env.SHARE_TTL_DAYS) || cfg.ttlDays
-  if (process.env.SHARE_URL_FILE) cfg.urlFile = process.env.SHARE_URL_FILE
+  if (process.env.OPENSHARE_WORKER_URL) cfg.workerUrl = process.env.OPENSHARE_WORKER_URL
+  if (process.env.OPENSHARE_CREATE_TOKEN) cfg.createToken = process.env.OPENSHARE_CREATE_TOKEN
+  if (process.env.OPENSHARE_DEBOUNCE_MS) cfg.debounceMs = Number(process.env.OPENSHARE_DEBOUNCE_MS) || cfg.debounceMs
+  if (process.env.OPENSHARE_MODEL_LABEL !== undefined) cfg.modelLabel = process.env.OPENSHARE_MODEL_LABEL
+  if (process.env.OPENSHARE_TTL_DAYS) cfg.ttlDays = Number(process.env.OPENSHARE_TTL_DAYS) || cfg.ttlDays
+  if (process.env.OPENSHARE_AUTH_LOGIN !== undefined) cfg.authLogin = process.env.OPENSHARE_AUTH_LOGIN
+  if (process.env.OPENSHARE_AUTH_PASSWORD !== undefined) cfg.authPassword = process.env.OPENSHARE_AUTH_PASSWORD
+  if (process.env.OPENSHARE_URL_FILE) cfg.urlFile = process.env.OPENSHARE_URL_FILE
   return cfg
 }
 
 function spoolDirFor(cfg) {
   if (cfg.spoolDir) return cfg.spoolDir
   const base = process.env.XDG_DATA_HOME || (process.env.HOME ? join(process.env.HOME, ".local", "share") : "/tmp")
-  return join(base, "opencode", "mirrobot-share")
+  return join(base, "opencode", "openshare")
 }
 
 const log = (...a) => {
-  try { console.error("[mirrobot-share]", ...a) } catch {}
+  try { console.error(`[${METADATA_KEY}]`, ...a) } catch {}
 }
 
 function formatLabel(template, model) {
-  if (!template) return template === "" ? "" : template
-  if (!model) return template
-  return template
+  if (template === "") return ""
+  if (!model) return template ?? ""
+  return (template ?? "")
     .replace(/\$Provider/g, model.providerID ?? "")
     .replace(/\$provider/g, model.providerID ?? "")
     .replace(/\$Model/g, model.modelID ?? "")
@@ -80,9 +96,19 @@ function itemFor(type, data, sessionID) {
   return undefined
 }
 
-export const MirrobotSharePlugin = async (input) => {
+// session items must never carry our binding (the secret would reach
+// viewers) — strip our metadata key from anything we enqueue
+function redact(info) {
+  if (!info?.metadata || typeof info.metadata !== "object") return info
+  if (!(METADATA_KEY in info.metadata)) return info
+  const metadata = { ...info.metadata }
+  delete metadata[METADATA_KEY]
+  return { ...info, metadata }
+}
+
+export const OpenSharePlugin = async (input) => {
   const cfg = loadConfig()
-  if (!cfg.workerUrl || (!cfg.createToken && !process.env.SHARE_CREATE_TOKEN)) {
+  if (!cfg.workerUrl || (!cfg.createToken && !process.env.OPENSHARE_CREATE_TOKEN)) {
     log("disabled: workerUrl/createToken not configured")
     return {}
   }
@@ -100,9 +126,11 @@ export const MirrobotSharePlugin = async (input) => {
     if (!st) {
       st = {
         sid,
-        queue: new Map(), // key -> item
+        client: input?.client,
+        queue: new Map(), // key -> item (not yet sent)
         pending: [], // spool frames [{items, status}] awaiting ack
         timer: null,
+        metaTimer: null,
         shareId: null,
         secret: null,
         ackedRev: 0,
@@ -114,6 +142,9 @@ export const MirrobotSharePlugin = async (input) => {
         lastSentStatus: null,
         connecting: false,
         closed: false,
+        prefsSent: false,
+        binding: null, // {id, secret, rev, url} mirrored into session metadata
+        bindingQueried: false,
       }
       sessions.set(sid, st)
       chain = chain.then(() => connect(st)).catch((e) => log("connect error", e?.message || e))
@@ -121,7 +152,56 @@ export const MirrobotSharePlugin = async (input) => {
     return st
   }
 
-  // ---- spool (disk durability for restart replay) ------------------------
+  // ---- durable binding: session metadata (inside opencode's db) ---------
+  // NOTE: the plugin SDK client can hit a foreign server when something
+  // else listens on Server.url's port — error envelopes don't throw, so
+  // every call is checked and degradation (spool covers reconnects) is
+  // logged loudly instead of failing silently.
+  const unwrap = (res) => {
+    if (res && typeof res === "object" && "error" in res && res.error) {
+      throw new Error(`client error: ${JSON.stringify(res.error).slice(0, 120)}`)
+    }
+    return res?.data ?? res
+  }
+
+  async function readBinding(st) {
+    if (!st.client || st.bindingQueried) return
+    st.bindingQueried = true
+    try {
+      const info = unwrap(await st.client.session.get({ path: { id: st.sid } }))
+      const b = info?.metadata?.[METADATA_KEY]
+      if (b && typeof b === "object" && b.id && b.secret) {
+        st.shareId = b.id
+        st.secret = b.secret
+        st.ackedRev = b.rev ?? 0
+        log(`binding recovered from session metadata: share ${b.id} rev ${st.ackedRev}`)
+      }
+    } catch (e) {
+      log("metadata read failed (degrading to spool):", e?.message || e)
+    }
+  }
+
+  async function writeBinding(st) {
+    if (!st.client || !st.shareId || !st.secret) return
+    try {
+      const info = unwrap(await st.client.session.get({ path: { id: st.sid } }))
+      const metadata = { ...(info?.metadata ?? {}) }
+      metadata[METADATA_KEY] = { id: st.shareId, secret: st.secret, rev: st.ackedRev, url: `${cfg.workerUrl}/s/${st.shareId}` }
+      unwrap(await st.client.session.update({ path: { id: st.sid }, body: { metadata } }))
+    } catch (e) {
+      log("metadata write failed (spool still covers reconnects):", e?.message || e)
+    }
+  }
+
+  const scheduleBindingWrite = (st) => {
+    if (st.metaTimer) return
+    st.metaTimer = setTimeout(() => {
+      st.metaTimer = null
+      chain = chain.then(() => writeBinding(st)).catch(() => {})
+    }, 30000)
+  }
+
+  // ---- spool (temporary buffer for unacked frames) ----------------------
   const metaPath = (st) => join(spoolRoot, `${st.sid}.meta.json`)
   const queuePath = (st) => join(spoolRoot, `${st.sid}.queue.jsonl`)
 
@@ -136,9 +216,12 @@ export const MirrobotSharePlugin = async (input) => {
   const spoolLoad = (st) => {
     try {
       const meta = JSON.parse(readFileSync(metaPath(st), "utf8"))
-      st.shareId = meta.shareId ?? null
-      st.secret = meta.secret ?? null
-      st.ackedRev = meta.ackedRev ?? 0
+      // metadata binding (db) is authoritative when both exist and disagree
+      if (!st.shareId && meta.shareId) {
+        st.shareId = meta.shareId
+        st.secret = meta.secret
+        st.ackedRev = meta.ackedRev ?? 0
+      }
       if (existsSync(queuePath(st))) {
         st.pending = readFileSync(queuePath(st), "utf8").split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l))
       }
@@ -164,10 +247,17 @@ export const MirrobotSharePlugin = async (input) => {
     }
   }
 
+  const authFrame = () => {
+    // always send both (empty strings included): attach with empty values
+    // REMOVES protection — an intentional owner action
+    return { authLogin: cfg.authLogin ?? "", authPassword: cfg.authPassword ?? "" }
+  }
+
   const connect = async (st) => {
     if (st.closed || st.connecting) return
     st.connecting = true
     try {
+      await readBinding(st)
       spoolLoad(st)
       const ws = new WebSocket(`${wsUrl}/api/ws?token=${encodeURIComponent(cfg.createToken ?? "")}`)
       st.ws = ws
@@ -186,11 +276,10 @@ export const MirrobotSharePlugin = async (input) => {
         if (!st.closed) scheduleReconnect(st)
       })
 
-      // init: attach to a known share, else create one
       if (st.shareId && st.secret) {
-        wsSend(st, { op: "init", attach: { id: st.shareId, secret: st.secret } })
+        wsSend(st, { op: "init", attach: { id: st.shareId, secret: st.secret, ...authFrame() } })
       } else {
-        wsSend(st, { op: "init", create: { sessionID: st.sid, ttlDays: cfg.ttlDays } })
+        wsSend(st, { op: "init", create: { sessionID: st.sid, ttlDays: cfg.ttlDays, ...authFrame() } })
       }
     } catch (e) {
       st.connecting = false
@@ -216,12 +305,24 @@ export const MirrobotSharePlugin = async (input) => {
   const handleFrame = async (st, frame) => {
     if (frame.op === "init") {
       if (!frame.ok) {
-        // share swept/removed or bad credentials: start a new one
+        // share swept / removed / revoked: start fresh, never merge into a
+        // bad base (mismatch protocol)
         log("init refused:", frame.error, "- creating fresh share")
         st.shareId = null
         st.secret = null
         st.ackedRev = 0
-        wsSend(st, { op: "init", create: { sessionID: st.sid, ttlDays: cfg.ttlDays } })
+        st.pending = []
+        wsSend(st, { op: "init", create: { sessionID: st.sid, ttlDays: cfg.ttlDays, ...authFrame() } })
+        return
+      }
+      if (frame.rev != null && frame.rev < st.ackedRev) {
+        // worker lost data behind our back: treat as gone
+        log(`mismatch: worker rev ${frame.rev} < acked ${st.ackedRev} - recreating`)
+        st.shareId = null
+        st.secret = null
+        st.ackedRev = 0
+        st.pending = []
+        wsSend(st, { op: "init", create: { sessionID: st.sid, ttlDays: cfg.ttlDays, ...authFrame() } })
         return
       }
       st.shareId = frame.id
@@ -230,7 +331,8 @@ export const MirrobotSharePlugin = async (input) => {
       st.wsReady = true
       st.backoff = 1000
       announceUrl(st)
-      // replay anything the spool still holds beyond the acked rev
+      scheduleBindingWrite(st)
+      spoolSave(st)
       if (st.pending.length) {
         for (const f of st.pending) wsSend(st, { op: "sync", ...f })
       } else if (st.queue.size) {
@@ -240,9 +342,9 @@ export const MirrobotSharePlugin = async (input) => {
     }
     if (frame.op === "ack") {
       st.ackedRev = frame.rev ?? st.ackedRev
-      // drop acked frames from the spool (they were accepted whole)
       st.pending = []
       spoolSave(st)
+      scheduleBindingWrite(st)
       return
     }
     if (frame.op === "nack" || frame.op === "error") {
@@ -304,9 +406,22 @@ export const MirrobotSharePlugin = async (input) => {
   const remove = (st) => {
     st.closed = true
     if (st.timer) clearTimeout(st.timer)
+    if (st.metaTimer) clearTimeout(st.metaTimer)
     if (st.wsReady) wsSend(st, { op: "delete" })
     setTimeout(() => { try { st.ws?.close() } catch {} }, 1000)
     spoolClear(st)
+    try {
+      chain = chain.then(async () => {
+        if (!st.client) return
+        const res = await st.client.session.get({ path: { id: st.sid } }).catch(() => null)
+        const info = res?.data ?? res
+        if (info?.metadata?.[METADATA_KEY]) {
+          const metadata = { ...info.metadata }
+          delete metadata[METADATA_KEY]
+          await st.client.session.update({ path: { id: st.sid }, body: { metadata } }).catch(() => {})
+        }
+      })
+    } catch {}
   }
 
   // ---- events ------------------------------------------------------------
@@ -314,8 +429,6 @@ export const MirrobotSharePlugin = async (input) => {
 
   const trackSession = (sid, info) => {
     if (info?.parentID) {
-      // child session: its items route into the PARENT's share (incl. its
-      // own session item — the sub-page needs title/version/directory)
       const parent = childToParent.get(sid) ?? info.parentID
       childToParent.set(sid, parent)
       return stFor(parent)
@@ -334,11 +447,10 @@ export const MirrobotSharePlugin = async (input) => {
         const st = trackSession(sid, p.info)
         if (!st) return
         if (!st.prefsSent) {
-          // sender-side display preferences travel with the data
           st.prefsSent = true
           enqueue(st, itemFor("prefs", { openTasksInNewTab: cfg.openTasksInNewTab !== false }, sid))
         }
-        enqueue(st, itemFor("session", p.info, sid))
+        enqueue(st, itemFor("session", redact(p.info), sid))
       } else if (t === "session.status") {
         const st = stFor(mainSidFor(sid))
         const type = p.status?.type
@@ -354,11 +466,10 @@ export const MirrobotSharePlugin = async (input) => {
         }
       } else if (t === "message.updated") {
         // resumed sessions may emit the user message BEFORE any session.*
-        // event — an unknown sid is always safe to treat as a main session
-        // (children announce themselves via session.created+parentID first)
+        // event — an unknown sid is always safe to treat as main (children
+        // announce via session.created+parentID first)
         const st = stFor(mainSidFor(sid))
         enqueue(st, itemFor("message", p.info, sid))
-        // model label rides every user message update (robust, free)
         if (p.info?.role === "user" && p.info?.model) {
           const label = formatLabel(cfg.modelLabel, p.info.model)
           enqueue(st, itemFor("model", [{ id: p.info.model.modelID, providerID: p.info.model.providerID, name: label }], sid))
@@ -371,19 +482,20 @@ export const MirrobotSharePlugin = async (input) => {
         const st = stFor(mainSidFor(sid))
         enqueue(st, itemFor("session_diff", p.diff, sid))
       } else if (t === "session.deleted") {
-        const main = mainSidFor(sid)
-        const st = sessions.get(main)
+        const st = sessions.get(mainSidFor(sid))
         if (!st) return
         chain = chain.then(() => remove(st)).catch((e) => log("remove error", e?.message || e))
       }
     },
 
     dispose: async () => {
-      // final flush of every open session (graceful exit; awaited)
       for (const st of sessions.values()) {
         if (st.timer) clearTimeout(st.timer)
         st.timer = null
         flush(st)
+        if (st.metaTimer) clearTimeout(st.metaTimer)
+        st.metaTimer = null
+        await writeBinding(st).catch(() => {})
       }
       for (const st of sessions.values()) {
         try { st.ws?.close() } catch {}
@@ -392,4 +504,4 @@ export const MirrobotSharePlugin = async (input) => {
   }
 }
 
-export default MirrobotSharePlugin
+export default OpenSharePlugin

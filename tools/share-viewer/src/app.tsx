@@ -20,13 +20,92 @@ import { iife } from "@opencode-ai/core/util/iife"
 
 import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
-import { createMemo, createSignal, ErrorBoundary, For, Match, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, ErrorBoundary, For, Match, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useShareSource } from "./data-source"
+import { useShareSource, type Branding } from "./data-source"
 import { children, visibleMessages, type ShareData } from "./fold"
 
 // scroll memory for in-page session switching: restore on return
 const scrollMemory = new Map<string, number>()
+
+// Brand-aware mark: configured image or the vendored default
+function BrandMark(props: { branding: Branding; class?: string }) {
+  return (
+    <Show when={props.branding.logoUrl} fallback={<Mark class={props.class} />}>
+      <img src={props.branding.logoUrl} alt="" class={props.class} />
+    </Show>
+  )
+}
+
+function applyDocumentBranding(b: Branding) {
+  const name = b.name || "openshare"
+  if (!document.title.includes(" | ")) document.title = `${document.title} | ${name}`
+  let icon = document.querySelector<HTMLLinkElement>("link[rel='icon']")
+  if (b.faviconUrl) {
+    if (!icon) {
+      icon = document.createElement("link")
+      icon.rel = "icon"
+      document.head.appendChild(icon)
+    }
+    icon.href = b.faviconUrl
+  }
+  if (b.accent) document.documentElement.style.setProperty("--openshare-accent", b.accent)
+}
+
+function LoginCard(props: { source: ReturnType<typeof useShareSource> }) {
+  const [login, setLogin] = createSignal("")
+  const [password, setPassword] = createSignal("")
+  const b = () => props.source.branding()
+  createEffect(() => {
+    applyDocumentBranding(b())
+  })
+  const state = () => props.source.authState()
+  const countdown = () => {
+    const ms = state().retryAfterMs ?? 0
+    if (ms <= 0) return undefined
+    const s = Math.ceil(ms / 1000)
+    return s > 90 ? `${Math.ceil(s / 60)} min` : `${s}s`
+  }
+  return (
+    <div class="min-h-screen w-full bg-background-base text-text-base flex flex-col items-center justify-center gap-6 p-6">
+      <BrandMark branding={b()} class="w-12 opacity-90" />
+      <div class="flex flex-col gap-3 w-full max-w-72">
+        <div class="text-16-medium text-center">{b().name || "openshare"}</div>
+        <div class="text-12-regular text-text-weaker text-center -mt-2">re:share — this session is protected</div>
+        <input
+          class="openshare-input"
+          placeholder="login"
+          autocomplete="username"
+          value={login()}
+          onInput={(e) => setLogin(e.currentTarget.value)}
+        />
+        <input
+          class="openshare-input"
+          type="password"
+          placeholder="password"
+          autocomplete="current-password"
+          value={password()}
+          onInput={(e) => setPassword(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") props.source.auth(login(), password())
+          }}
+        />
+        <Show when={state().message}>
+          <div class="text-12-regular text-red-500 text-center">
+            {state().message}{countdown() ? ` — retry in ${countdown()}` : ""}
+          </div>
+        </Show>
+        <button
+          class="openshare-button"
+          disabled={state().busy || !!countdown()}
+          onClick={() => props.source.auth(login(), password())}
+        >
+          {state().busy ? "checking…" : "view session"}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function NotFound(props: { status: string }) {
   return (
@@ -34,7 +113,7 @@ function NotFound(props: { status: string }) {
       <Mark class="w-16 opacity-40" />
       <p class="text-16-medium">{props.status}</p>
       <p class="text-14-regular text-text-weaker">
-        mirrobot share — the encrypted artifact in the run summary is the permanent record.
+        openshare — the encrypted artifact in the run summary is the permanent record.
       </p>
     </div>
   )
@@ -51,10 +130,10 @@ const STATUS_DOT: Record<string, string> = {
 
 function StatusLine(props: { status: string }) {
   return (
-    <div class="flex items-center gap-1.5 text-11-mono text-text-weaker whitespace-nowrap">
+    <div class="flex items-center gap-1.5 text-11-mono text-text-weak whitespace-nowrap">
       <span
-        class="inline-block size-1.5 rounded-full shrink-0"
-        style={{ "background-color": STATUS_DOT[props.status] ?? "#6b7280" }}
+        classList={{ "status-dot": props.status === "live", "inline-block": true, "size-1.5": true, "rounded-full": true, "shrink-0": true }}
+        style={props.status === "live" ? undefined : { "background-color": STATUS_DOT[props.status] ?? "#6b7280" }}
       />
       <span>{props.status}</span>
       <Show when={props.status === "live"}>
@@ -84,7 +163,7 @@ function SessionView(props: {
   return (
     <>
       <Show when={info().title}>
-        <Title>{info().title} | mirrobot</Title>
+        <Title>{info().title} | {props.source.branding().name || "openshare"}</Title>
       </Show>
       <WorkerPoolProvider pools={getWorkerPools()}>
         <FileComponentProvider component={FileSSR}>
@@ -143,7 +222,7 @@ function SessionView(props: {
                       </Show>
                     </Show>
                     <div class="pl-[2.5px] pr-2 flex items-center gap-1.75 bg-surface-strong shadow-xs-border-base w-fit">
-                      <Mark class="shrink-0 w-3 my-0.5" />
+                      <BrandMark branding={props.source.branding()} class="shrink-0 w-3 my-0.5" />
                       <div class="text-12-mono text-text-base">v{info().version}</div>
                     </div>
                     <div class="flex gap-4 items-center">
@@ -201,7 +280,9 @@ function SessionView(props: {
                     </For>
                   </div>
                   <div class="px-4 flex items-center justify-center pt-20 pb-8 shrink-0">
-                    <Logo class="w-58.5 opacity-12" />
+                    <Show when={props.source.branding().wordmarkUrl} fallback={<Logo class="w-58.5 opacity-12" />}>
+                      <img src={props.source.branding().wordmarkUrl} alt="" class="w-58.5 opacity-12" />
+                    </Show>
                   </div>
                 </div>
               )
@@ -212,7 +293,16 @@ function SessionView(props: {
                 <div class="relative bg-background-stronger w-screen h-screen overflow-hidden flex flex-col">
                   <header class="h-9 px-6 flex items-center justify-between self-stretch bg-background-base border-b border-border-weak-base">
                     <div class="flex items-center gap-3">
-                      <Mark class="w-3" />
+                      <Show
+                        when={props.source.branding().linkUrl}
+                        fallback={<BrandMark branding={props.source.branding()} class="h-4" />}
+                      >
+                        {(href) => (
+                          <a href={href()} target="_blank" rel="noreferrer" class="no-underline text-inherit flex items-center">
+                            <BrandMark branding={props.source.branding()} class="h-4" />
+                          </a>
+                        )}
+                      </Show>
                     </div>
                     <StatusLine status={props.source.status()} />
                     <div class="w-8" />
@@ -253,7 +343,9 @@ function SessionView(props: {
                             }}
                           >
                             <div classList={{ "w-full flex items-center justify-center pb-8 shrink-0": true }}>
-                              <Logo class="w-58.5 opacity-12" />
+                              <Show when={props.source.branding().wordmarkUrl} fallback={<Logo class="w-58.5 opacity-12" />}>
+                      <img src={props.source.branding().wordmarkUrl} alt="" class="w-58.5 opacity-12" />
+                    </Show>
                             </div>
                           </SessionTurn>
                         </div>
@@ -337,7 +429,8 @@ export function App() {
   })
 
   return (
-    <ErrorBoundary
+    <Show when={!source.needsAuth()} fallback={<LoginCard source={source} />}>
+      <ErrorBoundary
       fallback={(error) => {
         console.error(error)
         const details = error instanceof Error ? (error.stack ?? error.message) : String(error)
@@ -377,6 +470,7 @@ export function App() {
           )
         })()}
       </Show>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </Show>
   )
 }

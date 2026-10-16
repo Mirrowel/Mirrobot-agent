@@ -3,10 +3,21 @@
 //             then a hibernating WebSocket; every plugin sync pushes
 //             {op:"frame", status, rev, items}; items merge client-side by
 //             key and the fold re-runs. Polling (5s) only if WS fails.
+//             Auth-gated shares: 401 {authRequired} -> login flow, then
+//             everything resumes exactly as before.
 //   local   — served by the decrypt tool's localhost server at /s/<id>:
 //             window.__MIRROBOT_SNAPSHOT__ carries {items, sessionID} inline.
 import { createSignal } from "solid-js"
 import { fold, readPrefs, type ShareData } from "./fold"
+
+export type Branding = {
+  name?: string
+  logoUrl?: string
+  wordmarkUrl?: string
+  linkUrl?: string
+  accent?: string
+  faviconUrl?: string
+}
 
 export type Source = {
   mode: "live" | "local"
@@ -18,6 +29,10 @@ export type Source = {
   rev: () => number
   prefs: () => { openTasksInNewTab?: boolean }
   error: () => string | undefined
+  needsAuth: () => boolean
+  authState: () => { busy?: boolean; message?: string; retryAfterMs?: number }
+  auth: (login: string, password: string) => Promise<void>
+  branding: () => Branding
 }
 
 function parsePath(): { shareID: string; sub: number | undefined } {
@@ -26,6 +41,17 @@ function parsePath(): { shareID: string; sub: number | undefined } {
   const id = i >= 0 && parts[i + 1] ? parts[i + 1] : (parts.at(-1) ?? "")
   const sub = i >= 0 && parts[i + 2] && /^\d+$/.test(parts[i + 2]) ? Number(parts[i + 2]) : undefined
   return { shareID: id, sub }
+}
+
+let brandingCache: Branding | null = null
+async function fetchBranding(): Promise<Branding> {
+  if (brandingCache) return brandingCache
+  try {
+    const r = await fetch("/branding", { cache: "force-cache" })
+    if (r.ok) brandingCache = (await r.json()) as Branding
+  } catch {}
+  brandingCache = brandingCache ?? {}
+  return brandingCache
 }
 
 export function useShareSource(): Source {
@@ -38,6 +64,11 @@ export function useShareSource(): Source {
   const [status, setStatus] = createSignal("waiting")
   const [rev, setRev] = createSignal(0)
   const [error, setError] = createSignal<string | undefined>(undefined)
+  const [needsAuth, setNeedsAuth] = createSignal(false)
+  const [authState, setAuthState] = createSignal<{ busy?: boolean; message?: string; retryAfterMs?: number }>({})
+  const [brand, setBrand] = createSignal<Branding>({})
+
+  fetchBranding().then(setBrand).catch(() => {})
 
   const merge = (incoming: any[]) => {
     setItems((prev) => {
@@ -71,15 +102,32 @@ export function useShareSource(): Source {
       rev,
       prefs: () => readPrefs(all()),
       error,
+      needsAuth,
+      authState,
+      auth: async () => {},
+      branding: brand,
     }
   }
+  return liveSource({
+    shareID, sub, items, status, rev, error, needsAuth, authState, brand, merge,
+    setItems, setStatus, setRev, setError, setNeedsAuth, setAuthState, setBrand,
+    all: () => Array.from(items().values()),
+    sessionID: () => {
+      for (const it of Array.from(items().values())) if (it.type === "session" && !it.data?.parentID) return it.data.id as string
+      return shareID
+    },
+  })
+}
 
+function liveSource(ctx: any): Source {
+  const { shareID, sub, status, rev, error, needsAuth, authState, brand, merge, setNeedsAuth, setStatus, setRev, setError, setAuthState } = ctx
   let stopped = false
   let ws: WebSocket | undefined
   let pollTimer: any
   let wsRetryTimer: any
 
   const wire = () => {
+    if (needsAuth()) return
     try {
       ws = new WebSocket(`wss://${location.host}/api/share/${shareID}/ws`)
     } catch {
@@ -105,7 +153,6 @@ export function useShareSource(): Source {
     })
     ws.addEventListener("close", () => {
       if (stopped) return
-      // worker redeploy / network blip: brief retry, poll meanwhile
       startPolling()
       wsRetryTimer = setTimeout(wire, 15000)
     })
@@ -124,6 +171,16 @@ export function useShareSource(): Source {
   async function tick() {
     try {
       const r = await fetch(`/api/share/${shareID}/data`, { cache: "no-store" })
+      if (r.status === 401) {
+        const body = await r.json().catch(() => ({}))
+        if (body.authRequired) {
+          setNeedsAuth(true)
+          setStatus("login required")
+          stopped = true
+          cleanup()
+        }
+        return
+      }
       if (r.status === 404) {
         setStatus("gone")
         setError("not found")
@@ -140,25 +197,52 @@ export function useShareSource(): Source {
     }
   }
 
+  const auth = async (login: string, password: string) => {
+    setAuthState({ busy: true })
+    try {
+      const r = await fetch(`/api/share/${shareID}/auth`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ login, password }),
+      })
+      const body = await r.json().catch(() => ({}))
+      if (r.ok) {
+        setNeedsAuth(false)
+        setAuthState({})
+        stopped = false
+        setStatus("waiting")
+        await tick()
+        wire()
+        return
+      }
+      setAuthState({
+        message: r.status === 429 ? "locked" : "wrong credentials",
+        retryAfterMs: body.retryAfterMs,
+      })
+    } catch {
+      setAuthState({ message: "network error" })
+    }
+  }
+
   tick().then(wire)
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && !stopped && ws?.readyState !== WebSocket.OPEN) tick()
+    if (!document.hidden && !stopped && !needsAuth() && ws?.readyState !== WebSocket.OPEN) tick()
   })
 
-  const all = () => Array.from(items().values())
-  const sessionID = () => {
-    for (const it of all()) if (it.type === "session" && !it.data?.parentID) return it.data.id as string
-    return shareID
-  }
+  const all = ctx.all
   return {
-    mode: "live",
+    mode: "live" as const,
     shareID,
     sub,
-    data: () => fold(all(), sessionID(), shareID),
-    ready: () => all().some((i) => i.type === "session"),
+    data: () => fold(all(), ctx.sessionID(), shareID),
+    ready: () => all().some((i: any) => i.type === "session"),
     status,
     rev,
     prefs: () => readPrefs(all()),
     error,
+    needsAuth,
+    authState,
+    auth,
+    branding: brand,
   }
 }

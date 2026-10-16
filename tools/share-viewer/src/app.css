@@ -45,3 +45,36 @@
 [data-component="reasoning-part"] details.reasoning-collapse:not([open]) {
   margin-bottom: -12px;
 }
+
+/* openshare: status dot + login card accents (brand-configurable) */
+.status-dot {
+  background-color: var(--openshare-accent, #3b82f6);
+}
+.openshare-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--v2-border-border-weak-base, #232732);
+  border-radius: 6px;
+  background: var(--v2-background-background-stronger, #17181d);
+  color: var(--v2-text-text-base, #d7dae0);
+  font: 13px ui-monospace, Consolas, monospace;
+  outline: none;
+}
+.openshare-input:focus {
+  border-color: var(--openshare-accent, #3b82f6);
+}
+.openshare-button {
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--openshare-accent, #3b82f6);
+  color: #0f1115;
+  font: 13px ui-monospace, Consolas, monospace;
+  cursor: pointer;
+}
+.openshare-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
