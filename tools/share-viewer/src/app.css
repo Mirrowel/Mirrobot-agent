@@ -83,6 +83,15 @@ html[data-osh-read-text="large"] .osh-content {
   --font-size-x-large: 22px;
 }
 
+/* reader/view drawers */
+@keyframes osh-slide-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* brand background image (only when the deployment sets backgroundUrl) */
 .osh-bg {
   position: fixed;

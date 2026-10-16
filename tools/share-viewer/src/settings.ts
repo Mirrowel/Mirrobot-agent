@@ -1,7 +1,7 @@
 // Viewer settings: JSON cookie (osh_settings, 1yr), read pre-paint by
 // entry.tsx to set html[data-osh-theme] / text size without a flash.
 export type OshSettings = {
-  view: "classic" | "reader"
+  view: string
   theme: "system" | "light" | "dark" | "mirrobot" | "midnight" | "sepia" | "nord"
   continuous: boolean
   followLive: boolean
@@ -11,6 +11,8 @@ export type OshSettings = {
   backgroundOn: boolean
   reasoningOpen: boolean
   centerContent: boolean
+  toolInfo: boolean
+  toolOutput: boolean
 }
 
 export const SETTINGS_DEFAULTS: OshSettings = {
@@ -24,6 +26,8 @@ export const SETTINGS_DEFAULTS: OshSettings = {
   backgroundOn: true,
   reasoningOpen: false,
   centerContent: false,
+  toolInfo: true,
+  toolOutput: false,
 }
 
 const COOKIE = "osh_settings"

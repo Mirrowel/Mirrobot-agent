@@ -17,6 +17,7 @@ export type Branding = {
   linkUrl?: string
   accent?: string
   faviconUrl?: string
+  backgroundUrl?: string
 }
 
 export type Source = {

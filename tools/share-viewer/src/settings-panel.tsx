@@ -8,10 +8,14 @@ import { createSignal, For, Show } from "solid-js"
 import { Icon } from "@opencode-ai/ui/icon"
 import type { JSX } from "solid-js"
 import type { OshSettings } from "./settings"
+import type { Branding } from "./data-source"
+import { VIEW_OPTIONS } from "./views/registry"
 
 const [panelOpen, setPanelOpen] = createSignal(false)
 export const togglePanel = () => setPanelOpen((v) => !v)
 export const closePanel = () => setPanelOpen(false)
+
+const VIEWS = VIEW_OPTIONS.map((v) => v.id as string)
 
 const THEMES: { id: OshSettings["theme"]; label: string; bg: string; fg: string }[] = [
   { id: "system", label: "system", bg: "#17181c", fg: "#d8dbe0" },
@@ -23,17 +27,35 @@ const THEMES: { id: OshSettings["theme"]; label: string; bg: string; fg: string 
   { id: "nord", label: "nord", bg: "#2e3440", fg: "#88c0d0" },
 ]
 
-function Section(props: { label: string; children: JSX.Element }) {
+function Section(props: { label: string; children: JSX.Element; alwaysOpen?: boolean }) {
+  const [expanded, setExpanded] = createSignal(!!props.alwaysOpen)
   return (
-    <div class="flex flex-col gap-2 pt-3 border-t border-border-weak-base first:border-none first:pt-0">
-      <SectionLabel>{props.label}</SectionLabel>
-      {props.children}
+    <div class="flex flex-col pt-3 border-t border-border-weak-base first:border-none first:pt-0">
+      <Show
+        when={props.alwaysOpen}
+        fallback={
+          <button
+            class="flex items-center justify-between w-full py-1 bg-transparent border-none cursor-pointer text-left"
+            onClick={() => setExpanded(!expanded())}
+          >
+            <SectionLabel>{props.label}</SectionLabel>
+            <span class="text-icon-weaker-base">
+              <Icon name={expanded() ? "chevron-down" : "chevron-right"} size="small" />
+            </span>
+          </button>
+        }
+      >
+        <SectionLabel>{props.label}</SectionLabel>
+      </Show>
+      <Show when={expanded()}>
+        <div class="flex flex-col gap-2 pt-2">{props.children}</div>
+      </Show>
     </div>
   )
 }
 
 function SectionLabel(props: { children: string }) {
-  return <div class="text-12-medium text-text-weaker tracking-wider uppercase">{props.children}</div>
+  return <div class="text-12-medium text-text-weaker tracking-[0.14em] uppercase">{props.children}</div>
 }
 
 function Segmented<T extends string>(props: {
@@ -101,7 +123,7 @@ function Switch(props: { on: boolean; label: string; hint?: string; onChange: ()
 export function SettingsPanel(props: {
   settings: OshSettings
   update: (patch: Partial<OshSettings>) => void
-  branding: { backgroundUrl?: string }
+  branding: Branding
   search: string
   onSearch: (v: string) => void
 }) {
@@ -126,13 +148,10 @@ export function SettingsPanel(props: {
             </button>
           </div>
 
-          <Section label="view">
+          <Section label="view" alwaysOpen>
             <Segmented
-              value={props.settings.view}
-              options={[
-                { id: "classic" as const, label: "classic" },
-                { id: "reader" as const, label: "reader" },
-              ]}
+              value={VIEWS.includes(props.settings.view as any) ? props.settings.view : "classic"}
+              options={VIEW_OPTIONS}
               onChange={(view) => props.update({ view })}
             />
           </Section>
@@ -206,6 +225,18 @@ export function SettingsPanel(props: {
                 label="Expanded reasoning"
                 on={props.settings.reasoningOpen}
                 onChange={() => props.update({ reasoningOpen: !props.settings.reasoningOpen })}
+              />
+              <Switch
+                label="Tool call info"
+                hint="invocation titles and queries"
+                on={props.settings.toolInfo}
+                onChange={() => props.update({ toolInfo: !props.settings.toolInfo })}
+              />
+              <Switch
+                label="Tool outputs"
+                hint="expand tool results by default"
+                on={props.settings.toolOutput}
+                onChange={() => props.update({ toolOutput: !props.settings.toolOutput })}
               />
               <Show when={props.branding.backgroundUrl}>
                 <Switch

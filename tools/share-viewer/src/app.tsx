@@ -38,6 +38,44 @@ import { createStore } from "solid-js/store"
 import { useShareSource, type Branding } from "./data-source"
 import { SettingsPanel, togglePanel } from "./settings-panel"
 import { ReaderView } from "./reader"
+import { findView, resolveSessionID } from "./views/registry"
+
+// full-page views (everything except classic/reader, which live in the
+// standard chrome) render INSTEAD of SessionView
+function FullPageView(props: {
+  source: ReturnType<typeof useShareSource>
+  settings: OshSettings
+  updateSettings: (patch: Partial<OshSettings>) => void
+  search: string
+  onSearch: (v: string) => void
+  sub: () => number | undefined
+}) {
+  const view = createMemo(() => findView(props.settings.view))
+  const sessionID = createMemo(() => resolveSessionID(props.source.data(), props.sub()))
+  return (
+    <Show when={view()}>
+      {(entry) =>
+        entry().component({
+          get data() {
+            return props.source.data()
+          },
+          get sessionID() {
+            return sessionID()
+          },
+          source: props.source,
+          get settings() {
+            return props.settings
+          },
+          updateSettings: props.updateSettings,
+          get search() {
+            return props.search
+          },
+          onSearch: props.onSearch,
+        })
+      }
+    </Show>
+  )
+}
 import { children, visibleMessages, type ShareData } from "./fold"
 import { applySettings, readSettings, writeSettings, type OshSettings } from "./settings"
 
@@ -585,7 +623,7 @@ export function App() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
       e.preventDefault()
       togglePanel()
-      setTimeout(() => document.querySelector<HTMLInputElement>("input[placeholder^='filter prompts']")?.focus(), 60)
+      setTimeout(() => document.querySelector<HTMLInputElement>("input[placeholder^='filter']")?.focus(), 60)
     }
   })
 
@@ -611,6 +649,8 @@ export function App() {
         }}
       >
         <Show when={source.ready()} fallback={<NotFound status={source.status()} />}>
+          <FullPageView source={source} settings={settings()} updateSettings={updateSettings} search={search()} onSearch={setSearch} sub={sub} />
+          <Show when={settings().view === "classic" || settings().view === "reader"}>
           <SessionView
             data={source.data()!}
             source={source}
@@ -619,6 +659,7 @@ export function App() {
             search={search()}
             sub={sub}
           />
+          </Show>
         </Show>
       </ErrorBoundary>
     </Show>
