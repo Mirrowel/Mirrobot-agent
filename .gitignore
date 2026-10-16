@@ -17,3 +17,7 @@ token.txt
 
 # wrangler local deploy cache
 tools/share-worker/.wrangler/
+
+# vendored share viewer build artifacts
+tools/share-viewer/node_modules/
+tools/share-viewer/dist/

@@ -1,0 +1,9 @@
+{
+  "name": "@opencode-ai/sdk",
+  "version": "1.18.28",
+  "private": true,
+  "exports": {
+    "./v2": "./types.gen.ts",
+    "./v2/client": "./client-stub.ts"
+  }
+}

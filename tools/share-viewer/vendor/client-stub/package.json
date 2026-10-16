@@ -1,0 +1,8 @@
+{
+  "name": "@opencode-ai/client",
+  "version": "1.17.13",
+  "private": true,
+  "exports": {
+    "./promise": "./promise.ts"
+  }
+}

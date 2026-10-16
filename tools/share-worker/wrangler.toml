@@ -40,10 +40,12 @@ id = "a3467b6b06c8431786eae9ac5e68ada4"
 # Actions artifact is the permanent record; live views are transient).
 TTL_DAYS = "90"
 
-# Static viewer: SPA handling serves index.html for /s/<id> (the page
-# reads the id from the path); API + health always hit the worker.
+# Static viewer: the vendored upstream share page (tools/share-viewer,
+# built with `npm run build` there — 24MB dist incl. shiki grammars +
+# KaTeX fonts + markdown/diff workers). SPA handling serves index.html
+# for /s/<id>; API + health always hit the worker.
 [assets]
-directory = "./public"
+directory = "../share-viewer/dist"
 html_handling = "auto-trailing-slash"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*", "/health"]

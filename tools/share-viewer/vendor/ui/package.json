@@ -1,0 +1,89 @@
+{
+  "name": "@opencode-ai/ui",
+  "version": "1.18.28",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anomalyco/opencode.git",
+    "directory": "packages/ui"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "files": [
+    "dist/**/*.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/*.stories.ts",
+    "!src/**/*.stories.tsx",
+    "src/**/*.css",
+    "src/theme/themes/*.json",
+    "src/components/app-icons/sprite.svg",
+    "src/components/file-icons/sprite.svg",
+    "src/components/provider-icons/sprite.svg",
+    "src/assets/icons/app/*",
+    "src/assets/fonts/*",
+    "src/assets/audio/*",
+    "LICENSE"
+  ],
+  "exports": {
+    "./package.json": "./package.json",
+    "./*": "./src/components/*.tsx",
+    "./i18n/*": "./src/i18n/*.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./context": "./src/context/index.ts",
+    "./context/*": "./src/context/*.tsx",
+    "./storybook/scaffold": "./src/storybook/scaffold.tsx",
+    "./storybook/fixtures": "./src/storybook/fixtures.ts",
+    "./styles": "./src/styles/index.css",
+    "./styles/tailwind": "./src/styles/tailwind/index.css",
+    "./theme": "./src/theme/index.ts",
+    "./theme/*": "./src/theme/*.ts",
+    "./theme/context": "./src/theme/context.tsx",
+    "./icons/provider": "./src/components/provider-icons/types.ts",
+    "./icons/file-type": "./src/components/file-icons/types.ts",
+    "./icons/app": "./src/components/app-icons/types.ts",
+    "./fonts/*": "./src/assets/fonts/*",
+    "./audio/*": "./src/assets/audio/*",
+    "./v2/*.css": "./src/v2/components/*.css",
+    "./v2/*": "./src/v2/components/*.tsx",
+    "./v2/styles/*": "./src/v2/styles/*"
+  },
+  "dependencies": {
+    "@kobalte/core": "0.13.11",
+    "@pierre/diffs": "1.2.10",
+    "@shikijs/transformers": "3.9.2",
+    "@solid-primitives/bounds": "0.1.3",
+    "@solid-primitives/event-listener": "2.4.5",
+    "@solid-primitives/media": "2.3.3",
+    "@solid-primitives/resize-observer": "2.1.3",
+    "@shikijs/stream": "4.2.0",
+    "diff": "8.0.2",
+    "dompurify": "3.3.1",
+    "fuzzysort": "3.1.0",
+    "katex": "0.16.27",
+    "luxon": "3.6.1",
+    "marked": "18.0.7",
+    "marked-shiki": "1.2.1",
+    "morphdom": "2.7.8",
+    "motion": "12.34.5",
+    "motion-dom": "12.34.3",
+    "motion-utils": "12.29.2",
+    "remeda": "2.26.0",
+    "remend": "1.3.0",
+    "shiki": "4.2.0",
+    "solid-list": "0.3.0",
+    "solid-sonner": "0.3.1",
+    "strip-ansi": "7.1.2"
+  },
+  "peerDependencies": {
+    "@solidjs/meta": "^0.29.0",
+    "solid-js": "^1.9.0"
+  }
+}

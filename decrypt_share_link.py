@@ -430,26 +430,188 @@ def esc_html(s: str) -> str:
     return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+# ----------------------------------------------------------------------------
+# viewer dist (the vendored upstream share page) + local server
+# ----------------------------------------------------------------------------
+
+def find_viewer_dist(cfg: dict) -> Path | None:
+    """The vendored share viewer build (tools/share-viewer/dist). Searched:
+    config viewer_dist, next to this script, ~/.cache/mirrobot/viewer-dist."""
+    candidates = []
+    if cfg.get("viewer_dist"):
+        candidates.append(Path(cfg["viewer_dist"]))
+    candidates.append(Path(__file__).resolve().parent / "tools" / "share-viewer" / "dist")
+    candidates.append(Path.home() / ".cache" / "mirrobot" / "viewer-dist")
+    for c in candidates:
+        if (c / "index.html").exists():
+            return c
+    return None
+
+
+_SERVER = {"httpd": None, "port": None}
+
+
+def _serve_handler(dist: Path, lib: Path):
+    import http.server
+    import urllib.parse
+
+    class H(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, ctype, body, cache=True):
+            self.send_response(code)
+            self.send_header("content-type", ctype)
+            self.send_header("content-length", str(len(body)))
+            if cache:
+                self.send_header("cache-control", "max-age=3600")
+            self.end_headers()
+            # chunked write: one huge socket write on Windows loopback
+            # resets the connection for multi-MB bodies
+            for i in range(0, len(body), 65536):
+                self.wfile.write(body[i:i + 65536])
+
+        def do_GET(self):
+            url = urllib.parse.urlparse(self.path)
+            path = url.path
+            try:
+                self._route(path)
+            except BrokenPipeError:
+                pass
+            except Exception as exc:
+                import traceback
+                tb = traceback.format_exc()
+                try:
+                    (lib / "_handler-error.log").write_text(
+                        f"{datetime.now()} {url.path}\n{tb}\n", encoding="utf-8")
+                except Exception:
+                    pass
+                try:
+                    body = f"handler error: {exc}".encode()
+                    self.send_response(500)
+                    self.send_header("content-type", "text/plain")
+                    self.send_header("content-length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                except Exception:
+                    pass
+
+        def _route(self, path):
+            if path == "/" or path == "/index.html":
+                rows = []
+                for f in sorted(lib.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+                    sid = f.stem
+                    try:
+                        d = json.loads(f.read_text(encoding="utf-8"))
+                        title = ""
+                        for it in d.get("items", []):
+                            if it.get("type") == "session":
+                                title = (it.get("data") or {}).get("title") or ""
+                                break
+                        rows.append(f'<div><a href="/s/{sid}">{esc_html(title or sid)}</a>'
+                                    f'<span class="d">{datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")}</span></div>')
+                    except Exception:
+                        continue
+                body = ("<!doctype html><html><head><meta charset='utf-8'><title>mirrobot sessions</title>"
+                        "<style>body{background:#0f1115;color:#d7dae0;font:14px ui-monospace,Consolas,monospace;"
+                        "max-width:720px;margin:40px auto;padding:0 16px}a{color:#7aa2f7;text-decoration:none}"
+                        "div{padding:8px 0;border-bottom:1px solid #232732}.d{color:#8b93a1;float:right;font-size:12px}"
+                        "h1{font-size:16px;color:#7aa2f7}</style></head><body>"
+                        f"<h1>mirrobot sessions</h1>{''.join(rows) or '<div>no cached sessions yet</div>'}</body></html>")
+                self._send(200, "text/html; charset=utf-8", body.encode("utf-8"))
+                return
+            m = re.match(r"^/s/([A-Za-z0-9_\-]+)$", path)
+            if m:
+                sid = m.group(1)
+                jf = lib / f"{sid}.json"
+                if not jf.exists():
+                    self._send(404, "text/plain", b"session not in local cache")
+                    return
+                raw = jf.read_text(encoding="utf-8")
+                d = json.loads(raw)
+                del raw
+                snap = json.dumps({"items": d.get("items", []), "sessionID": d.get("sessionID", sid)},
+                                  ensure_ascii=False).replace("</", "<\\/")
+                del d
+                html = (dist / "index.html").read_text(encoding="utf-8")
+                inject = f'<script>window.__MIRROBOT_SNAPSHOT__ = {snap};</script>'
+                # plain string insert (the payload JSON contains regex
+                # escapes like \u that re.sub would misread)
+                html = html.replace('<script type="module"', inject + '<script type="module"', 1)
+                self._send(200, "text/html; charset=utf-8", html.encode("utf-8"), cache=False)
+                return
+            rel = path.lstrip("/")
+            f = dist / rel
+            if f.exists() and f.is_file() and f.resolve().is_relative_to(dist.resolve()):
+                ctype = "application/javascript" if f.suffix == ".js" else (
+                    "text/css" if f.suffix == ".css" else (
+                        "image/svg+xml" if f.suffix == ".svg" else (
+                            "font/woff2" if f.suffix == ".woff2" else "application/octet-stream")))
+                self._send(200, ctype, f.read_bytes())
+                return
+            self._send(404, "text/plain", b"not found")
+
+    return H
+
+
+def ensure_local_server(cfg: dict, dist: Path | None) -> tuple[str | None, int | None]:
+    """Start (once) the localhost viewer server; returns (host_url, port).
+    Daemon thread: lives as long as the tool process does."""
+    if _SERVER["httpd"] is not None:
+        return f"http://127.0.0.1:{_SERVER['port']}", _SERVER["port"]
+    if dist is None:
+        return None, None
+    import http.server
+    import threading
+    import socket
+
+    lib = Path(cfg["library_dir"])
+    lib.mkdir(parents=True, exist_ok=True)
+    handler = _serve_handler(dist, lib)
+    for port in (7788, 7789, 7790, 0):
+        try:
+            httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+            break
+        except OSError:
+            continue
+    _SERVER["httpd"] = httpd
+    _SERVER["port"] = httpd.server_address[1]
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    return f"http://127.0.0.1:{_SERVER['port']}", _SERVER["port"]
+
+
 def library_write(cfg: dict, payload: dict, html: str) -> Path:
     lib = Path(cfg["library_dir"])
     lib.mkdir(parents=True, exist_ok=True)
     sid = payload.get("session_id") or f"run-{payload.get('run_id', 'x')}"
+    # Primary artifact: the Data[] JSON (served by the local viewer server
+    # and re-renderable offline by the fallback template).
+    (lib / f"{sid}.json").write_text(json.dumps(
+        {"sessionID": sid, "items": payload.get("data") or [], "meta": {
+            "repo": payload.get("repo"), "run_id": payload.get("run_id"), "ts": payload.get("ts")}},
+        ensure_ascii=False), encoding="utf-8")
+    # Fallback page (works without the dist / server).
     page = lib / f"{sid}.html"
     page.write_text(html, encoding="utf-8")
     # Evict expired cache entries (0 = keep forever).
     days = int(cfg.get("session_cache_days") or 0)
     if days > 0:
         cutoff = time.time() - days * 86400
-        for f in lib.glob("*.html"):
-            if f.name != "index.html" and f.stat().st_mtime < cutoff:
+        for f in lib.glob("*.json"):
+            if f.stat().st_mtime < cutoff:
                 f.unlink()
-    # Refresh the index page (static library browser).
+                (f.with_suffix(".html")).unlink(missing_ok=True)
+    for f in lib.glob("*.html"):
+        if f.name != "index.html" and not (f.with_suffix(".json")).exists():
+            f.unlink(missing_ok=True)
+    # Refresh the fallback index (the server has its own richer one).
     rows = []
-    for f in sorted(lib.glob("*.html"), key=lambda p: p.stat().st_mtime, reverse=True):
-        if f.name == "index.html":
-            continue
+    for f in sorted(lib.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         rows.append(
-            f'<div><a href="{f.name}">{f.stem}</a>'
+            f'<div><a href="{f.stem}.html">{f.stem}</a>'
             f'<span class="d">{datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")}</span></div>'
         )
     index = (
@@ -458,7 +620,7 @@ def library_write(cfg: dict, payload: dict, html: str) -> Path:
         "max-width:720px;margin:40px auto;padding:0 16px}a{color:#7aa2f7;text-decoration:none}"
         "div{padding:8px 0;border-bottom:1px solid #232732}.d{color:#8b93a1;float:right;font-size:12px}"
         "h1{font-size:16px;color:#7aa2f7}</style></head><body>"
-        f"<h1>mirrobot sessions</h1>{''.join(rows) or '<div>no cached sessions yet</div>'}</body></html>"
+        f"<h1>mirrobot sessions (fallback pages)</h1>{''.join(rows) or '<div>no cached sessions yet</div>'}</body></html>"
     )
     (lib / "index.html").write_text(index, encoding="utf-8")
     return page
@@ -506,18 +668,30 @@ def handle_mrb2(m: re.Match, cfg: dict, open_browser: bool) -> bool:
     kind = payload.get("kind")
     if kind == "session":
         html = render_session_html(payload)
-        page = library_write(cfg, payload, html)
-        url = page_url(page)
+        library_write(cfg, payload, html)
+        sid = payload.get("session_id") or f"run-{payload.get('run_id', 'x')}"
+        ctx_line = (f"session {payload.get('session_id', '?')} | "
+                    f"{payload.get('repo', '?')} | run {payload.get('run_id', '?')}")
+        persist_repo = payload.get("repo")
+        # Release the multi-hundred-MB decrypted object graph BEFORE
+        # serving: the viewer handler needs headroom to re-parse the
+        # session JSON, and pinned memory starves it.
+        import gc
+        del payload, html
+        gc.collect()
+        base, _port = ensure_local_server(cfg, find_viewer_dist(cfg))
+        if base:
+            url = f"{base}/s/{sid}"
+        else:
+            url = page_url(Path(cfg["library_dir"]) / f"{sid}.html")
         if open_browser:
             try:
                 webbrowser.open(url)
             except Exception:
                 pass
-        show_result(url, f"session {payload.get('session_id', '?')} | "
-                         f"{payload.get('repo', '?')} | run {payload.get('run_id', '?')}",
-                    open_browser)
+        show_result(url, ctx_line, open_browser)
         if cfg.get("persist"):
-            append_log(cfg, url, payload.get("repo"))
+            append_log(cfg, url, persist_repo)
         return True
 
     if kind == "meta":
@@ -964,6 +1138,22 @@ def self_test() -> bool:
         cfg["library_dir"] = str(tdir / "lib")
         page = library_write(cfg, out, html)
         assert page.exists() and (tdir / "lib" / "index.html").exists()
+        jsid = (tdir / "lib" / f"{out['session_id']}.json")
+        assert jsid.exists(), "session JSON (server data) missing"
+        assert json.loads(jsid.read_text(encoding="utf-8"))["items"][0]["type"] == "session"
+
+        # --- local viewer server smoke (dist-aware, inject check)
+        dist = find_viewer_dist(dict(DEFAULTS))
+        if dist:
+            base, port = ensure_local_server(dict(DEFAULTS) | {"library_dir": str(tdir / "lib")}, dist)
+            assert base and port, "server failed to start"
+            r = urllib.request.urlopen(f"{base}/s/{out['session_id']}", timeout=10)
+            served = r.read().decode("utf-8")
+            assert "__MIRROBOT_SNAPSHOT__" in served, "snapshot not injected"
+            assert "index-" in served, "app entry script missing"
+            r2 = urllib.request.urlopen(base + "/", timeout=10)
+            assert out["session_id"] in r2.read().decode("utf-8"), "index listing missing session"
+            print(f"self-test: local server ok on {base} (dist {dist.name})")
 
         print("self-test: OK (MRB1 round-trip, MRB2 round-trip + interop, "
               "fold, render, library)")
@@ -973,6 +1163,20 @@ def self_test() -> bool:
 # ----------------------------------------------------------------------------
 # entry
 # ----------------------------------------------------------------------------
+
+def finish_one_shot(ok: bool) -> int:
+    """One-shot CLI mode: keep the local viewer server alive until Ctrl+C
+    (a daemon thread would die with instant process exit and break the
+    printed link)."""
+    if ok and _SERVER["httpd"] is not None:
+        print("\n  viewer server running - Ctrl+C to stop")
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            pass
+    return 0 if ok else 1
+
 
 def main(argv: list[str]) -> int:
     if "--self-test" in argv:
@@ -984,9 +1188,9 @@ def main(argv: list[str]) -> int:
         if not path.exists():
             print(f"file not found: {path}")
             return 1
-        rest = [a for a in argv[3:] if a != "--open"]
-        return 0 if decrypt_flow(path.read_text(encoding="utf-8", errors="replace"),
-                                 load_config(), "--open" in argv) else 0 if rest else 1
+        ok = decrypt_flow(path.read_text(encoding="utf-8", errors="replace"),
+                          load_config(), "--open" in argv)
+        return finish_one_shot(ok)
     args = [a for a in argv[1:] if a != "--open"]
     want_open = "--open" in argv
     if args and args[0] == "setup":
@@ -1012,7 +1216,8 @@ def main(argv: list[str]) -> int:
         print(json.dumps(cfg, indent=2))
         return 0
     if args:
-        return 0 if decrypt_flow(" ".join(args), load_config(), want_open) else 1
+        ok = decrypt_flow(" ".join(args), load_config(), want_open)
+        return finish_one_shot(ok)
     tui()
     return 0
 
