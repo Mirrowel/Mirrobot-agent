@@ -47,22 +47,41 @@
 }
 
 /* === settings-driven bits === */
-/* chrome pins its line-heights so font-swapping themes (mirrobot serif)
-   don't shift fixed-height elements — DIRECT children only: a descendant
-   selector also hit the settings panel and inflated every line to 28px */
-header.h-7 > * {
-  line-height: 28px;
+/* text scaling via the design system's font-size tokens: the text
+   utilities read var(--font-size-*), so overriding the tokens scales
+   every text class (px-based utilities included) without touching
+   layout, zoom, or scrollbars */
+html[data-osh-text="compact"] {
+  --font-size-x-small: 10px;
+  --font-size-small: 12px;
+  --font-size-base: 13px;
+  --font-size-large: 15px;
+  --font-size-x-large: 18px;
+}
+html[data-osh-text="roomy"] {
+  --font-size-x-small: 12px;
+  --font-size-small: 14px;
+  --font-size-base: 15px;
+  --font-size-large: 17px;
+  --font-size-x-large: 22px;
 }
 
-/* interface scale: uniform UI zoom (design-system text classes are px-based,
-   so root font-size could never scale them) */
-html[data-osh-text="compact"] body { zoom: 0.9; }
-html[data-osh-text="roomy"] body { zoom: 1.1; }
-
-/* reading text size: markdown content only (em on the rendered text),
-   paddings and chrome untouched */
-html[data-osh-read-text="compact"] [data-component="markdown"] { font-size: 0.9em; }
-html[data-osh-read-text="large"] [data-component="markdown"] { font-size: 1.1em; }
+/* reading text: scoped to the content column (.osh-content) - the
+   control for what you read, independent of chrome scale */
+html[data-osh-read-text="compact"] .osh-content {
+  --font-size-x-small: 10px;
+  --font-size-small: 12px;
+  --font-size-base: 13px;
+  --font-size-large: 15px;
+  --font-size-x-large: 18px;
+}
+html[data-osh-read-text="large"] .osh-content {
+  --font-size-x-small: 12px;
+  --font-size-small: 14px;
+  --font-size-base: 15px;
+  --font-size-large: 17px;
+  --font-size-x-large: 22px;
+}
 
 /* brand background image (only when the deployment sets backgroundUrl) */
 .osh-bg {

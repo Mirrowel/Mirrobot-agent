@@ -36,6 +36,8 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { createEffect, createMemo, createSignal, ErrorBoundary, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useShareSource, type Branding } from "./data-source"
+import { SettingsPanel, togglePanel } from "./settings-panel"
+import { ReaderView } from "./reader"
 import { children, visibleMessages, type ShareData } from "./fold"
 import { applySettings, readSettings, writeSettings, type OshSettings } from "./settings"
 
@@ -57,7 +59,7 @@ function BrandMark(props: { branding: Branding; class?: string }) {
 
 // Page footer: thin rule + brand name + product wordmark (theme tokens so
 // it reads on every theme; wordmark image overrides the text)
-function PageFooter(props: { branding: Branding; class?: string }) {
+export function PageFooter(props: { branding: Branding; class?: string }) {
   return (
     <div class={`flex flex-col items-center gap-2 w-full ${props.class ?? ""}`}>
       <div class="w-full max-w-[52rem] border-t border-border-weak-base" />
@@ -118,7 +120,7 @@ const STATUS_DOT: Record<string, string> = {
 
 function StatusLine(props: { status: string }) {
   return (
-    <div class="flex items-center gap-1.5 text-11-mono text-text-weak whitespace-nowrap">
+    <div class="flex items-center gap-1.5 text-12-mono text-text-weak whitespace-nowrap">
       <span
         classList={{ "status-dot": props.status === "live", "inline-block": true, "size-1.5": true, "rounded-full": true, "shrink-0": true }}
         style={props.status === "live" ? undefined : { "background-color": STATUS_DOT[props.status] ?? "#6b7280" }}
@@ -126,115 +128,6 @@ function StatusLine(props: { status: string }) {
       <span>{props.status}</span>
       <Show when={props.status === "live"}>
         <span class="animate-pulse">·</span>
-      </Show>
-    </div>
-  )
-}
-
-const THEMES: { id: OshSettings["theme"]; label: string }[] = [
-  { id: "system", label: "system" },
-  { id: "light", label: "light" },
-  { id: "dark", label: "dark" },
-  { id: "mirrobot", label: "mirrobot" },
-  { id: "midnight", label: "midnight" },
-  { id: "sepia", label: "sepia" },
-  { id: "nord", label: "nord" },
-]
-
-// module-level: survives any subtree re-creation (a settings change can
-// rebuild the header block — live-caught — and the panel must persist)
-const [panelOpen, setPanelOpen] = createSignal(false)
-
-function SettingsPanel(props: {
-  settings: OshSettings
-  update: (patch: Partial<OshSettings>) => void
-  branding: Branding
-  search: string
-  onSearch: (v: string) => void
-}) {
-  const open = panelOpen
-  const setOpen = setPanelOpen
-  const toggle = (key: keyof OshSettings) => props.update({ [key]: !props.settings[key] } as Partial<OshSettings>)
-  const chip = (on: boolean) =>
-    `text-12-mono px-2.5 py-1 rounded-md border no-underline cursor-pointer ${
-      on
-        ? "border-icon-strong-base text-icon-strong-base bg-surface-base-interactive-active"
-        : "border-border-weak-base text-text-base bg-transparent hover:bg-surface-base"
-    }`
-  const Label = (p: { children: any }) => (
-    <div class="text-11-mono text-text-weaker tracking-wide uppercase">{p.children}</div>
-  )
-  const Toggle = (p: { label: string; on: boolean; onClick: () => void }) => (
-    <div class="flex items-center justify-between gap-3 text-12-regular text-text-base">
-      <span>{p.label}</span>
-      <button class={chip(p.on)} onClick={p.onClick}>
-        {p.on ? "on" : "off"}
-      </button>
-    </div>
-  )
-  return (
-    <div class="relative">
-      <button
-        class="osh-gear osh-gear-settings p-1 rounded text-icon-weaker-base hover:text-icon-strong-base"
-        title="settings"
-        onClick={() => setOpen(!open())}
-      >
-        <Icon name="settings-gear" size="small" />
-      </button>
-      <Show when={open()}>
-        <div class="absolute top-8 right-0 z-50 w-64 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-lg border border-border-weak-base bg-background-base shadow-lg flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <div class="text-12-mono text-text-weaker tracking-wide uppercase">settings</div>
-            <button class="text-icon-weaker-base hover:text-icon-strong-base" onClick={() => setOpen(false)}>
-              <Icon name="close-small" size="small" />
-            </button>
-          </div>
-          <Label>theme</Label>
-          <div class="flex flex-wrap gap-1.5">
-            <For each={THEMES}>
-              {(t) => (
-                <button class={chip(props.settings.theme === t.id)} onClick={() => props.update({ theme: t.id })}>
-                  {t.label}
-                </button>
-              )}
-            </For>
-          </div>
-          <Label>interface scale</Label>
-          <div class="flex flex-wrap gap-1.5">
-            <For each={["compact", "normal", "roomy"] as const}>
-              {(s) => (
-                <button class={chip(props.settings.textSize === s)} onClick={() => props.update({ textSize: s })}>
-                  {s}
-                </button>
-              )}
-            </For>
-          </div>
-          <Label>reading text</Label>
-          <div class="flex flex-wrap gap-1.5">
-            <For each={["compact", "normal", "large"] as const}>
-              {(s) => (
-                <button class={chip(props.settings.readText === s)} onClick={() => props.update({ readText: s })}>
-                  {s}
-                </button>
-              )}
-            </For>
-          </div>
-          <Label>view</Label>
-          <Toggle label="continuous (one scroll)" on={props.settings.continuous} onClick={() => toggle("continuous")} />
-          <Toggle label="center content" on={props.settings.centerContent} onClick={() => toggle("centerContent")} />
-          <Toggle label="follow live scroll" on={props.settings.followLive} onClick={() => toggle("followLive")} />
-          <Toggle label="reasoning expanded" on={props.settings.reasoningOpen} onClick={() => toggle("reasoningOpen")} />
-          <Show when={props.branding.backgroundUrl}>
-            <Toggle label="background image" on={props.settings.backgroundOn} onClick={() => toggle("backgroundOn")} />
-          </Show>
-          <Label>session search</Label>
-          <input
-            class="w-full box-border px-2.5 py-1.5 rounded-md border border-border-weak-base bg-background-stronger text-text-base text-13-mono outline-none focus:border-icon-strong-base"
-            placeholder="filter prompts (Ctrl+K)"
-            value={props.search}
-            onInput={(e) => props.onSearch(e.currentTarget.value)}
-          />
-        </div>
       </Show>
     </div>
   )
@@ -374,7 +267,7 @@ function SessionView(props: {
                         <>
                           <Show when={modelChanged(message)} keyed>
                             {(label) => (
-                              <div class="px-4 self-start text-11-mono text-text-weaker border-l-2 border-border-weak-base pl-2 -mt-9">
+                              <div class="px-4 self-start text-12-mono text-text-weaker border-l-2 border-border-weak-base pl-2 -mt-9">
                                 → {label}
                               </div>
                             )}
@@ -455,7 +348,8 @@ function SessionView(props: {
                       />
                     </div>
                   </header>
-                  <div class="select-text flex flex-col flex-1 min-h-0 relative z-10">
+                  <div class="osh-content select-text flex flex-col flex-1 min-h-0 relative z-10">
+                    <Show when={props.settings.view !== "reader"}>
                     <div
                       classList={{
                         "hidden w-full flex-1 min-h-0": true,
@@ -508,7 +402,7 @@ function SessionView(props: {
                                     <>
                                       <Show when={modelChanged(message)} keyed>
                                         {(label) => (
-                                          <div class="px-6 self-start text-11-mono text-text-weaker border-l-2 border-border-weak-base pl-2 -mt-9">
+                                          <div class="px-6 self-start text-12-mono text-text-weaker border-l-2 border-border-weak-base pl-2 -mt-9">
                                             → {label}
                                           </div>
                                         )}
@@ -526,7 +420,7 @@ function SessionView(props: {
                                   )}
                                 </For>
                                 <Show when={searching() && filtered().length === 0}>
-                                  <div class="px-6 text-13-regular text-text-weaker">no prompts match.</div>
+                                  <div class="px-6 text-12-regular text-text-weaker">no prompts match.</div>
                                 </Show>
                               </div>
                               <div class="px-6 pt-16 pb-8 shrink-0">
@@ -578,7 +472,17 @@ function SessionView(props: {
                           {turns()}
                         </div>
                       </Match>
-                    </Switch>
+                     </Switch>
+                    </Show>
+                    <Show when={props.settings.view === "reader"}>
+                      <ReaderView
+                        data={props.data}
+                        sessionID={sessionID()}
+                        source={props.source}
+                        settings={props.settings}
+                        search={props.search}
+                      />
+                    </Show>
                   </div>
                 </div>
               )
@@ -676,15 +580,12 @@ export function App() {
     msgs[next]?.id && document.querySelector(`[data-timeline-part-id="${msgs[next].id}"]`)?.scrollIntoView({ behavior: "smooth" })
   })
 
-  // Ctrl+K focuses session search
+  // Ctrl+K opens the panel and focuses search
   window.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
       e.preventDefault()
-      document.querySelector<HTMLInputElement>(".osh-panel input")?.focus()
-      document.querySelector<HTMLInputElement>(".osh-panel input")?.closest(".osh-panel")?.classList.add("force-open")
-      const btn = document.querySelector<HTMLButtonElement>(".osh-gear")
-      btn?.click()
-      document.querySelector<HTMLInputElement>(".osh-panel input")?.focus()
+      togglePanel()
+      setTimeout(() => document.querySelector<HTMLInputElement>("input[placeholder^='filter prompts']")?.focus(), 60)
     }
   })
 
