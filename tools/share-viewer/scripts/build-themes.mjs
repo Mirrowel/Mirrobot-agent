@@ -54,6 +54,8 @@ if (!light || !dark) {
 }
 
 // premade themes: base ("dark"|"light") + property overrides
+// (font-family overrides are legitimate theme content; the chrome pins its
+// own line-heights so fixed-height elements don't shift when fonts swap)
 const PREMADES = {
   mirrobot: {
     base: "dark",

@@ -47,7 +47,9 @@ let brandingCache: Branding | null = null
 async function fetchBranding(): Promise<Branding> {
   if (brandingCache) return brandingCache
   try {
-    const r = await fetch("/branding", { cache: "force-cache" })
+    // no force-cache: a stale /branding can point at assets the new deploy
+    // deleted (live-caught — the logo 404'd invisibly for a whole session)
+    const r = await fetch("/branding", { cache: "no-store" })
     if (r.ok) brandingCache = (await r.json()) as Branding
   } catch {}
   brandingCache = brandingCache ?? {}

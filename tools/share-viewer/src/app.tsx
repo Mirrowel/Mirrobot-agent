@@ -32,6 +32,7 @@ import { Tabs } from "@opencode-ai/ui/tabs"
 import { iife } from "@opencode-ai/core/util/iife"
 import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
+import { Icon } from "@opencode-ai/ui/icon"
 import { createEffect, createMemo, createSignal, ErrorBoundary, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useShareSource, type Branding } from "./data-source"
@@ -45,14 +46,36 @@ const scrollMemory = new Map<string, number>()
 // promotes Open(code)Share; flip on extraction)
 const OPENSHARE_REPO_URL = "https://github.com/Mirrowel/Mirrobot-agent"
 
-const GH_MARK = "/branding/github.svg"
-
 // Brand-aware mark: configured image or the vendored default
 function BrandMark(props: { branding: Branding; class?: string }) {
   return (
     <Show when={props.branding.logoUrl} fallback={null}>
       <img src={props.branding.logoUrl} alt="" class={props.class} />
     </Show>
+  )
+}
+
+// Page footer: thin rule + brand name + product wordmark (theme tokens so
+// it reads on every theme; wordmark image overrides the text)
+function PageFooter(props: { branding: Branding; class?: string }) {
+  return (
+    <div class={`flex flex-col items-center gap-2 w-full ${props.class ?? ""}`}>
+      <div class="w-full max-w-[52rem] border-t border-border-weak-base" />
+      <Show
+        when={props.branding.wordmarkUrl}
+        fallback={
+          <div class="text-12-mono text-text-base select-none">
+            <Show when={props.branding.name}>
+              <span class="text-text-strong">{props.branding.name}</span>
+              <span class="text-text-weaker"> · </span>
+            </Show>
+            <span>Open(code)Share</span>
+          </div>
+        }
+      >
+        <img src={props.branding.wordmarkUrl} alt="" class="w-58.5 opacity-60" />
+      </Show>
+    </div>
   )
 }
 
@@ -118,6 +141,10 @@ const THEMES: { id: OshSettings["theme"]; label: string }[] = [
   { id: "nord", label: "nord" },
 ]
 
+// module-level: survives any subtree re-creation (a settings change can
+// rebuild the header block — live-caught — and the panel must persist)
+const [panelOpen, setPanelOpen] = createSignal(false)
+
 function SettingsPanel(props: {
   settings: OshSettings
   update: (patch: Partial<OshSettings>) => void
@@ -125,80 +152,84 @@ function SettingsPanel(props: {
   search: string
   onSearch: (v: string) => void
 }) {
-  const [open, setOpen] = createSignal(false)
+  const open = panelOpen
+  const setOpen = setPanelOpen
   const toggle = (key: keyof OshSettings) => props.update({ [key]: !props.settings[key] } as Partial<OshSettings>)
+  const chip = (on: boolean) =>
+    `text-12-mono px-2.5 py-1 rounded-md border no-underline cursor-pointer ${
+      on
+        ? "border-icon-strong-base text-icon-strong-base bg-surface-base-interactive-active"
+        : "border-border-weak-base text-text-base bg-transparent hover:bg-surface-base"
+    }`
+  const Label = (p: { children: any }) => (
+    <div class="text-11-mono text-text-weaker tracking-wide uppercase">{p.children}</div>
+  )
+  const Toggle = (p: { label: string; on: boolean; onClick: () => void }) => (
+    <div class="flex items-center justify-between gap-3 text-12-regular text-text-base">
+      <span>{p.label}</span>
+      <button class={chip(p.on)} onClick={p.onClick}>
+        {p.on ? "on" : "off"}
+      </button>
+    </div>
+  )
   return (
     <div class="relative">
       <button
-        class="osh-gear osh-gear-settings"
+        class="osh-gear osh-gear-settings p-1 rounded text-icon-weaker-base hover:text-icon-strong-base"
         title="settings"
         onClick={() => setOpen(!open())}
       >
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
-          <path d="M8 4.75a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5ZM6.5 8a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Z" />
-          <path d="M8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0Zm0 13a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13ZM2.44 3.56a.75.75 0 0 1 1.06-1.06l1.06 1.06a.75.75 0 0 1-1.06 1.06L2.44 3.56Zm9.06 9.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06ZM.75 7.25h1.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5Zm13 0h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1 0-1.5ZM3.5 12.62a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 1 1 1.06-1.06l1.06 1.06Zm9.06-9.06a.75.75 0 1 1 1.06-1.06l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06Z" />
-        </svg>
+        <Icon name="settings-gear" size="small" />
       </button>
       <Show when={open()}>
-        <div class="osh-panel">
-          <h3>theme</h3>
-          <div class="osh-row">
+        <div class="absolute top-8 right-0 z-50 w-64 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-lg border border-border-weak-base bg-background-base shadow-lg flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <div class="text-12-mono text-text-weaker tracking-wide uppercase">settings</div>
+            <button class="text-icon-weaker-base hover:text-icon-strong-base" onClick={() => setOpen(false)}>
+              <Icon name="close-small" size="small" />
+            </button>
+          </div>
+          <Label>theme</Label>
+          <div class="flex flex-wrap gap-1.5">
             <For each={THEMES}>
               {(t) => (
-                <button
-                  class="osh-chip"
-                  data-on={props.settings.theme === t.id}
-                  onClick={() => props.update({ theme: t.id })}
-                >
+                <button class={chip(props.settings.theme === t.id)} onClick={() => props.update({ theme: t.id })}>
                   {t.label}
                 </button>
               )}
             </For>
           </div>
-          <h3>text</h3>
-          <div class="osh-row">
+          <Label>interface scale</Label>
+          <div class="flex flex-wrap gap-1.5">
             <For each={["compact", "normal", "roomy"] as const}>
               {(s) => (
-                <button
-                  class="osh-chip"
-                  data-on={props.settings.textSize === s}
-                  onClick={() => props.update({ textSize: s })}
-                >
+                <button class={chip(props.settings.textSize === s)} onClick={() => props.update({ textSize: s })}>
                   {s}
                 </button>
               )}
             </For>
           </div>
-          <h3>view</h3>
-          <div class="osh-toggle-row">
-            <span>continuous (one scroll)</span>
-            <button class="osh-chip" data-on={props.settings.continuous} onClick={() => toggle("continuous")}>
-              {props.settings.continuous ? "on" : "off"}
-            </button>
+          <Label>reading text</Label>
+          <div class="flex flex-wrap gap-1.5">
+            <For each={["compact", "normal", "large"] as const}>
+              {(s) => (
+                <button class={chip(props.settings.readText === s)} onClick={() => props.update({ readText: s })}>
+                  {s}
+                </button>
+              )}
+            </For>
           </div>
-          <div class="osh-toggle-row">
-            <span>follow live scroll</span>
-            <button class="osh-chip" data-on={props.settings.followLive} onClick={() => toggle("followLive")}>
-              {props.settings.followLive ? "on" : "off"}
-            </button>
-          </div>
-          <div class="osh-toggle-row">
-            <span>reasoning expanded</span>
-            <button class="osh-chip" data-on={props.settings.reasoningOpen} onClick={() => toggle("reasoningOpen")}>
-              {props.settings.reasoningOpen ? "open" : "collapsed"}
-            </button>
-          </div>
+          <Label>view</Label>
+          <Toggle label="continuous (one scroll)" on={props.settings.continuous} onClick={() => toggle("continuous")} />
+          <Toggle label="center content" on={props.settings.centerContent} onClick={() => toggle("centerContent")} />
+          <Toggle label="follow live scroll" on={props.settings.followLive} onClick={() => toggle("followLive")} />
+          <Toggle label="reasoning expanded" on={props.settings.reasoningOpen} onClick={() => toggle("reasoningOpen")} />
           <Show when={props.branding.backgroundUrl}>
-            <div class="osh-toggle-row">
-              <span>background image</span>
-              <button class="osh-chip" data-on={props.settings.backgroundOn} onClick={() => toggle("backgroundOn")}>
-                {props.settings.backgroundOn ? "on" : "off"}
-              </button>
-            </div>
+            <Toggle label="background image" on={props.settings.backgroundOn} onClick={() => toggle("backgroundOn")} />
           </Show>
-          <h3>session search</h3>
+          <Label>session search</Label>
           <input
-            class="openshare-input"
+            class="w-full box-border px-2.5 py-1.5 rounded-md border border-border-weak-base bg-background-stronger text-text-base text-13-mono outline-none focus:border-icon-strong-base"
             placeholder="filter prompts (Ctrl+K)"
             value={props.search}
             onInput={(e) => props.onSearch(e.currentTarget.value)}
@@ -210,21 +241,36 @@ function SettingsPanel(props: {
 }
 
 // A subagent page or the main session — same rendering, bound to one session.
+// NOTE: created ONCE by App (never inside a reactive expression that re-runs
+// on data/settings changes — a re-created subtree remounts the settings
+// panel and resets its open state, live-caught).
 function SessionView(props: {
   data: ShareData
-  sessionID: string
   source: ReturnType<typeof useShareSource>
-  isSub: boolean
-  backHref: string | undefined
   settings: OshSettings
   updateSettings: (patch: Partial<OshSettings>) => void
   search: string
+  sub: () => number | undefined
 }) {
+  // resolve which session this page renders (main or subagent /N)
+  const target = createMemo(() => {
+    const data = props.data
+    const subs = children(data)
+    const n = props.sub()
+    if (n == null) return { sessionID: data.sessionID, isSub: false }
+    const hit = subs.find((s) => s.index === n)
+    return hit
+      ? { sessionID: hit.sessionID, isSub: true }
+      : { sessionID: data.sessionID, isSub: false }
+  })
   const match = createMemo(() => {
-    const idx = props.data.session.findIndex((s: any) => s.id === props.sessionID)
+    const idx = props.data.session.findIndex((s: any) => s.id === target().sessionID)
     return { found: idx >= 0, index: idx }
   })
   if (!match().found) return <NotFound status="session data not synced yet" />
+  const sessionID = () => target().sessionID
+  const isSub = () => target().isSub
+  const backHref = () => (target().isSub ? `/s/${props.source.shareID}` : undefined)
   const info = createMemo(() => props.data.session[match().index])
 
   return (
@@ -237,7 +283,7 @@ function SessionView(props: {
           <DataProvider
             data={props.data}
             directory={info().directory}
-            sessionID={props.sessionID}
+            sessionID={sessionID()}
             onSessionHref={(id) => subHref(props.source, id)}
             onNavigateToSession={(id) => {
               const href = subHref(props.source, id)
@@ -254,7 +300,7 @@ function SessionView(props: {
             {iife(() => {
               const [store, setStore] = createStore({ messageId: undefined as string | undefined })
               const [diffStyle, setDiffStyle] = createSignal<"unified" | "split">(props.settings.diffStyle)
-              const messages = createMemo(() => visibleMessages(props.data, props.sessionID).filter((m) => m.role === "user"))
+              const messages = createMemo(() => visibleMessages(props.data, sessionID()).filter((m) => m.role === "user"))
               const firstUserMessage = createMemo(() => messages().at(0))
               const activeMessage = createMemo(() => messages().find((m) => m.id === store.messageId) ?? firstUserMessage())
               function setActiveMessage(message: any) {
@@ -263,20 +309,20 @@ function SessionView(props: {
               const provider = createMemo(() => (activeMessage()?.model as any)?.providerID)
               const modelID = createMemo(() => (activeMessage()?.model as any)?.modelID)
               const model = createMemo(() =>
-                props.data.model[props.sessionID]?.find((m: any) => m.id === modelID()),
+                props.data.model[sessionID()]?.find((m: any) => m.id === modelID()),
               )
               const modelDisplay = createMemo(() => {
                 const name = (model() as any)?.name
                 if (name === "") return undefined // sender chose to hide
                 return name ?? modelID()
               })
-              const diffs = createMemo(() => props.data.session_diff[props.sessionID] ?? [])
+              const diffs = createMemo(() => props.data.session_diff[sessionID()] ?? [])
 
               const title = () => (
                 <div class="flex flex-col gap-4">
                   <div class="flex flex-col gap-2 sm:flex-row sm:gap-4 sm:items-center sm:h-8 justify-start self-stretch">
-                    <Show when={props.isSub}>
-                      <Show when={props.backHref} keyed>
+                    <Show when={isSub()}>
+                      <Show when={backHref()} keyed>
                         {(href) => (
                           <a
                             href={href}
@@ -334,7 +380,7 @@ function SessionView(props: {
                             )}
                           </Show>
                           <SessionTurn
-                            sessionID={props.sessionID}
+                            sessionID={sessionID()}
                             messageID={message.id}
                             classes={{
                               root: "min-w-0 w-full relative",
@@ -346,18 +392,8 @@ function SessionView(props: {
                       )}
                     </For>
                   </div>
-                  <div class="px-4 flex items-center justify-center pt-20 pb-8 shrink-0">
-                    <Show
-                      when={props.source.branding().wordmarkUrl}
-                      fallback={
-                        <div class="text-13-mono opacity-20 select-none">
-                          {props.source.branding().name ? `${props.source.branding().name} · ` : ""}
-                          Open(code)Share
-                        </div>
-                      }
-                    >
-                      <img src={props.source.branding().wordmarkUrl} alt="" class="w-58.5 opacity-25" />
-                    </Show>
+                  <div class="px-4 pt-20 pb-8 shrink-0">
+                    <PageFooter branding={props.source.branding()} />
                   </div>
                 </div>
               )
@@ -383,34 +419,32 @@ function SessionView(props: {
                   <Show when={props.source.branding().backgroundUrl && props.settings.backgroundOn}>
                     <div class="osh-bg" style={{ "background-image": `url(${props.source.branding().backgroundUrl})` }} />
                   </Show>
-                  <header class="h-7 px-4 flex items-center justify-between self-stretch bg-background-base border-b border-border-weak-base relative z-10">
+                  <header class="h-7 px-4 flex items-center justify-between self-stretch bg-background-base border-b border-border-weak-base relative z-30">
                     <Show
                       when={props.source.branding().linkUrl}
                       fallback={
-                        <span class="pl-1 pr-2 py-0.5 flex items-center rounded" style={{ background: "rgba(10,10,12,.9)" }}>
-                          <BrandMark branding={props.source.branding()} class="h-5" />
+                        <span class="p-0.5 flex items-center rounded-md border border-border-weak-base bg-background-base">
+                          <BrandMark branding={props.source.branding()} class="h-5 rounded" />
                         </span>
                       }
                     >
                       {(href) => (
-                        <a href={href()} target="_blank" rel="noreferrer" class="osh-hdr-link pl-1 pr-2 py-0.5 rounded" style={{ background: "rgba(10,10,12,.9)" }} title={props.source.branding().name || ""}>
-                          <BrandMark branding={props.source.branding()} class="h-5" />
+                        <a href={href()} target="_blank" rel="noreferrer" class="p-0.5 flex items-center rounded-md border border-border-weak-base bg-background-base hover:border-border-strong-base" title={props.source.branding().name || ""}>
+                          <BrandMark branding={props.source.branding()} class="h-5 rounded" />
                         </a>
                       )}
                     </Show>
                     <StatusLine status={props.source.status()} />
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2.5">
                       <button
-                        class="osh-gear"
+                        class="text-icon-weaker-base hover:text-icon-strong-base cursor-pointer bg-transparent border-none p-0"
                         title="copy session as markdown"
-                        onClick={() => copySessionMarkdown(props.data, props.sessionID)}
+                        onClick={() => copySessionMarkdown(props.data, sessionID())}
                       >
-                        <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
-                          <path d="M4 2a2 2 0 0 1 2-2h5.5a.5.5 0 0 1 .35.15l2 2A.5.5 0 0 1 14 2.5V12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-.5H3.5A1.5 1.5 0 0 1 2 10V4a2 2 0 0 1 2-2Zm2-.5a.5.5 0 0 0-.5.5v10a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V3.7L10.8 2H6Zm-4 2a.5.5 0 0 1 1 0v6.5a.5.5 0 0 0 .5.5H6v1.5H3.5a.5.5 0 0 1-.5-.5V3.5Z" />
-                        </svg>
+                        <Icon name="copy" size="small" />
                       </button>
-                      <a href={OPENSHARE_REPO_URL} target="_blank" rel="noreferrer" class="osh-hdr-link" title="Open(code)Share">
-                        <img src={GH_MARK} alt="" class="h-3.5" />
+                      <a href={OPENSHARE_REPO_URL} target="_blank" rel="noreferrer" class="text-icon-weaker-base hover:text-icon-strong-base" title="Open(code)Share">
+                        <Icon name="github" size="small" />
                       </a>
                       <SettingsPanel
                         settings={props.settings}
@@ -431,9 +465,9 @@ function SessionView(props: {
                     >
                       <div classList={{ "@container relative shrink-0 pt-14 flex flex-col gap-10 min-h-0 w-full": true }}>
                         <div classList={{ "w-full flex justify-start items-start min-w-0 px-6": true }}>
-                          <div class="w-full max-w-[52rem] mx-auto">{title()}</div>
+                          <div class={props.settings.centerContent ? "w-full max-w-[52rem] mx-auto" : "w-full"}>{title()}</div>
                         </div>
-                        <div class="flex items-start justify-center h-full min-h-0 w-full">
+                        <div class="flex items-start justify-start h-full min-h-0 w-full">
                           <Show when={!props.settings.continuous && messages().length > 1}>
                             <MessageNav
                               class="sticky top-0 shrink-0 py-2 pl-4"
@@ -453,31 +487,21 @@ function SessionView(props: {
                             when={props.settings.continuous}
                             fallback={
                               <SessionTurn
-                                sessionID={props.sessionID}
+                                sessionID={sessionID()}
                                 messageID={store.messageId ?? firstUserMessage()!.id!}
                                 classes={{
-                                  root: "grow max-w-[52rem]",
+                                  root: props.settings.centerContent ? "grow max-w-[52rem] mx-auto" : "grow",
                                   content: "flex flex-col justify-between",
                                   container: "w-full pb-20 px-6",
                                 }}
                               >
                                 <div classList={{ "w-full flex items-center justify-center pb-8 shrink-0": true }}>
-                                  <Show
-                                    when={props.source.branding().wordmarkUrl}
-                                    fallback={
-                                      <div class="text-13-mono opacity-20 select-none">
-                                        {props.source.branding().name ? `${props.source.branding().name} · ` : ""}
-                                        Open(code)Share
-                                      </div>
-                                    }
-                                  >
-                                    <img src={props.source.branding().wordmarkUrl} alt="" class="w-58.5 opacity-25" />
-                                  </Show>
+                                  <PageFooter branding={props.source.branding()} class="px-6" />
                                 </div>
                               </SessionTurn>
                             }
                           >
-                            <div class="grow max-w-[52rem]">
+                            <div class={props.settings.centerContent ? "grow max-w-[52rem] mx-auto" : "grow"}>
                               <div class="flex flex-col gap-15 items-start justify-start mt-2">
                                 <For each={searching() ? filtered() : messages()}>
                                   {(message) => (
@@ -490,7 +514,7 @@ function SessionView(props: {
                                         )}
                                       </Show>
                                       <SessionTurn
-                                        sessionID={props.sessionID}
+                                        sessionID={sessionID()}
                                         messageID={message.id}
                                         classes={{
                                           root: "min-w-0 w-full relative",
@@ -505,18 +529,8 @@ function SessionView(props: {
                                   <div class="px-6 text-13-regular text-text-weaker">no prompts match.</div>
                                 </Show>
                               </div>
-                              <div class="px-6 flex items-center justify-center pt-16 pb-8 shrink-0">
-                                <Show
-                                  when={props.source.branding().wordmarkUrl}
-                                  fallback={
-                                    <div class="text-13-mono opacity-20 select-none">
-                                      {props.source.branding().name ? `${props.source.branding().name} · ` : ""}
-                                      Open(code)Share
-                                    </div>
-                                  }
-                                >
-                                  <img src={props.source.branding().wordmarkUrl} alt="" class="w-58.5 opacity-25" />
-                                </Show>
+                              <div class="px-6 pt-16 pb-8 shrink-0">
+                                <PageFooter branding={props.source.branding()} />
                               </div>
                             </div>
                           </Show>
@@ -696,31 +710,14 @@ export function App() {
         }}
       >
         <Show when={source.ready()} fallback={<NotFound status={source.status()} />}>
-          {(() => {
-            const data = source.data()!
-            const subs = createMemo(() => children(data))
-            const target = createMemo(() => {
-              const n = sub()
-              if (n == null) return { sessionID: data.sessionID, isSub: false }
-              const hit = subs().find((s) => s.index === n)
-              return hit
-                ? { sessionID: hit.sessionID, isSub: true }
-                : { sessionID: data.sessionID, isSub: false }
-            })
-
-            return (
-              <SessionView
-                data={data}
-                sessionID={target().sessionID}
-                source={source}
-                isSub={target().isSub}
-                backHref={target().isSub ? `/s/${source.shareID}` : undefined}
-                settings={settings()}
-                updateSettings={updateSettings}
-                search={search()}
-              />
-            )
-          })()}
+          <SessionView
+            data={source.data()!}
+            source={source}
+            settings={settings()}
+            updateSettings={updateSettings}
+            search={search()}
+            sub={sub}
+          />
         </Show>
       </ErrorBoundary>
     </Show>

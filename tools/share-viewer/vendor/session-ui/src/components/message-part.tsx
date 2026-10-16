@@ -1770,7 +1770,11 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
       <div data-component="reasoning-part" data-timeline-part-id={part().id}>
         {/* collapsible wrapper: left rule + label row, default collapsed
             (mirrobot viewer addition; content styling unchanged) */}
-        <details class="reasoning-collapse">
+        <details
+          class="reasoning-collapse"
+          // mirrobot viewer: honor the settings default (html[data-osh-reasoning])
+          open={typeof document !== "undefined" && document.documentElement.dataset.oshReasoning === "open" ? true : undefined}
+        >
           <summary>
             <span>{i18n.t("ui.sessionTurn.status.thinking")}</span>
           </summary>

@@ -47,14 +47,22 @@
 }
 
 /* === settings-driven bits === */
-html[data-osh-text="compact"] { font-size: 95%; }
-html[data-osh-text="roomy"] { font-size: 110%; }
-
-/* reasoning default state (the settings toggle writes the attribute;
-   the DOM pass sets `open` on existing details) */
-html[data-osh-reasoning="open"] [data-component="reasoning-part"] details.reasoning-collapse {
-  /* rendered details get open via JS; this is the pre-render default */
+/* chrome pins its line-heights so font-swapping themes (mirrobot serif)
+   don't shift fixed-height elements — DIRECT children only: a descendant
+   selector also hit the settings panel and inflated every line to 28px */
+header.h-7 > * {
+  line-height: 28px;
 }
+
+/* interface scale: uniform UI zoom (design-system text classes are px-based,
+   so root font-size could never scale them) */
+html[data-osh-text="compact"] body { zoom: 0.9; }
+html[data-osh-text="roomy"] body { zoom: 1.1; }
+
+/* reading text size: markdown content only (em on the rendered text),
+   paddings and chrome untouched */
+html[data-osh-read-text="compact"] [data-component="markdown"] { font-size: 0.9em; }
+html[data-osh-read-text="large"] [data-component="markdown"] { font-size: 1.1em; }
 
 /* brand background image (only when the deployment sets backgroundUrl) */
 .osh-bg {
@@ -70,81 +78,6 @@ html[data-osh-reasoning="open"] [data-component="reasoning-part"] details.reason
   position: absolute;
   inset: 0;
   background: rgba(8, 8, 10, 0.82);
-}
-
-/* settings panel */
-.osh-gear {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  color: var(--v2-text-text-weaker, #8b93a1);
-  cursor: pointer;
-  border-radius: 4px;
-  padding: 0;
-}
-.osh-gear:hover {
-  color: var(--v2-text-text-base, #d7dae0);
-  background: var(--v2-surface-surface-base, #ffffff0a);
-}
-.osh-panel {
-  position: absolute;
-  top: 30px;
-  right: 8px;
-  z-index: 50;
-  min-width: 230px;
-  padding: 12px;
-  border: 1px solid var(--v2-border-border-weak-base, #232732);
-  border-radius: 8px;
-  background: var(--v2-background-background-base, #101010);
-  box-shadow: 0 8px 24px #00000060;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  text-align: left;
-}
-.osh-panel h3 {
-  margin: 0;
-  font: 600 11px ui-monospace, Consolas, monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--v2-text-text-weaker, #8b93a1);
-}
-.osh-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.osh-chip {
-  padding: 3px 8px;
-  border: 1px solid var(--v2-border-border-weak-base, #232732);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--v2-text-text-base, #d7dae0);
-  font: 12px ui-monospace, Consolas, monospace;
-  cursor: pointer;
-}
-.osh-chip[data-on="true"] {
-  border-color: var(--openshare-accent, #3b82f6);
-  color: var(--openshare-accent, #3b82f6);
-}
-.osh-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font: 12px ui-monospace, Consolas, monospace;
-  color: var(--v2-text-text-base, #d7dae0);
-}
-.osh-hdr-link {
-  display: inline-flex;
-  align-items: center;
-  color: var(--v2-text-text-weaker, #8b93a1);
-}
-.osh-hdr-link:hover {
-  color: var(--v2-text-text-base, #d7dae0);
 }
 
 /* openshare: status dot + login card accents (brand-configurable) */

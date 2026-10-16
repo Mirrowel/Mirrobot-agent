@@ -5,9 +5,11 @@ export type OshSettings = {
   continuous: boolean
   followLive: boolean
   textSize: "compact" | "normal" | "roomy"
+  readText: "compact" | "normal" | "large"
   diffStyle: "unified" | "split"
   backgroundOn: boolean
   reasoningOpen: boolean
+  centerContent: boolean
 }
 
 export const SETTINGS_DEFAULTS: OshSettings = {
@@ -15,9 +17,11 @@ export const SETTINGS_DEFAULTS: OshSettings = {
   continuous: false,
   followLive: true,
   textSize: "normal",
+  readText: "normal",
   diffStyle: "unified",
   backgroundOn: true,
   reasoningOpen: false,
+  centerContent: false,
 }
 
 const COOKIE = "osh_settings"
@@ -40,13 +44,17 @@ export function writeSettings(s: OshSettings) {
   document.cookie = `${COOKIE}=${encodeURIComponent(JSON.stringify(s))}; Path=/; Max-Age=31536000; SameSite=Lax`
 }
 
-// Apply to <html>: theme attribute + text-size scale. Called pre-paint.
+// Apply to <html>: theme attribute + scale attributes. Called pre-paint.
 export function applySettings(s: OshSettings) {
   const html = document.documentElement
   if (s.theme === "system") delete html.dataset.oshTheme
   else html.dataset.oshTheme = s.theme
+  // interface scale (root font — rem paddings scale with it)
   html.dataset.oshText =
     s.textSize === "compact" ? "compact" : s.textSize === "roomy" ? "roomy" : "normal"
+  // reading text size (markdown content only)
+  html.dataset.oshReadText =
+    s.readText === "compact" ? "compact" : s.readText === "large" ? "large" : "normal"
   html.dataset.oshReasoning = s.reasoningOpen ? "open" : "collapsed"
 }
 
