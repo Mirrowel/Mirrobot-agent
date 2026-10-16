@@ -14,3 +14,6 @@ tools/mention-worker/.wrangler/
 
 # Local operator token (never commit)
 token.txt
+
+# wrangler local deploy cache
+tools/share-worker/.wrangler/
