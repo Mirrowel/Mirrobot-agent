@@ -1758,6 +1758,7 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
 
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   const data = useData()
+  const i18n = useI18n()
   const part = () => props.part as ReasoningPart
   const streaming = createMemo(
     () => props.message.role === "assistant" && typeof (props.message as AssistantMessage).time.completed !== "number",
@@ -1767,7 +1768,14 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   return (
     <Show when={text()}>
       <div data-component="reasoning-part" data-timeline-part-id={part().id}>
-        <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
+        {/* collapsible wrapper: left rule + label row, default collapsed
+            (mirrobot viewer addition; content styling unchanged) */}
+        <details class="reasoning-collapse">
+          <summary>
+            <span>{i18n.t("ui.sessionTurn.status.thinking")}</span>
+          </summary>
+          <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} />
+        </details>
       </div>
     </Show>
   )

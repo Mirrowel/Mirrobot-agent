@@ -1,2 +1,43 @@
+/* Scan roots FIRST (the vendored ui entry declares source(none) on the
+   utilities import, so these are the only scan roots): the app sources and
+   both vendored package trees. Paths resolve from this file. */
+@source "./";
+@source "../vendor/session-ui/src";
+@source "../vendor/ui/src";
+
 @import "@opencode-ai/ui/styles/tailwind";
 @import "@opencode-ai/session-ui/styles";
+
+/* Reasoning collapse: a left rule marking the full block + a clickable
+   label row; default collapsed, content styling untouched. */
+[data-component="reasoning-part"] details.reasoning-collapse {
+  border-left: 2px solid color-mix(in oklab, var(--v2-text-text-muted) 35%, transparent);
+  padding-left: 14px;
+}
+[data-component="reasoning-part"] details.reasoning-collapse > summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--v2-text-text-muted);
+  font-size: 13px;
+  line-height: var(--line-height-normal);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+[data-component="reasoning-part"] details.reasoning-collapse > summary::-webkit-details-marker {
+  display: none;
+}
+[data-component="reasoning-part"] details.reasoning-collapse > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+}
+[data-component="reasoning-part"] details.reasoning-collapse[open] > summary::before {
+  transform: rotate(90deg);
+}
