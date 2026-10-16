@@ -1,0 +1,54 @@
+name = "mirrobot-share-worker"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+preview_urls = false
+
+# SCHEDULING: the SweeperDO singleton owns the daily TTL sweep via DO
+# alarms (armed on first share create). No cron — cron dispatch is
+# broken on this account (see mention-worker wrangler.toml for the
+# incident record).
+[triggers]
+crons = []
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+# ShareDO: SQLite-backed, one instance per share id (snapshot traffic
+# never touches KV). SweeperDO: singleton sweeper.
+[durable_objects]
+bindings = [
+  { name = "SHARE_DO", class_name = "ShareDO" },
+  { name = "SWEEPER_DO", class_name = "SweeperDO" },
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ShareDO", "SweeperDO"]
+
+# Share index: one write per share lifetime (create), one per delete.
+# Fill the id after:  npx wrangler kv namespace create SHARE_INDEX
+[[kv_namespaces]]
+binding = "SHARE_INDEX"
+id = "a3467b6b06c8431786eae9ac5e68ada4"
+
+[vars]
+# Days after last sync before the sweeper deletes a share (the encrypted
+# Actions artifact is the permanent record; live views are transient).
+TTL_DAYS = "90"
+
+# Static viewer: SPA handling serves index.html for /s/<id> (the page
+# reads the id from the path); API + health always hit the worker.
+[assets]
+directory = "./public"
+html_handling = "auto-trailing-slash"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/health"]
+
+# Secrets — set once with:
+#   npx wrangler secret put CREATE_TOKEN
+# (CREATE_TOKEN: random hex; rides the encrypted OPENCODE_PLUGINS_JSON
+#  channel into the plugin, never appears in public logs.)

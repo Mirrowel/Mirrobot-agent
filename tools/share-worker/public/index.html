@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mirrobot live share</title>
+<style>
+:root{--bg:#0f1115;--fg:#d7dae0;--dim:#8b93a1;--line:#232732;--user:#1c2333;
+--accent:#7aa2f7;--ok:#9ece6a;--warn:#e0af68;--err:#f7768e;--code:#161a23}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+font:14px/1.55 ui-monospace,'Cascadia Code',Consolas,monospace}
+.wrap{max-width:980px;margin:0 auto;padding:24px 20px 80px}
+header{border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:22px}
+header h1{font-size:15px;margin:0 0 6px;font-weight:600;color:var(--accent);word-break:break-word}
+header .meta{color:var(--dim);font-size:12px}
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+background:var(--ok);margin-right:6px;animation:pulse 2s infinite}
+.live-dot.stale{background:var(--warn);animation:none}
+.live-dot.err{background:var(--err);animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.msg{border:1px solid var(--line);border-radius:8px;margin:14px 0;overflow:hidden}
+.msg.user{background:var(--user)}
+.msg .role{padding:7px 12px;font-size:11px;letter-spacing:.08em;color:var(--dim);
+border-bottom:1px solid var(--line);display:flex;gap:10px;justify-content:space-between}
+.msg .role .m{letter-spacing:0}
+.part{padding:10px 14px;border-bottom:1px solid var(--line)}
+.part:last-child{border-bottom:0}
+.part.text{white-space:pre-wrap;word-break:break-word}
+.part.reasoning{color:var(--dim);background:rgba(255,255,255,.02)}
+.part.tool .t-head{cursor:pointer;user-select:none;color:var(--warn)}
+.part.tool .t-body{margin-top:8px;background:var(--code);border-radius:6px;
+padding:10px;white-space:pre-wrap;word-break:break-word;font-size:12.5px;
+max-height:420px;overflow:auto}
+.state-ok{color:var(--ok)} .state-err{color:var(--err)}
+details.part{padding:6px 14px}
+details.part summary{cursor:pointer;color:var(--dim);font-size:12px}
+footer{margin-top:26px;color:var(--dim);font-size:11px;border-top:1px solid var(--line);padding-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1 id="title">connecting…</h1>
+<div class="meta"><span class="live-dot" id="dot"></span><span id="status">waiting for first snapshot</span></div>
+</header>
+<div id="app"></div>
+<footer>mirrobot live share &middot; self-hosted &middot; auto-refreshing</footer>
+</div>
+<script>
+const ID = location.pathname.split('/').pop();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const when = t => { try {
+  const ms = t?.completed || t?.created?.completed || t?.created || t;
+  if (!ms) return '';
+  return new Date(typeof ms === 'number' ? ms : Date.parse(ms)).toLocaleString();
+} catch { return '' } };
+
+function fold(data) {
+  let session = null;
+  const messages = {};
+  for (const item of data || []) {
+    const t = item.type, d = item.data;
+    if (t === 'session') session = d;
+    else if (t === 'message') messages[d.id] = { info: d, parts: [] };
+    else if (t === 'part') {
+      if (!messages[d.messageID])
+        messages[d.messageID] = { info: { id: d.messageID, role: '?' }, parts: [] };
+      messages[d.messageID].parts.push(d);
+    }
+  }
+  const ordered = Object.values(messages).sort((a, b) =>
+    (a.info.time?.completed || a.info.time?.created || 0) -
+    (b.info.time?.completed || b.info.time?.created || 0));
+  return { session, messages: ordered };
+}
+
+function renderPart(p) {
+  if (p.type === 'text')
+    return '<div class="part text">' + esc(p.text) + '</div>';
+  if (p.type === 'reasoning')
+    return '<details class="part reasoning" open><summary>reasoning</summary><div class="text">'
+      + esc(p.text) + '</div></details>';
+  if (p.type === 'tool') {
+    const st = p.state?.status || 'pending';
+    const cls = st === 'error' ? 'state-err' : (st === 'completed' ? 'state-ok' : '');
+    let body = '';
+    const t = p.state?.tool ?? p.tool;
+    if (t) body += esc(t) + '\n';
+    if (p.state?.input != null) body += '\n input:\n' + esc(typeof p.state.input === 'string'
+      ? p.state.input : JSON.stringify(p.state.input, null, 1));
+    const out = p.state?.output ?? p.output;
+    if (out != null) body += '\n output:\n' + esc(typeof out === 'string'
+      ? out : JSON.stringify(out, null, 1)).slice(0, 20000);
+    if (st === 'error' && p.state?.error) body += '\n error: ' + esc(p.state.error);
+    return '<details class="part tool"><summary class="t-head">' + esc(t || 'tool')
+      + ' <span class="' + cls + '">[' + esc(st) + ']</span></summary>'
+      + '<div class="t-body">' + (body || '(empty)') + '</div></details>';
+  }
+  if (p.type === 'step-start' || p.type === 'step-finish') return '';
+  return '<details class="part"><summary>' + esc(p.type) + '</summary><div class="text">'
+    + esc(JSON.stringify(p, null, 1)) + '</div></details>';
+}
+
+let lastSignature = '';
+function render(snapshot, status, dotCls) {
+  document.getElementById('title').textContent =
+    (snapshot.session?.title || 'session ' + (ID || '').slice(0, 8));
+  const el = document.getElementById('status');
+  el.textContent = status;
+  document.getElementById('dot').className = 'live-dot' + (dotCls ? ' ' + dotCls : '');
+  const sig = JSON.stringify(snapshot.messages.map(m => m.info.id + ':' +
+    m.parts.map(p => p.id + (p.time?.end?.completed ?? '')).join(',')));
+  if (sig === lastSignature) return;
+  lastSignature = sig;
+  document.getElementById('app').innerHTML = snapshot.messages.map(m => {
+    const info = m.info || {};
+    const role = info.role || '?';
+    const right = [];
+    const model = info.model;
+    if (model) right.push(esc(typeof model === 'string' ? model
+      : (model.modelID ? ((model.providerID || '') + '/' + model.modelID) : JSON.stringify(model))));
+    const ts = when(info.time);
+    if (ts) right.push(esc(ts));
+    if (role === 'assistant' && info.cost != null) {
+      const c = info.cost / 1e6;
+      right.push('$' + c.toFixed(c >= 1 ? 2 : 4));
+    }
+    const parts = (m.parts || []).map(renderPart).filter(Boolean).join('');
+    return '<div class="msg ' + esc(role) + '"><div class="role"><span>'
+      + esc(role).toUpperCase() + '</span><span class="m">' + right.join(' &middot; ')
+      + '</span></div>' + (parts || '<div class="part text" style="color:var(--dim)">(no content yet)</div>')
+      + '</div>';
+  }).join('') || '<div class="part text" style="color:var(--dim)">waiting for content…</div>';
+}
+
+async function tick() {
+  try {
+    const r = await fetch('/api/share/' + ID + '/data', { cache: 'no-store' });
+    if (r.status === 404) {
+      render({ session: null, messages: [] }, 'share not found (expired, deleted, or bad link)', 'err');
+      clearInterval(timer);
+      return;
+    }
+    const body = await r.json();
+    const snapshot = fold(body.data);
+    render(snapshot,
+      'live · ' + snapshot.messages.length + ' messages · updated ' +
+      new Date().toLocaleTimeString(), '');
+  } catch (e) {
+    render({ session: null, messages: [] }, 'connection problem - retrying', 'stale');
+  }
+}
+tick();
+const timer = setInterval(tick, 2500);
+</script>
+</body>
+</html>
