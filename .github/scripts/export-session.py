@@ -40,6 +40,7 @@ import gzip
 import json
 import os
 import secrets
+import sqlite3
 import subprocess
 import sys
 import shutil
@@ -145,29 +146,70 @@ def opencode_export(session_id: str, exe: str) -> dict:
 # v1 export -> share Data[] normalization (ONE data contract for everything)
 # ----------------------------------------------------------------------------
 
-def export_to_data(export: dict) -> list[dict]:
+def export_to_data(export: dict, session_id: str) -> list[dict]:
     """v1 {info, messages:[{info, parts[]}]} -> [{type, data}] items.
 
     Item shapes match upstream ShareNext exactly: session = SessionInfo,
-    message = Message info, part = full Part. Models are derived from user
-    messages (provider resolution stays viewer-side).
+    message = Message info, part = full Part. Model items carry the
+    sessionID sibling (multi-session shares keep per-subagent labels) and
+    are named via the SHARE_MODEL_LABEL template ("" hides the model).
     """
     items: list[dict] = []
     info = export.get("info")
     if info:
         items.append({"type": "session", "data": info})
-    models: list[str] = []
     for m in export.get("messages") or []:
         minfo = m.get("info") or {}
         items.append({"type": "message", "data": minfo})
-        model = minfo.get("model")
-        if model and model not in models:
-            models.append(model)
+        if minfo.get("role") == "user" and minfo.get("model"):
+            model = minfo["model"]
+            label = format_label(os.environ.get("SHARE_MODEL_LABEL", "$Provider/$Model"), model)
+            items.append({
+                "type": "model",
+                "sessionID": session_id,
+                "data": [{
+                    "id": model.get("modelID"),
+                    "providerID": model.get("providerID"),
+                    "name": label,
+                }],
+            })
         for part in m.get("parts") or []:
             items.append({"type": "part", "data": part})
-    if models:
-        items.append({"type": "model", "data": models})
     return items
+
+
+def format_label(template: str, model: dict) -> str:
+    if template == "":
+        return ""
+    if not model:
+        return template
+    return (template
+            .replace("$Provider", model.get("providerID") or "")
+            .replace("$provider", model.get("providerID") or "")
+            .replace("$Model", model.get("modelID") or "")
+            .replace("$model", model.get("modelID") or ""))
+
+
+def session_family(db: Path, main_id: str) -> list[str]:
+    """The main session plus every session in the db whose root ancestor is
+    the main session (subagent children, recursively)."""
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        rows = con.execute("SELECT id, parent_id FROM session").fetchall()
+    except sqlite3.OperationalError:
+        return [main_id]
+    finally:
+        con.close()
+    parent = {sid: (pid or None) for sid, pid in rows}
+
+    def root_of(sid: str) -> str:
+        seen = set()
+        while parent.get(sid) and sid not in seen:
+            seen.add(sid)
+            sid = parent[sid]
+        return sid
+
+    return [sid for sid in parent if sid == main_id or root_of(sid) == main_id]
 
 
 # ----------------------------------------------------------------------------
@@ -183,6 +225,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--live-url", default=None,
                     help="live share URL from the plugin (folded into the meta blob)")
     ap.add_argument("--opencode", default=None)
+    ap.add_argument("--session-id", default=None,
+                    help="export this session (default: newest in the db — correct for the "
+                         "single-run runner db; use explicitly on dev machines)")
     ap.add_argument("--plain", action="store_true",
                     help="debug: also write the unencrypted normalized JSON")
     args = ap.parse_args(argv[1:])
@@ -192,14 +237,21 @@ def main(argv: list[str]) -> int:
         sys.exit("error: SHARE_LINK_PUBKEY not set (repo secret)")
 
     db = find_db(args.db)
-    sid = newest_session_id(db)
-    print(f"session: {sid} (newest in {db})")
+    sid = args.session_id or newest_session_id(db)
+    family = session_family(db, sid)
+    print(f"session: {sid} (newest in {db}); family: {len(family)} session(s)")
 
-    export = opencode_export(sid, args.opencode)
-    data = export_to_data(export)
-    n_parts = sum(1 for i in data if i["type"] == "part")
-    n_msgs = sum(1 for i in data if i["type"] == "message")
-    print(f"normalized: {n_msgs} messages, {n_parts} parts")
+    data: list[dict] = []
+    n_msgs = n_parts = 0
+    for fsid in family:
+        export = opencode_export(fsid, args.opencode)
+        fdata = export_to_data(export, fsid)
+        n_msgs += sum(1 for i in fdata if i["type"] == "message")
+        n_parts += sum(1 for i in fdata if i["type"] == "part")
+        data.extend(fdata)
+    # sender-side display preferences (parity with the live plugin)
+    data.append({"type": "prefs", "data": {"openTasksInNewTab": True}})
+    print(f"normalized: {n_msgs} messages, {n_parts} parts across {len(family)} session(s)")
 
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)

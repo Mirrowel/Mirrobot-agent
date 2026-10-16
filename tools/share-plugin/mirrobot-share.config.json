@@ -1,0 +1,10 @@
+{
+  "$comment": "mirrobot-share plugin config. Priority: env vars > this file > code defaults. Keys: workerUrl, createToken, debounceMs (ms, default 10000), modelLabel ($Provider/$Model placeholders; literal text is sent as-is; empty string hides the model), ttlDays (per-share TTL, capped by the worker), openTasksInNewTab (task rows open subagent pages in a new tab), spoolDir (durability spool; default XDG data home).",
+  "workerUrl": "https://mirrobot-share-worker.mirrowel-zz.workers.dev",
+  "createToken": "",
+  "debounceMs": 10000,
+  "modelLabel": "$Provider/$Model",
+  "ttlDays": 90,
+  "openTasksInNewTab": true,
+  "spoolDir": ""
+}

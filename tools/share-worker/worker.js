@@ -1,166 +1,224 @@
-// mirrobot-share-worker — self-hosted replacement for the discontinued
-// opencode share service. Receives debounced batched session snapshots
-// (the ShareNext protocol: create/sync/data/remove) from the share
-// plugin running inside opencode sessions in CI, and serves the share
-// viewer page at /s/<id>.
+// mirrobot-share-worker — event-driven session sharing.
 //
-// Architecture (quota-aware, free tier):
-//   - ShareDO per share id: holds {meta, items}. All sync traffic hits
-//     the DO (SQLite-backed storage) — KV writes are NEVER used for
-//     snapshot data (free tier caps KV at 1k writes/day).
-//   - KV holds only the lightweight share index: ONE write per share
-//     lifetime (at create), one delete at removal/sweep.
-//   - SweeperDO singleton: daily alarm sweeps shares inactive for
-//     TTL_DAYS (default 90). DO alarms, not cron — cron dispatch is
-//     broken on this account (see mention-worker).
+// Protocol:
+//   HTTP (fallback + curl/testing):
+//     POST   /api/share            {sessionID, ttlDays?}  Bearer CREATE_TOKEN -> {id, secret}
+//     POST   /api/share/:id/sync   {secret, data, status?} -> {ok, rev, status}
+//     GET    /api/share/:id/data   -> {data, status, rev}
+//     DELETE /api/share/:id        {secret}
+//   WebSocket (primary):
+//     viewer:  GET /s/../api route /api/share/:id/ws — terminates in ShareDO
+//              (hibernating); every plugin sync broadcasts
+//              {op:"frame", status, rev, items} to all viewers.
+//     plugin:  GET /api/ws?token=<CREATE_TOKEN> — terminates in a fresh
+//              ControlDO (hibernating). Frames:
+//                -> {op:"init", create:{sessionID, ttlDays?}} | {op:"init", attach:{id, secret}}
+//                <- {op:"init", ok, id, secret, rev, status, data?}
+//                -> {op:"sync", items, status?}   <- {op:"ack", rev, status}
+//                -> {op:"delete"}                 <- {op:"deleted"}
+//              Both socket kinds hibernate between frames (zero cost);
+//              outgoing messages are free.
 //
-// Security model (same as opencd.ai was): the share URL is the
-// capability (32 hex chars of CSPRNG); writes require the per-share
-// secret minted by the plugin at create and held only in CI process
-// memory; create requires the worker-level CREATE_TOKEN secret which
-// rides the encrypted plugin-variable channel, never public logs.
-// The worker holds no GitHub credentials and cannot touch the agent.
-//
-// Item merge semantics are byte-compatible with upstream ShareNext /
-// enterprise share.ts: key() strings are identical, last-write-wins
-// per key, snapshot sorted by key localeCompare on read. The keys are
-// derived SERVER-side from item shape (never taken from the client).
-
-const TTL_DAYS_DEFAULT = 90
-const SWEEP_PERIOD_MS = 24 * 60 * 60 * 1000 // daily sweep
-const ITEM_KEYS = {
-  session: (d) => "session",
-  message: (d) => `message/${d?.id}`,
-  part: (d) => `part/${d?.messageID}/${d?.id}`,
-  session_diff: (d) => "session_diff",
-  model: (d) => "model",
-}
-
-function hex(bytes) {
-  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("")
-}
-
-function randomId() {
-  return hex(crypto.getRandomValues(new Uint8Array(16))) // 32 hex chars
-}
-
-function randomSecret() {
-  return hex(crypto.getRandomValues(new Uint8Array(24))) // 48 hex chars
-}
-
-// Constant-time string compare (both sides are ASCII hex).
-function ctEqual(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
-}
-
-function json(status, body, headers = {}) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers },
-  })
-}
-
-function log(event, fields = {}) {
-  const line = JSON.stringify({ t: new Date().toISOString(), src: "share-worker", event, ...fields })
-  console.log(line)
-}
+// Resumability: every accepted sync bumps a monotonic rev; plugins replay
+// their unacked spool on reconnect. TTL is per-share (create frame, capped
+// at MAX_TTL_DAYS, default 90); the sweeper respects each share's own TTL.
 
 export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url)
+  async fetch(req, env) {
+    const url = new URL(req.url)
     const path = url.pathname
-    const ttlDays = Number(env.TTL_DAYS || TTL_DAYS_DEFAULT)
+    const json = (code, body) => new Response(JSON.stringify(body), {
+      status: code,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    })
 
     try {
-      if (path === "/health") return json(200, { ok: true, service: "mirrobot-share-worker" })
+      if (path === "/health") return json(200, { ok: true })
 
-      if (path === "/api/share" && request.method === "POST") {
-        const auth = request.headers.get("authorization") || ""
-        const token = auth.startsWith("Bearer ") ? auth.slice(7) : ""
-        if (!env.CREATE_TOKEN || !ctEqual(token, env.CREATE_TOKEN)) {
-          log("create.denied", { reason: "bad-create-token" })
-          return json(401, { error: "unauthorized" })
-        }
-        let body
-        try {
-          body = await request.json()
-        } catch {
-          return json(400, { error: "invalid json" })
-        }
-        const sessionID = typeof body?.sessionID === "string" ? body.sessionID : ""
-        if (!sessionID || sessionID.length > 200) return json(400, { error: "sessionID required" })
-        const id = randomId()
-        const secret = randomSecret()
-        const idObj = env.SHARE_DO.idFromName(id)
-        const stub = env.SHARE_DO.get(idObj)
-        const now = Date.now()
-        await stub.fetch("https://do/init", {
+      // ---- plugin control socket: forward the upgrade into a fresh DO ----
+      if (path === "/api/ws") {
+        const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("token") ?? ""
+        const fwd = new Request(url.origin + "/control-ws?token=" + encodeURIComponent(token), req)
+        return env.SHARE_CONTROL.get(env.SHARE_CONTROL.newUniqueId()).fetch(fwd)
+      }
+
+      // ---- viewer socket: forward the upgrade into the ShareDO ----
+      const wm = path.match(/^\/api\/share\/([0-9a-f]+)\/ws$/)
+      if (wm && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+        return shareStub(env, wm[1]).fetch(new Request(`https://do/ws`, req))
+      }
+
+      const sm = path.match(/^\/api\/share\/([0-9a-f]+)(\/sync|\/data|)$/)
+      if (!sm) return json(404, { error: "not found" })
+      const id = sm[1]
+      const op = sm[2]
+
+      if (req.method === "POST" && op === "") {
+        const auth = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "")
+        if (!env.CREATE_TOKEN || auth !== env.CREATE_TOKEN) return json(401, { error: "bad create token" })
+        const body = await req.json().catch(() => ({}))
+        if (!body.sessionID || typeof body.sessionID !== "string") return json(400, { error: "sessionID required" })
+        const newId = randomId()
+        const r = await shareStub(env, newId).fetch("https://do/init", {
           method: "POST",
-          body: JSON.stringify({ secret, sessionID, createdAt: now, lastActive: now }),
+          body: JSON.stringify({ id: newId, sessionID: body.sessionID, ttlDays: clampTtl(body.ttlDays, env) }),
         })
-        // One KV index write per share lifetime.
-        await env.SHARE_INDEX.put(`share:${id}`, JSON.stringify({ createdAt: now }))
-        // Arm the sweeper (idempotent).
-        await env.SWEEPER_DO.get(env.SWEEPER_DO.idFromName("singleton")).fetch("https://do/arm", { method: "POST" })
-        const shareUrl = `${url.origin}/s/${id}`
-        log("create.ok", { id, sessionID })
-        return json(200, { id, secret, url: shareUrl })
+        return json(r.status, await r.json())
       }
 
-      const m = path.match(/^\/api\/share\/([0-9a-f]+)(\/sync|\/data|)$/)
-      if (m) {
-        const id = m[1]
-        const op = m[2]
-        const stub = env.SHARE_DO.get(env.SHARE_DO.idFromName(id))
-
-        if (op === "/sync" && request.method === "POST") {
-          const r = await stub.fetch("https://do/sync", { method: "POST", body: await request.text() })
-          const out = await r.json()
-          if (!r.ok) log("sync.rejected", { id, reason: out?.error })
-          else log("sync.ok", { id, items: out?.merged ?? 0 })
-          return json(r.status, out)
-        }
-        if (op === "/data" && request.method === "GET") {
-          const r = await stub.fetch("https://do/data")
-          const out = await r.json()
-          if (!r.ok) log("data.miss", { id })
-          return json(r.status, out)
-        }
-        if (op === "" && request.method === "GET") {
-          const r = await stub.fetch("https://do/data")
-          const out = await r.json()
-          if (!r.ok) log("data.miss", { id })
-          return json(r.status, out)
-        }
-        if (op === "" && request.method === "DELETE") {
-          const r = await stub.fetch("https://do/remove", { method: "POST", body: await request.text() })
-          if (r.ok) await env.SHARE_INDEX.delete(`share:${id}`)
-          log(r.ok ? "remove.ok" : "remove.rejected", { id })
-          return json(r.status, await r.json())
-        }
+      if (req.method === "POST" && op === "/sync") {
+        const body = await req.json().catch(() => ({}))
+        const r = await shareStub(env, id).fetch("https://do/sync", {
+          method: "POST",
+          body: JSON.stringify({ secret: body.secret ?? "", data: body.data ?? [], status: body.status }),
+        })
+        return json(r.status, await r.json())
       }
 
-      // /s/<id> is served by the static viewer (assets binding, SPA
-      // html_handling maps unknown paths to the viewer entry). If no
-      // assets binding is configured, respond honestly.
-      if (path.startsWith("/s/")) {
-        if (env.ASSETS) return env.ASSETS.fetch(request)
-        return new Response("share viewer not deployed yet", { status: 501, headers: { "content-type": "text/plain" } })
+      if (req.method === "GET" && op === "/data") {
+        const r = await shareStub(env, id).fetch("https://do/data")
+        return new Response(await r.text(), {
+          status: r.status,
+          headers: { "content-type": "application/json", "cache-control": "no-store" },
+        })
+      }
+
+      if (req.method === "DELETE" && op === "") {
+        const body = await req.json().catch(() => ({}))
+        const r = await shareStub(env, id).fetch("https://do/remove", {
+          method: "POST",
+          body: JSON.stringify({ secret: body.secret ?? "" }),
+        })
+        return json(r.status, await r.json())
       }
 
       return json(404, { error: "not found" })
-    } catch (err) {
-      log("error", { message: String(err?.stack || err) })
+    } catch (e) {
+      console.log("[http] error", e?.message || e)
       return json(500, { error: "internal" })
     }
   },
 }
 
+function randomId() {
+  const b = new Uint8Array(16)
+  crypto.getRandomValues(b)
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("")
+}
+
+function clampTtl(days, env) {
+  const max = Number(env.MAX_TTL_DAYS || 90)
+  if (days == null || !Number.isFinite(Number(days))) return max
+  return Math.max(1, Math.min(Math.floor(Number(days)), max))
+}
+
+function shareStub(env, id) {
+  return env.SHARE_DO.get(env.SHARE_DO.idFromName(id))
+}
+
 // ---------------------------------------------------------------------------
-// ShareDO — one instance per share id. Holds meta + the merged snapshot.
+// ControlDO — one per plugin socket. Owns create/attach + forwards syncs.
+// Hibernates between frames.
+// ---------------------------------------------------------------------------
+export class ControlDO {
+  constructor(state, env) {
+    this.state = state
+    this.env = env
+    this.attachId = undefined
+    this.attachSecret = undefined
+    this.token = ""
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url)
+    if (url.pathname === "/control-ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      this.token = url.searchParams.get("token") ?? ""
+      const pair = new WebSocketPair()
+      this.state.acceptWebSocket(pair[1], ["control"])
+      return new Response(null, { status: 101, webSocket: pair[0] })
+    }
+    return new Response("nf", { status: 404 })
+  }
+
+  async webSocketMessage(ws, message) {
+    const send = (obj) => {
+      try { ws.send(JSON.stringify(obj)) } catch {}
+    }
+    try {
+      const frame = JSON.parse(message)
+
+      if (frame.op === "init") {
+        if (frame.create) {
+          if (!this.token || !this.env.CREATE_TOKEN || this.token !== this.env.CREATE_TOKEN) {
+            return send({ op: "init", ok: false, error: "bad create token" })
+          }
+          const id = randomId()
+          const r = await this.env.SHARE_DO.get(this.env.SHARE_DO.idFromName(id)).fetch("https://do/init", {
+            method: "POST",
+            body: JSON.stringify({
+              id,
+              sessionID: frame.create.sessionID,
+              ttlDays: clampTtl(frame.create.ttlDays, this.env),
+            }),
+          })
+          const body = await r.json()
+          if (!body.ok) return send({ op: "init", ok: false, error: body.error })
+          this.attachId = id
+          this.attachSecret = body.secret
+          return send({ op: "init", ok: true, id, secret: body.secret, rev: 0, status: "live" })
+        }
+        if (frame.attach) {
+          const r = await this.env.SHARE_DO.get(this.env.SHARE_DO.idFromName(frame.attach.id)).fetch("https://do/attach", {
+            method: "POST",
+            body: JSON.stringify({ secret: frame.attach.secret ?? "" }),
+          })
+          const body = await r.json()
+          if (!body.ok) return send({ op: "init", ok: false, error: body.error })
+          this.attachId = frame.attach.id
+          this.attachSecret = frame.attach.secret
+          return send({
+            op: "init",
+            ok: true,
+            id: frame.attach.id,
+            secret: this.attachSecret,
+            rev: body.rev,
+            status: body.status,
+            data: body.data,
+          })
+        }
+        return send({ op: "init", ok: false, error: "init needs create|attach" })
+      }
+
+      if (frame.op === "sync" && this.attachId) {
+        const r = await this.env.SHARE_DO.get(this.env.SHARE_DO.idFromName(this.attachId)).fetch("https://do/sync", {
+          method: "POST",
+          body: JSON.stringify({ secret: this.attachSecret, data: frame.items ?? [], status: frame.status }),
+        })
+        const body = await r.json()
+        return send({ op: body.ok ? "ack" : "nack", ...body })
+      }
+
+      if (frame.op === "delete" && this.attachId) {
+        await this.env.SHARE_DO.get(this.env.SHARE_DO.idFromName(this.attachId)).fetch("https://do/remove", {
+          method: "POST",
+          body: JSON.stringify({ secret: this.attachSecret }),
+        })
+        this.attachId = undefined
+        this.attachSecret = undefined
+        return send({ op: "deleted" })
+      }
+
+      send({ op: "error", error: "unknown op" })
+    } catch (e) {
+      send({ op: "error", error: e?.message || String(e) })
+    }
+  }
+
+  async webSocketClose() {}
+}
+
+// ---------------------------------------------------------------------------
+// ShareDO — one per share: items, rev, status, hibernating viewer sockets.
 // ---------------------------------------------------------------------------
 export class ShareDO {
   constructor(state, env) {
@@ -171,89 +229,149 @@ export class ShareDO {
   async fetch(req) {
     const url = new URL(req.url)
     const path = url.pathname
-    try {
-      if (path === "/init" && req.method === "POST") {
-        const meta = await req.json()
-        const existing = await this.state.storage.get("meta")
-        if (existing) return json(409, { error: "exists" })
-        await this.state.storage.put("meta", meta)
-        await this.state.storage.put("items", {})
-        return json(200, { ok: true })
-      }
+    const json = (code, body) => new Response(JSON.stringify(body), { status: code, headers: { "content-type": "application/json" } })
 
-      if (path === "/sync" && req.method === "POST") {
-        const meta = await this.state.storage.get("meta")
-        if (!meta) return json(404, { error: "not found" })
-        let body
+    if (path === "/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      const pair = new WebSocketPair()
+      this.state.acceptWebSocket(pair[1], ["viewer"])
+      // push current state so late joiners render without /data
+      const meta = await this.state.storage.get("meta")
+      if (meta) {
+        const items = (await this.state.storage.get("items")) ?? {}
         try {
-          body = JSON.parse(await req.text())
-        } catch {
-          return json(400, { error: "invalid json" })
-        }
-        if (!ctEqual(String(body?.secret || ""), meta.secret)) return json(403, { error: "forbidden" })
-        const data = Array.isArray(body?.data) ? body.data : null
-        if (!data) return json(400, { error: "data array required" })
-        if (data.length > 500) return json(400, { error: "batch too large" })
-        const items = (await this.state.storage.get("items")) || {}
-        let merged = 0
-        for (const item of data) {
-          const keyFn = ITEM_KEYS[item?.type]
-          if (!keyFn) return json(400, { error: `unknown item type: ${item?.type}` })
-          const key = keyFn(item.data)
-          if (!key || key.includes("null") || key.includes("undefined")) {
-            return json(400, { error: `unkeyable item of type ${item.type}` })
-          }
-          items[key] = item
-          merged++
-        }
-        meta.lastActive = Date.now()
-        await this.state.storage.put({ items, meta })
-        return json(200, { ok: true, merged })
-      }
-
-      if (path === "/data" && req.method === "GET") {
-        const meta = await this.state.storage.get("meta")
-        if (!meta) return json(404, { error: "not found" })
-        const items = (await this.state.storage.get("items")) || {}
-        const data = Object.keys(items).sort((a, b) => a.localeCompare(b)).map((k) => items[k])
-        return json(200, { data })
-      }
-
-      if (path === "/meta" && req.method === "GET") {
-        const meta = await this.state.storage.get("meta")
-        if (!meta) return json(404, { error: "not found" })
-        return json(200, meta)
-      }
-
-      if (path === "/remove-all" && req.method === "POST") {
-        // Sweeper-privileged hard delete (binding-internal only; never
-        // routed from the public fetch handler).
-        await this.state.storage.deleteAll()
-        return json(200, { ok: true })
-      }
-
-      if (path === "/remove" && req.method === "POST") {
-        const meta = await this.state.storage.get("meta")
-        if (!meta) return json(404, { error: "not found" })
-        let body = null
-        try {
-          body = JSON.parse(await req.text())
+          pair[1].send(JSON.stringify({ op: "frame", status: meta.status, rev: meta.rev ?? 0, items: Object.values(items) }))
         } catch {}
-        if (!body || !ctEqual(String(body.secret || ""), meta.secret)) return json(403, { error: "forbidden" })
-        await this.state.storage.deleteAll()
-        return json(200, { ok: true })
       }
+      return new Response(null, { status: 101, webSocket: pair[0] })
+    }
 
-      return json(404, { error: "not found" })
-    } catch (err) {
-      log("do.error", { message: String(err?.stack || err) })
-      return json(500, { error: "internal" })
+    if (path === "/init" && req.method === "POST") {
+      const body = await req.json()
+      if (!body?.id || !body?.sessionID) return json(400, { ok: false, error: "id and sessionID required" })
+      const secret = randomId() + randomId()
+      const now = Date.now()
+      await this.state.storage.put("meta", {
+        secret,
+        sessionID: body.sessionID,
+        ttlDays: body.ttlDays ?? 90,
+        createdAt: now,
+        lastActive: now,
+        rev: 0,
+        status: "live",
+      })
+      await this.state.storage.put("items", {})
+      try {
+        await this.env.SHARE_INDEX.put(`share:${body.id}`, JSON.stringify({ createdAt: now, sessionID: body.sessionID }))
+        await this.env.SWEEPER.get(this.env.SWEEPER.idFromName("singleton")).fetch("https://sweeper/arm", { method: "POST" })
+      } catch (e) {
+        console.log("[init] index error", e?.message || e)
+      }
+      return json(200, { ok: true, id: body.id, secret })
+    }
+
+    if (path === "/attach" && req.method === "POST") {
+      const body = await req.json()
+      const meta = await this.state.storage.get("meta")
+      if (!meta) return json(404, { ok: false, error: "share not found" })
+      if (body.secret !== meta.secret) return json(403, { ok: false, error: "bad secret" })
+      const items = (await this.state.storage.get("items")) ?? {}
+      return json(200, {
+        ok: true,
+        rev: meta.rev ?? 0,
+        status: meta.status,
+        sessionID: meta.sessionID,
+        data: Object.values(items),
+      })
+    }
+
+    if (path === "/sync" && req.method === "POST") {
+      const body = await req.json()
+      const meta = await this.state.storage.get("meta")
+      if (!meta) return json(404, { ok: false, error: "share not found" })
+      if (body.secret !== meta.secret) return json(403, { ok: false, error: "bad secret" })
+      const items = (await this.state.storage.get("items")) ?? {}
+      const batch = []
+      for (const it of body.data ?? []) {
+        const key = itemKey(it)
+        if (!key) continue
+        items[key] = it
+        batch.push(it)
+      }
+      const rev = (meta.rev ?? 0) + 1
+      meta.rev = rev
+      meta.lastActive = Date.now()
+      if (body.status && STATUSES.has(body.status)) meta.status = body.status
+      await this.state.storage.put("items", items)
+      await this.state.storage.put("meta", meta)
+      await this.broadcast({ op: "frame", status: meta.status, rev, items: batch })
+      return json(200, { ok: true, rev, status: meta.status })
+    }
+
+    if (path === "/data") {
+      const meta = await this.state.storage.get("meta")
+      if (!meta) return json(404, { data: [], status: "gone", rev: 0 })
+      const items = (await this.state.storage.get("items")) ?? {}
+      return json(200, { data: Object.values(items), status: meta.status, rev: meta.rev ?? 0 })
+    }
+
+    if (path === "/meta" && req.method === "GET") {
+      const meta = await this.state.storage.get("meta")
+      if (!meta) return json(404, { error: "not found" })
+      const { secret, ...rest } = meta
+      return json(200, rest)
+    }
+
+    if (path === "/remove" && req.method === "POST") {
+      const body = await req.json()
+      const meta = await this.state.storage.get("meta")
+      if (!meta) return json(404, { ok: true })
+      if (body.secret !== meta.secret) return json(403, { ok: false })
+      try { await this.env.SHARE_INDEX.delete(`share:${this.state.id.name}`) } catch {}
+      await this.broadcast({ op: "frame", status: "gone", rev: (meta.rev ?? 0) + 1, items: [] })
+      await this.state.storage.deleteAll()
+      return json(200, { ok: true })
+    }
+
+    if (path === "/remove-all" && req.method === "POST") {
+      // Internal-only (sweeper): the public router never routes here; DOs
+      // are addressable only from this script's worker and other DOs.
+      await this.broadcast({ op: "frame", status: "gone", rev: 1, items: [] })
+      await this.state.storage.deleteAll()
+      try { await this.env.SHARE_INDEX.delete(`share:${this.state.id.name}`) } catch {}
+      return json(200, { ok: true })
+    }
+
+    return json(404, { error: "not found" })
+  }
+
+  async broadcast(frame) {
+    for (const ws of this.state.getWebSockets("viewer")) {
+      try { ws.send(JSON.stringify(frame)) } catch {}
     }
   }
+
+  async webSocketMessage() {}
+  async webSocketClose() {}
+}
+
+const STATUSES = new Set(["live", "completed", "error"])
+
+// Server-side key derivation — the client never decides its own key.
+function itemKey(item) {
+  if (!item || typeof item !== "object") return
+  const t = item.type
+  const d = item.data
+  if (t === "session") return "session/" + (d?.id ?? "")
+  if (t === "session_diff") return "session_diff/" + (item.sessionID ?? d?.sessionID ?? "")
+  if (t === "message") return "message/" + (d?.id ?? "")
+  if (t === "part") return "part/" + (d?.messageID ?? "") + "/" + (d?.id ?? "")
+  if (t === "model") return "model/" + (item.sessionID ?? d?.sessionID ?? "")
+  if (t === "prefs") return "prefs"
+  return
 }
 
 // ---------------------------------------------------------------------------
-// SweeperDO — singleton, daily alarm. Deletes shares inactive > TTL.
+// SweeperDO — daily alarm; deletes shares idle beyond their own TTL.
 // ---------------------------------------------------------------------------
 export class SweeperDO {
   constructor(state, env) {
@@ -264,57 +382,48 @@ export class SweeperDO {
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/arm" && req.method === "POST") {
-      const existing = await this.state.storage.getAlarm()
-      if (!existing) {
-        await this.state.storage.setAlarm(Date.now() + SWEEP_PERIOD_MS)
-        log("sweep.armed", { next: SWEEP_PERIOD_MS })
-      }
-      return json(200, { ok: true })
+      const cur = await this.state.storage.getAlarm()
+      if (!cur) await this.state.storage.setAlarm(Date.now() + 24 * 3600 * 1000)
+      return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } })
     }
-    if (url.pathname === "/sweep-now" && req.method === "POST") {
-      await this.sweep()
-      await this.state.storage.setAlarm(Date.now() + SWEEP_PERIOD_MS)
-      return json(200, { ok: true })
-    }
-    return json(404, { error: "not found" })
+    if (url.pathname === "/sweep" && req.method === "POST") return this.sweep()
+    return new Response("nf", { status: 404 })
   }
 
   async alarm() {
+    await this.state.storage.setAlarm(Date.now() + 24 * 3600 * 1000)
     await this.sweep()
-    await this.state.storage.setAlarm(Date.now() + SWEEP_PERIOD_MS)
   }
 
   async sweep() {
-    const ttlDays = Number(this.env.TTL_DAYS || TTL_DAYS_DEFAULT)
-    const cutoff = Date.now() - ttlDays * 24 * 60 * 60 * 1000
     let listed = 0
-    let deleted = 0
+    let swept = 0
     let cursor
     do {
-      const page = await this.env.SHARE_INDEX.list({ prefix: "share:", cursor })
-      cursor = page.list_complete ? undefined : page.cursor
+      const page = await this.env.SHARE_INDEX.list({ cursor })
+      cursor = page.list_cursor
       for (const k of page.keys) {
+        if (!k.name.startsWith("share:")) continue
         listed++
         const id = k.name.slice("share:".length)
         try {
-          const stub = this.env.SHARE_DO.get(this.env.SHARE_DO.idFromName(id))
-          const r = await stub.fetch("https://do/meta")
-          if (r.status === 404) {
+          const r = await this.env.SHARE_DO.get(this.env.SHARE_DO.idFromName(id)).fetch("https://do/meta")
+          if (r.status !== 200) {
             await this.env.SHARE_INDEX.delete(k.name)
-            deleted++
             continue
           }
           const meta = await r.json()
-          if ((meta.lastActive || meta.createdAt || 0) < cutoff) {
-            await stub.fetch("https://do/remove-all", { method: "POST" })
-            await this.env.SHARE_INDEX.delete(k.name)
-            deleted++
+          const ttlMs = (meta.ttlDays ?? 90) * 24 * 3600 * 1000
+          if ((meta.lastActive ?? 0) + ttlMs < Date.now()) {
+            await this.env.SHARE_DO.get(this.env.SHARE_DO.idFromName(id)).fetch("https://do/remove-all", { method: "POST" })
+            swept++
           }
-        } catch (err) {
-          log("sweep.item-error", { id, message: String(err) })
+        } catch (e) {
+          console.log("[sweep] share error", id, e?.message || e)
         }
       }
-    } while (cursor)
-    log("sweep.done", { ttlDays, listed, deleted })
+    } while (cursor && listed < 5000)
+    console.log(`[sweep] checked=${listed} swept=${swept}`)
+    return new Response(JSON.stringify({ ok: true, listed, swept }), { headers: { "content-type": "application/json" } })
   }
 }

@@ -41,3 +41,7 @@
 [data-component="reasoning-part"] details.reasoning-collapse[open] > summary::before {
   transform: rotate(90deg);
 }
+/* collapsed: halve the bottom gap (part spacing is ~24px) */
+[data-component="reasoning-part"] details.reasoning-collapse:not([open]) {
+  margin-bottom: -12px;
+}

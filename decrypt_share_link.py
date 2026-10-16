@@ -522,7 +522,7 @@ def _serve_handler(dist: Path, lib: Path):
                         f"<h1>mirrobot sessions</h1>{''.join(rows) or '<div>no cached sessions yet</div>'}</body></html>")
                 self._send(200, "text/html; charset=utf-8", body.encode("utf-8"))
                 return
-            m = re.match(r"^/s/([A-Za-z0-9_\-]+)$", path)
+            m = re.match(r"^/s/([A-Za-z0-9_\-]+)(/\d+)?$", path)
             if m:
                 sid = m.group(1)
                 jf = lib / f"{sid}.json"
