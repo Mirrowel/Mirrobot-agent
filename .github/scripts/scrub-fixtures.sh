@@ -395,9 +395,9 @@ fi
 SECTION_NAME='share-link filter contract (drift tripwire)'
 if [ "$PARALLEL" = 1 ]; then
   ( _P0=$PASS; _F0=$FAIL; section_begin "$SECTION_NAME"; if [ "$SECTION_ACTIVE" = 1 ]; then
-# Every opencode --share invocation MUST pipe through the trusted /tmp copy
-# of share-filter.sh (raw share URLs must never reach the public log), every
-# agent step must pass the SHARE_LINK_PUBKEY secret, and the summary step
+# Every opencode run invocation MUST pipe through the trusted /tmp copy
+# of share-filter.sh (redaction + banner masking; the dead share-URL capture is
+# gone), every agent step must pass the SHARE_LINK_PUBKEY secret, and the summary step
 # must exist to surface the encrypted block on the run page.
 for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   WFF="$SCRIPT_DIR/../workflows/$wf.yml"
@@ -411,10 +411,11 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
     issue-comment)   AGENT_KEY="issue-comment" ;;
     bot-reply-guest) AGENT_KEY="bot-reply" ;;  # guest lane shares the conversational model key
   esac
-  check "share: $wf pipes --share through filter"  yes "$(grep -q 'opencode run --share.*| bash /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
-  # opencode prints the share link on STDERR (TUI/status channel): the
-  # merge is load-bearing - without 2>&1 the link bypasses the filter.
-  check "share: $wf merges stderr into filter"      yes "$(grep -q 'opencode run --share.*2>&1 | bash /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
+  check "share: $wf pipes run through filter"   yes "$(grep -q 'opencode run -.*| bash /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
+  # opencode prints status/model banners on STDERR (TUI/status channel): the
+  # merge is load-bearing - without 2>&1 those lines bypass the filter
+  # (the dead --share URL capture is gone; redaction stays).
+  check "share: $wf merges stderr into filter"      yes "$(grep -q 'opencode run -.*2>&1 | bash /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
   # "PR #{0}" inside an UNQUOTED scalar truncates the value at the YAML
   # comment marker (" #") - the workflow file goes invalid and every push
   # red-Xes with 0 jobs (live-caught on bot-reply). Values carrying # in
@@ -423,7 +424,7 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "share: $wf passes SHARE_LINK_PUBKEY env"  yes "$(grep -q 'SHARE_LINK_PUBKEY: \${{ secrets.SHARE_LINK_PUBKEY }}' "$WFF" && echo yes || echo no)"
   check "share: $wf copies filter to /tmp"         yes "$(grep -q 'cp .github/scripts/share-filter.sh /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
   check "share: $wf has summary step"              yes "$(grep -q 'Share link summary' "$WFF" && echo yes || echo no)"
-  check "share: $wf step sets pipefail"            yes "$(grep -B15 'opencode run --share' "$WFF" | grep -q 'set -o pipefail' && echo yes || echo no)"
+  check "share: $wf step sets pipefail"            yes "$(grep -B15 'opencode run -' "$WFF" | grep -q 'set -o pipefail' && echo yes || echo no)"
 
   # ---- per-agent models + plugins + config lifecycle (bot-setup contract) ----
   check "models: $wf passes its agent-key"         yes "$(grep -q "agent-key: $AGENT_KEY" "$WFF" && echo yes || echo no)"
@@ -478,9 +479,9 @@ rm -f "$SF_TEST_OUT"
 else
 section_begin "$SECTION_NAME"
 if [ "$SECTION_ACTIVE" = 1 ]; then
-# Every opencode --share invocation MUST pipe through the trusted /tmp copy
-# of share-filter.sh (raw share URLs must never reach the public log), every
-# agent step must pass the SHARE_LINK_PUBKEY secret, and the summary step
+# Every opencode run invocation MUST pipe through the trusted /tmp copy
+# of share-filter.sh (redaction + banner masking; the dead share-URL capture is
+# gone), every agent step must pass the SHARE_LINK_PUBKEY secret, and the summary step
 # must exist to surface the encrypted block on the run page.
 for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   WFF="$SCRIPT_DIR/../workflows/$wf.yml"
@@ -494,10 +495,11 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
     issue-comment)   AGENT_KEY="issue-comment" ;;
     bot-reply-guest) AGENT_KEY="bot-reply" ;;  # guest lane shares the conversational model key
   esac
-  check "share: $wf pipes --share through filter"  yes "$(grep -q 'opencode run --share.*| bash /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
-  # opencode prints the share link on STDERR (TUI/status channel): the
-  # merge is load-bearing - without 2>&1 the link bypasses the filter.
-  check "share: $wf merges stderr into filter"      yes "$(grep -q 'opencode run --share.*2>&1 | bash /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
+  check "share: $wf pipes run through filter"   yes "$(grep -q 'opencode run -.*| bash /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
+  # opencode prints status/model banners on STDERR (TUI/status channel): the
+  # merge is load-bearing - without 2>&1 those lines bypass the filter
+  # (the dead --share URL capture is gone; redaction stays).
+  check "share: $wf merges stderr into filter"      yes "$(grep -q 'opencode run -.*2>&1 | bash /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
   # "PR #{0}" inside an UNQUOTED scalar truncates the value at the YAML
   # comment marker (" #") - the workflow file goes invalid and every push
   # red-Xes with 0 jobs (live-caught on bot-reply). Values carrying # in
@@ -506,7 +508,7 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "share: $wf passes SHARE_LINK_PUBKEY env"  yes "$(grep -q 'SHARE_LINK_PUBKEY: \${{ secrets.SHARE_LINK_PUBKEY }}' "$WFF" && echo yes || echo no)"
   check "share: $wf copies filter to /tmp"         yes "$(grep -q 'cp .github/scripts/share-filter.sh /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
   check "share: $wf has summary step"              yes "$(grep -q 'Share link summary' "$WFF" && echo yes || echo no)"
-  check "share: $wf step sets pipefail"            yes "$(grep -B15 'opencode run --share' "$WFF" | grep -q 'set -o pipefail' && echo yes || echo no)"
+  check "share: $wf step sets pipefail"            yes "$(grep -B15 'opencode run -' "$WFF" | grep -q 'set -o pipefail' && echo yes || echo no)"
 
   # ---- per-agent models + plugins + config lifecycle (bot-setup contract) ----
   check "models: $wf passes its agent-key"         yes "$(grep -q "agent-key: $AGENT_KEY" "$WFF" && echo yes || echo no)"

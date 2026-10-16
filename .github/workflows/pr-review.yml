@@ -973,7 +973,7 @@ jobs:
           # cannot pin them for the whole run; the post-run step is the
           # belt for fast exits and killed waiters.
           ( bash /tmp/opencode-cleanup.sh waiter ) &
-          opencode run --share - < "$TMP_DIR/assembled_prompt.txt" 2>&1 | bash /tmp/share-filter.sh
+          opencode run - < "$TMP_DIR/assembled_prompt.txt" 2>&1 | bash /tmp/share-filter.sh
           # Fast-exit belt (the step runs under -e; on failure the
           # always() post-run step below is the cleanup guarantee).
           bash /tmp/opencode-cleanup.sh now

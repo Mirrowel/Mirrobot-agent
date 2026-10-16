@@ -870,7 +870,7 @@ jobs:
           # Guest brief + guest manifest. Untrusted thread content reaches
           # the prompt ONLY through envsubst'd environment variables.
           { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $GUEST_SUMMONER_LINE $SCRUB_REMOVALS_SUMMARY' < /tmp/security-brief-guest.md; \
-            bash /tmp/assemble-prompt.sh bot-reply-guest | envsubst "$GVARS"; } | opencode run --share - 2>&1 | bash /tmp/share-filter.sh
+            bash /tmp/assemble-prompt.sh bot-reply-guest | envsubst "$GVARS"; } | opencode run - 2>&1 | bash /tmp/share-filter.sh
 
       - name: Post-run cleanup and usage stats
         if: always()
