@@ -10,6 +10,7 @@ import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
+import { sessionModelLabel } from "./session-data"
 import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
@@ -69,11 +70,15 @@ function SectionLog(props: { section: SessionSection; index: number; settings: O
         <span class="text-icon-strong-base opacity-70">❯ </span>
         {props.section.prompt}
       </div>
-      <For each={props.section.reasoning}>
-        {(r) => <ReasoningEcho text={r.text} settings={props.settings} />}
-      </For>
-      <For each={props.section.tools}>
-        {(t) => <ToolEcho tool={t} settings={props.settings} />}
+      <For each={props.section.ordered}>
+        {(e) => (
+          <Show
+            when={e.kind !== "reasoning"}
+            fallback={<ReasoningEcho text={(e as any).text} settings={props.settings} />}
+          >
+            <ToolEcho tool={e as any} settings={props.settings} />
+          </Show>
+        )}
       </For>
       <Show when={props.section.response}>
         <div class="font-mono text-14-regular text-text-base [&_p]:my-1.5 [&_code]:font-mono">
@@ -146,7 +151,7 @@ function TerminalView(props: Parameters<ViewEntry["component"]>[0]) {
           <div class="font-mono text-12-mono text-text-weaker opacity-60 mb-4">
             {DateTime.fromMillis(info()?.time?.created ?? Date.now()).toFormat("dd MMM yyyy HH:mm")}
             {" · "}
-            {(info()?.model as any)?.providerID}/{(info()?.model as any)?.modelID}
+            {sessionModelLabel(props.data, props.sessionID)}
           </div>
           <Show when={filtered().length > 0} fallback={<div class="text-12-regular text-text-weaker py-10">no matches in scrollback.</div>}>
             <For each={filtered()}>

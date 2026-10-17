@@ -17,6 +17,7 @@ import type { useShareSource } from "./data-source"
 import type { OshSettings } from "./settings"
 import { PageFooter } from "./app"
 import { useSessionSections, toolCallLabel, type SessionSection } from "./views/session-data"
+import { sessionModelLabel } from "./views/session-data"
 
 function ReasoningBlock(props: { text: string; defaultOpen: boolean }) {
   const [open, setOpen] = createSignal(props.defaultOpen)
@@ -102,10 +103,13 @@ export function ReaderView(props: {
 
   const modelChanged = (idx: number) => {
     const cur = sections()[idx]?.model
-    if (!cur) return undefined
+    if (!cur?.providerID && !cur?.modelID) return undefined
+    const label = `${cur.providerID ?? ""}/${cur.modelID ?? ""}`
+    if (label === "/") return undefined
     const prev = sections()[idx - 1]?.model
-    if (prev?.providerID === cur.providerID && prev?.modelID === cur.modelID && idx !== 0) return undefined
-    return `${cur.providerID ?? ""}/${cur.modelID ?? ""}`
+    const prevLabel = prev ? `${prev.providerID ?? ""}/${prev.modelID ?? ""}` : ""
+    if (idx !== 0 && prevLabel === label) return undefined
+    return label
   }
 
   const filtered = createMemo(() => {
@@ -208,6 +212,7 @@ export function ReaderView(props: {
               <Show when={(info()?.model as any)?.providerID}>
                 <ProviderIcon id={(info()!.model as any).providerID} class="size-3.5 shrink-0 text-icon-strong-base" />
               </Show>
+              <span>{sessionModelLabel(props.data, props.sessionID)}</span>
               <span>{DateTime.fromMillis(info()?.time?.created ?? Date.now()).toFormat("dd MMM yyyy, HH:mm")}</span>
             </div>
             <h1 class="text-20-medium text-text-strong">{info()?.title}</h1>

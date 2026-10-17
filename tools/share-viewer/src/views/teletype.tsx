@@ -225,17 +225,18 @@ function Dispatch(props: {
         <p class="text-14-regular text-text-base whitespace-pre-wrap mt-2 max-w-[40rem]">{split().lede}</p>
       </Show>
 
-      <Show when={props.section.reasoning.filter((r) => r.text).length > 0}>
+      <Show when={props.section.ordered.length > 0}>
         <div class="flex flex-col gap-2 mt-3">
-          <For each={props.section.reasoning.filter((r) => r.text)}>
-            {(r) => <EditorNote entry={r} settings={props.settings} />}
+          <For each={props.section.ordered}>
+            {(e) => (
+              <Show
+                when={e.kind !== "reasoning"}
+                fallback={<EditorNote entry={(e as any).text ? e : { ...(e as any), text: (e as any).text }} settings={props.settings} />}
+              >
+                <WireItem tool={e as any} settings={props.settings} />
+              </Show>
+            )}
           </For>
-        </div>
-      </Show>
-
-      <Show when={props.section.tools.length > 0}>
-        <div class="flex flex-col gap-2 mt-3">
-          <For each={props.section.tools}>{(t) => <WireItem tool={t} settings={props.settings} />}</For>
         </div>
       </Show>
 
@@ -272,6 +273,7 @@ function BrandTile(props: { branding: Branding }) {
 }
 
 export function TeletypeView(props: Parameters<ViewEntry["component"]>[0]) {
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
   const info = createMemo(() => props.data.session.find((s: any) => s.id === props.sessionID))
   const sections = useSessionSections(props.data, props.sessionID)
   const branding = () => props.source.branding()
@@ -434,15 +436,25 @@ export function TeletypeView(props: Parameters<ViewEntry["component"]>[0]) {
             >
               <Icon name="github" size="small" />
             </a>
-            <div class="flex items-center gap-1 rounded-md border border-border-weak-base pl-2 pr-1 py-0.5 text-12-mono text-text-weaker hover:border-border-strong-base transition-colors duration-150">
-              <span class="hidden sm:inline">settings</span>
-              <SettingsBody
-                settings={props.settings}
-                update={props.updateSettings}
-                branding={{ backgroundUrl: (branding() as any).backgroundUrl }}
-                search={props.search}
-                onSearch={props.onSearch}
-              />
+            <div class="relative flex items-center gap-1 rounded-md border border-border-weak-base pl-2 pr-1 py-0.5 text-12-mono text-text-weaker hover:border-border-strong-base transition-colors duration-150">
+              <button
+                class="flex items-center gap-1 bg-transparent border-none cursor-pointer text-12-mono text-text-weaker hover:text-text-base p-0"
+                onClick={() => setSettingsOpen(!settingsOpen())}
+              >
+                <span class="hidden sm:inline">settings</span>
+                <Icon name={settingsOpen() ? "chevron-up" : "chevron-down"} size="small" />
+              </button>
+              <Show when={settingsOpen()}>
+                <div class="absolute top-8 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+                  <SettingsBody
+                    settings={props.settings}
+                    update={props.updateSettings}
+                    branding={{ backgroundUrl: (branding() as any).backgroundUrl }}
+                    search={props.search}
+                    onSearch={props.onSearch}
+                  />
+                </div>
+              </Show>
             </div>
           </div>
         </div>

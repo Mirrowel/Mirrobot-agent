@@ -13,7 +13,7 @@ import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry, ViewProps } from "./registry"
-import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
+import { sessionModelLabel, useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
 import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
@@ -205,7 +205,8 @@ function Waypoint(props: {
   showMatch: boolean
 }) {
   const s = props.section
-  const model = () => [s.model?.providerID, s.model?.modelID].filter(Boolean).join("/")
+  const modelLabel = () => sessionModelLabel(props.data, props.sessionID)
+  const model = () => [s.model?.providerID, s.model?.modelID].filter(Boolean).join("/") || modelLabel()
   return (
     <article
       id={`atlas-wp-${s.id}`}
@@ -252,23 +253,22 @@ function Waypoint(props: {
           </Show>
         </div>
 
-        <For each={s.reasoning}>
-          {(r, i) => <Inference text={r.text} ordinal={i() + 1} settings={props.settings} />}
+        <For each={s.ordered}>
+          {(e, i) => (
+            <Show
+              when={e.kind !== "reasoning"}
+              fallback={<Inference text={(e as any).text} ordinal={i() + 1} settings={props.settings} />}
+            >
+              <Show when={(e as any).kind === "tool"}>
+                <div class="mt-2.5">
+                  <div class="rounded-md border border-border-weak-base bg-background-base overflow-hidden">
+                    <Reading entry={e as any} ordinal={s.ordered.filter((x) => x.kind === "tool").indexOf(e as any) + 1} settings={props.settings} />
+                  </div>
+                </div>
+              </Show>
+            </Show>
+          )}
         </For>
-
-        <Show when={s.tools.length > 0}>
-          <div class="mt-3.5">
-            <div class="mb-1.5 flex items-center gap-2 text-12-mono uppercase tracking-[0.14em] text-text-weaker">
-              <span>readings</span>
-              <span class="opacity-70">{s.tools.length} recorded</span>
-            </div>
-            <div class="rounded-md border border-border-weak-base bg-background-base overflow-hidden">
-              <For each={s.tools}>
-                {(t, i) => <Reading entry={t} ordinal={i() + 1} settings={props.settings} />}
-              </For>
-            </div>
-          </div>
-        </Show>
 
         <div class="mt-4">
           <div class="mb-1 flex items-baseline gap-2 text-12-mono uppercase tracking-[0.14em] text-text-weaker">
@@ -426,6 +426,7 @@ function AtlasView(props: ViewProps) {
   const info = createMemo(() => props.data.session.find((s) => s.id === props.sessionID))
   const sections = useSessionSections(props.data, props.sessionID)
   const brand = () => props.source.branding()
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
   const [legendOpen, setLegendOpen] = createSignal(true)
 
   const query = () => props.search.trim().toLowerCase()
@@ -531,14 +532,25 @@ function AtlasView(props: ViewProps) {
                   <Icon name="chevron-right" size="small" />
                 </span>
               </button>
-              <div class="flex items-center rounded-md border border-border-weak-base bg-background-base p-0.5">
-<SettingsBody
-                    settings={props.settings}
-                    update={props.updateSettings}
-                    branding={{ backgroundUrl: (brand() as any).backgroundUrl }}
-                    search={props.search}
-                    onSearch={props.onSearch}
-                  />
+              <div class="relative flex items-center rounded-md border border-border-weak-base bg-background-base p-0.5">
+                <button
+                  class="flex items-center gap-1 h-6 px-1.5 text-12-mono text-text-weaker hover:text-text-base cursor-pointer bg-transparent border-none"
+                  onClick={() => setSettingsOpen(!settingsOpen())}
+                >
+                  <span class="hidden sm:inline">settings</span>
+                  <Icon name={settingsOpen() ? "chevron-up" : "chevron-down"} size="small" />
+                </button>
+                <Show when={settingsOpen()}>
+                  <div class="absolute top-8 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+                    <SettingsBody
+                      settings={props.settings}
+                      update={props.updateSettings}
+                      branding={{ backgroundUrl: (brand() as any).backgroundUrl }}
+                      search={props.search}
+                      onSearch={props.onSearch}
+                    />
+                  </div>
+                </Show>
               </div>
             </div>
           </div>

@@ -13,6 +13,7 @@ import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import type { OshSettings } from "../settings"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
+import { sessionModelLabel } from "./session-data"
 import { SettingsBody } from "../settings-panel"
 
 const pad = (n: number) => String(n + 1).padStart(2, "0")
@@ -83,19 +84,24 @@ function Memo(props: { section: SessionSection; settings: OshSettings; continuou
         </Show>
         <p class="flex-1 min-w-0 text-16-medium text-text-strong whitespace-pre-wrap">{s.prompt}</p>
       </div>
-      {/* annotations */}
-      <For each={s.reasoning}>
-        {(r) => <Annotations text={r.text} settings={props.settings} />}
+      {/* annotations + evidence, in the order they occurred */}
+      <For each={s.ordered}>
+        {(e) => (
+          <Show
+            when={e.kind !== "reasoning"}
+            fallback={
+              <Annotations text={(e as any).text} settings={props.settings} />
+            }
+          >
+            <div class="flex items-start gap-3">
+              <span class="hidden sm:block text-12-mono text-text-weaker opacity-60 shrink-0 pt-2 w-20 text-right">evidence</span>
+              <div class="flex-1 min-w-0">
+                <Exhibit tool={e as any} index={s.ordered.filter((x) => x.kind === "tool").indexOf(e as any)} settings={props.settings} />
+              </div>
+            </div>
+          </Show>
+        )}
       </For>
-      {/* evidence */}
-      <div class="flex items-start gap-3">
-        <span class="hidden sm:block text-12-mono text-text-weaker opacity-60 shrink-0 pt-2 w-20 text-right">evidence</span>
-        <div class="flex-1 min-w-0">
-          <For each={s.tools}>
-            {(t, i) => <Exhibit tool={t} index={i()} settings={props.settings} />}
-          </For>
-        </div>
-      </div>
       {/* report */}
       <div class="flex items-start gap-3 mt-3">
         <span class="hidden sm:block text-12-mono text-text-weaker opacity-60 shrink-0 pt-1 w-20 text-right">report</span>
@@ -180,6 +186,7 @@ function CasefileView(props: Parameters<ViewEntry["component"]>[0]) {
         <div class="max-w-[52rem] mx-auto px-6 py-6">
           <div class="text-12-mono text-text-weaker opacity-70 mb-6">
             FILED {DateTime.fromMillis(info()?.time?.created ?? Date.now()).toFormat("dd MMM yyyy HH:mm")}
+            {" · "}{sessionModelLabel(props.data, props.sessionID)}
             {" · "}MEMOS {sections().length}
           </div>
           <Show when={filtered().length > 0} fallback={<div class="text-14-regular text-text-weaker py-16">nothing in the file matches.</div>}>

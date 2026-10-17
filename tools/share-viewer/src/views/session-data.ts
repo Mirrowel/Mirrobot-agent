@@ -94,3 +94,19 @@ export function toolCallLabel(entry: ToolEntry): string {
   const colon = t.indexOf(":")
   return (colon > 0 ? t.slice(colon + 1) : t).trim() || entry.tool
 }
+
+// The model string for a session: the plugin syncs model items whose
+// `name` carries the configured label; fall back to the session info's
+// model object, then to the first message that carries one.
+export function sessionModelLabel(data: ShareData, sessionID: string): string {
+  const items = (data.model as any)?.[sessionID]
+  if (Array.isArray(items) && items.length) {
+    const it = items[items.length - 1]
+    if (typeof it?.name === "string" && it.name) return it.name
+    if (it?.providerID && it?.id) return `${it.providerID}/${it.id}`
+  }
+  const info = data.session.find((s: any) => s.id === sessionID) as any
+  const m = info?.model
+  if (m?.providerID && m?.modelID) return `${m.providerID}/${m.modelID}`
+  return ""
+}

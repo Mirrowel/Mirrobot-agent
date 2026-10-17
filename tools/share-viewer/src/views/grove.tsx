@@ -13,6 +13,7 @@ import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import type { ViewEntry } from "./registry"
 import { toolCallLabel, useSessionSections, type SessionSection, type ToolEntry } from "./session-data"
+import { sessionModelLabel } from "./session-data"
 import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
@@ -236,7 +237,9 @@ function GroveView(props: Parameters<ViewEntry["component"]>[0]) {
     if (!cur) return undefined
     const prev = sections()[section.index - 1]?.model
     if (section.index !== 0 && prev?.providerID === cur.providerID && prev?.modelID === cur.modelID) return undefined
-    return `${cur.providerID ?? ""}/${cur.modelID ?? ""}`
+    const label = `${cur.providerID ?? ""}/${cur.modelID ?? ""}`
+    if (label === "/") return undefined
+    return label
   }
 
   // follow-live: keep the newest growth visible while live and at bottom
@@ -256,6 +259,7 @@ function GroveView(props: Parameters<ViewEntry["component"]>[0]) {
   const branding = () => props.source.branding()
   const backgroundUrl = () => (branding() as any).backgroundUrl as string | undefined
   const created = () => DateTime.fromMillis((info() as any)?.time?.created ?? Date.now()).toFormat("dd MMM yyyy, HH:mm")
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
   const providerID = () => (info() as any)?.model?.providerID as string | undefined
   const modelID = () => (info() as any)?.model?.modelID as string | undefined
 
@@ -357,15 +361,25 @@ function GroveView(props: Parameters<ViewEntry["component"]>[0]) {
               <span class="text-text-base">v{info()?.version}</span>
             </span>
           </Show>
-          <div class="flex items-center gap-1 h-7 pl-2.5 pr-1 rounded-full border border-border-weak-base bg-background-stronger">
-            <span class="hidden sm:block text-12-regular text-text-weaker">settings</span>
-            <SettingsBody
-              settings={props.settings}
-              update={props.updateSettings}
-              branding={{ backgroundUrl: backgroundUrl() }}
-              search={props.search}
-              onSearch={props.onSearch}
-            />
+          <div class="relative">
+            <button
+              class="flex items-center gap-1 h-7 px-2.5 rounded-full border border-border-weak-base bg-background-stronger text-12-regular text-text-weaker hover:text-text-base cursor-pointer transition-colors duration-150"
+              onClick={() => setSettingsOpen(!settingsOpen())}
+            >
+              <span class="hidden sm:block">settings</span>
+              <Icon name={settingsOpen() ? "chevron-down" : "chevron-up"} size="small" />
+            </button>
+            <Show when={settingsOpen()}>
+              <div class="absolute top-9 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+                <SettingsBody
+                  settings={props.settings}
+                  update={props.updateSettings}
+                  branding={{ backgroundUrl: backgroundUrl() }}
+                  search={props.search}
+                  onSearch={props.onSearch}
+                />
+              </div>
+            </Show>
           </div>
         </div>
       </header>
@@ -387,7 +401,7 @@ function GroveView(props: Parameters<ViewEntry["component"]>[0]) {
             <Show when={providerID()}>
               <div class="mt-4 flex items-center gap-1.5 text-12-mono text-text-weaker">
                 <ProviderIcon id={providerID()!} class="size-3.5 shrink-0 text-icon-strong-base" />
-                <span>{modelID() ?? "model"}</span>
+                <span>{sessionModelLabel(props.data, props.sessionID) || "model"}</span>
               </div>
             </Show>
           </div>

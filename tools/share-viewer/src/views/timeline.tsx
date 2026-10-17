@@ -297,6 +297,7 @@ function TimelineView(props: ViewProps) {
     return out
   })
 
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
   const filtered = createMemo(() => {
     const q = props.search.trim().toLowerCase()
     if (!q) return sections()
@@ -447,14 +448,24 @@ function TimelineView(props: ViewProps) {
             >
               <Icon name="github" size="small" />
             </a>
-            <div class="shrink-0">
-              <SettingsBody
-                settings={props.settings}
-                update={props.updateSettings}
-                branding={brand()}
-                search={props.search}
-                onSearch={props.onSearch}
-              />
+            <div class="relative shrink-0">
+              <button
+                class="flex items-center gap-1 h-7 px-2 rounded-md border border-border-weak-base text-12-mono text-text-weaker hover:text-text-base cursor-pointer transition-colors duration-150"
+                onClick={() => setSettingsOpen(!settingsOpen())}
+              >
+                settings
+              </button>
+              <Show when={settingsOpen()}>
+                <div class="absolute top-9 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+                  <SettingsBody
+                    settings={props.settings}
+                    update={props.updateSettings}
+                    branding={brand()}
+                    search={props.search}
+                    onSearch={props.onSearch}
+                  />
+                </div>
+              </Show>
             </div>
           </div>
           <div class="flex items-center gap-3 pt-1.5 pb-2.5 overflow-x-auto no-scrollbar">

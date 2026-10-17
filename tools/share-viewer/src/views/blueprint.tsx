@@ -154,9 +154,15 @@ function Sheet(props: { section: SessionSection; continuous: boolean; settings: 
           {s.prompt || "(no prompt text)"}
         </p>
       </div>
-      <For each={s.reasoning}>{(r) => <Annotation text={r.text} settings={props.settings} />}</For>
-      <For each={s.tools}>
-        {(t, i) => <Detail tool={t} no={props.detailNo(s.index, i())} settings={props.settings} />}
+      <For each={s.ordered}>
+        {(e, i) => (
+          <Show
+            when={e.kind !== "reasoning"}
+            fallback={<Annotation text={(e as any).text} settings={props.settings} />}
+          >
+            <Detail tool={e as any} no={props.detailNo(s.index, s.ordered.filter((x) => x.kind === "tool").indexOf(e as any))} settings={props.settings} />
+          </Show>
+        )}
       </For>
       <Show when={s.response}>
         <Notes text={s.response} />

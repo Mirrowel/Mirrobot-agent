@@ -17,6 +17,10 @@ const [panelOpen, setPanelOpen] = createSignal(false)
 export const togglePanel = () => setPanelOpen((v) => !v)
 export const closePanel = () => setPanelOpen(false)
 
+// section expansion persists across panel remounts (a settings change can
+// rebuild the whole subtree - live-caught - and sections must not reset)
+const [expandedMap, setExpandedMap] = createSignal<Record<string, boolean>>({})
+
 const THEMES: { id: OshSettings["theme"]; label: string; bg: string; fg: string }[] = [
   { id: "system", label: "system", bg: "#17181c", fg: "#d8dbe0" },
   { id: "light", label: "light", bg: "#fafafa", fg: "#171717" },
@@ -47,7 +51,8 @@ function SectionLabel(props: { children: string }) {
 }
 
 function Section(props: { label: string; children: JSX.Element; alwaysOpen?: boolean }) {
-  const [expanded, setExpanded] = createSignal(!!props.alwaysOpen)
+  const expanded = () => expandedMap()[props.label] ?? !!props.alwaysOpen
+  const setExpanded = (v: boolean) => setExpandedMap((m) => ({ ...m, [props.label]: v }))
   return (
     <div class="flex flex-col pt-3 border-t border-border-weak-base first:border-none first:pt-0">
       <Show

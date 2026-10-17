@@ -233,28 +233,32 @@ function Leaf(props: {
     <article data-leaf={section.id} class="grid scroll-mt-24 lg:grid-cols-[12.5rem_minmax(0,1fr)] gap-x-10">
       {/* the outer margin: notes and asides, below the text when narrow */}
       <div class="order-2 lg:order-none min-w-0">
-        <Show when={section.reasoning.length > 0 || section.tools.length > 0}>
+        <Show when={section.ordered.length > 0}>
           <div class="pt-7 lg:pt-1">
-            <For each={section.reasoning}>{(r) => <Aside text={r.text} settings={props.settings} />}</For>
-            <Show when={section.tools.length > 0}>
-              <div class="mt-2">
-                <div class="flex items-baseline gap-2 border-b border-border-weaker-base pb-1">
-                  <Sc class="text-12-medium text-text-base">Notes</Sc>
-                  <span class="text-12-mono text-text-weaker">{section.tools.length}</span>
-                </div>
-                <For each={section.tools}>
-                  {(tool, i) => (
-                    <Note
-                      n={i() + 1}
-                      tool={tool}
-                      key={`${section.id}:${i()}`}
-                      bus={props.bus}
-                      settings={props.settings}
-                    />
-                  )}
-                </For>
-              </div>
-            </Show>
+            <For each={section.ordered}>
+              {(e) => (
+                <Show
+                  when={e.kind !== "reasoning"}
+                  fallback={<Aside text={(e as any).text} settings={props.settings} />}
+                >
+                  <Show
+                    when={section.ordered.indexOf(e) === 0 || section.ordered[section.ordered.indexOf(e) - 1]?.kind === "reasoning"}
+                  >
+                    <div class="mt-2 flex items-baseline gap-2 border-b border-border-weaker-base pb-1">
+                      <Sc class="text-12-medium text-text-base">Notes</Sc>
+                      <span class="text-12-mono text-text-weaker">{section.tools.length}</span>
+                    </div>
+                  </Show>
+                  <Note
+                    n={section.tools.indexOf(e as any) + 1}
+                    tool={e as any}
+                    key={`${section.id}:${section.tools.indexOf(e as any)}`}
+                    bus={props.bus}
+                    settings={props.settings}
+                  />
+                </Show>
+              )}
+            </For>
           </div>
         </Show>
       </div>
@@ -347,6 +351,7 @@ function EmptyPage(props: { query: string; hasAny: boolean; onClear: () => void 
 }
 
 function LetterpressView(props: Parameters<ViewEntry["component"]>[0]) {
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
   const info = createMemo(() => props.data.session.find((s: any) => s.id === props.sessionID) as any)
   const sections = useSessionSections(props.data, props.sessionID)
   const branding = () => props.source.branding()
@@ -550,17 +555,25 @@ function LetterpressView(props: Parameters<ViewEntry["component"]>[0]) {
             >
               <Icon name="github" size="small" />
             </a>
-            <div class="flex items-center gap-1.5">
-              <Sc class="hidden sm:inline text-12-regular text-text-weaker">settings</Sc>
-              <SettingsBody
-                settings={props.settings}
-                update={props.updateSettings}
-                // the panel offers its background toggle only when the
-                // deployment sets one; Branding omits the field from its type
-                branding={{ backgroundUrl: (branding() as any).backgroundUrl }}
-                search={props.search}
-                onSearch={props.onSearch}
-              />
+            <div class="relative">
+              <button
+                class="flex items-center gap-1.5 bg-transparent border-none cursor-pointer text-12-regular text-text-weaker hover:text-text-base transition-colors duration-150"
+                onClick={() => setSettingsOpen(!settingsOpen())}
+              >
+                <Sc class="hidden sm:inline">settings</Sc>
+                <Icon name={settingsOpen() ? "chevron-down" : "chevron-up"} size="small" />
+              </button>
+              <Show when={settingsOpen()}>
+                <div class="absolute top-9 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+                  <SettingsBody
+                    settings={props.settings}
+                    update={props.updateSettings}
+                    branding={{ backgroundUrl: (branding() as any).backgroundUrl }}
+                    search={props.search}
+                    onSearch={props.onSearch}
+                  />
+                </div>
+              </Show>
             </div>
           </div>
         </div>

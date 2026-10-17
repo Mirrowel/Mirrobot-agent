@@ -114,8 +114,16 @@ function Scene(props: { section: SessionSection; sceneNo: number; numbered: bool
         <p class="mt-3 text-14-mono leading-relaxed text-text-base whitespace-pre-wrap">{s.prompt}</p>
       </Show>
       <div class="mt-3 pl-1 sm:pl-3">
-        <For each={s.reasoning}>{(r) => <WritersNotes text={r.text} settings={props.settings} />}</For>
-        <For each={s.tools}>{(t) => <StageDirection tool={t} settings={props.settings} />}</For>
+        <For each={s.ordered}>
+          {(e) => (
+            <Show
+              when={e.kind !== "reasoning"}
+              fallback={<WritersNotes text={(e as any).text} settings={props.settings} />}
+            >
+              <StageDirection tool={e as any} settings={props.settings} />
+            </Show>
+          )}
+        </For>
       </div>
       <Show when={s.response}>
         <Dialogue section={s} />
