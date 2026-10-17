@@ -13,7 +13,7 @@ import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import type { OshSettings } from "../settings"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { SettingsPanel } from "../settings-panel"
+import { SettingsBody } from "../settings-panel"
 
 const pad = (n: number) => String(n + 1).padStart(2, "0")
 
@@ -228,7 +228,7 @@ function CasefileView(props: Parameters<ViewEntry["component"]>[0]) {
                 <Icon name="close-small" size="small" />
               </button>
             </div>
-            <SettingsPanel
+            <SettingsBody
               settings={props.settings}
               update={props.updateSettings}
               branding={props.source.branding()}

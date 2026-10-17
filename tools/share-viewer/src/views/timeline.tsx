@@ -16,7 +16,7 @@ import type { ViewEntry, ViewProps } from "./registry"
 import type { OshSettings } from "../settings"
 import { visibleMessages } from "../fold"
 import { toolCallLabel, toolOutputText, type AnyPart } from "./session-data"
-import { SettingsPanel } from "../settings-panel"
+import { SettingsBody } from "../settings-panel"
 
 const COLS = "grid grid-cols-[3rem_1.25rem_1fr] sm:grid-cols-[3.75rem_1.5rem_1fr] gap-x-2 sm:gap-x-3"
 const LINE = "absolute inset-y-0 left-1/2 -ml-[0.5px] w-px bg-border-strong-base"
@@ -448,7 +448,7 @@ function TimelineView(props: ViewProps) {
               <Icon name="github" size="small" />
             </a>
             <div class="shrink-0">
-              <SettingsPanel
+              <SettingsBody
                 settings={props.settings}
                 update={props.updateSettings}
                 branding={brand()}

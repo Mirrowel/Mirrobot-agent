@@ -14,7 +14,7 @@ import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { SettingsPanel, togglePanel, closePanel } from "../settings-panel"
+import { SettingsBody, togglePanel, closePanel } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
 // compress a prompt into a slugline: first meaningful line, markdown
@@ -333,7 +333,7 @@ function CinemaView(props: Parameters<ViewEntry["component"]>[0]) {
                 <Icon name="close-small" size="small" />
               </button>
             </div>
-            <SettingsPanel
+            <SettingsBody
               settings={props.settings}
               update={props.updateSettings}
               branding={brand() as any}

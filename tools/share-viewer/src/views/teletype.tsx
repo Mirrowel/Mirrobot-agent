@@ -20,7 +20,7 @@ import {
   type SessionSection,
   type ToolEntry,
 } from "./session-data"
-import { SettingsPanel } from "../settings-panel"
+import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 import type { Branding } from "../data-source"
 import { visibleMessages } from "../fold"
@@ -436,7 +436,7 @@ export function TeletypeView(props: Parameters<ViewEntry["component"]>[0]) {
             </a>
             <div class="flex items-center gap-1 rounded-md border border-border-weak-base pl-2 pr-1 py-0.5 text-12-mono text-text-weaker hover:border-border-strong-base transition-colors duration-150">
               <span class="hidden sm:inline">settings</span>
-              <SettingsPanel
+              <SettingsBody
                 settings={props.settings}
                 update={props.updateSettings}
                 branding={{ backgroundUrl: (branding() as any).backgroundUrl }}

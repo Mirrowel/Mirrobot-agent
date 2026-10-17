@@ -13,7 +13,7 @@ import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import type { ViewEntry } from "./registry"
 import { toolCallLabel, useSessionSections, type SessionSection, type ToolEntry } from "./session-data"
-import { SettingsPanel } from "../settings-panel"
+import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
 const pad = (n: number) => String(n).padStart(2, "0")
@@ -144,7 +144,6 @@ function SectionView(props: {
   continuous: boolean
   modelLabel?: string
 }) {
-  const reasoning = () => props.section.reasoning.filter((r) => r.text.trim())
   return (
     <section
       class="relative"
@@ -185,21 +184,24 @@ function SectionView(props: {
         </div>
       </Show>
 
-      <Show when={props.section.tools.length > 0}>
+      <Show when={props.section.ordered.length > 0}>
         <div class="mb-5 flex flex-col gap-1.5">
-          <For each={props.section.tools}>{(t) => <RootEntry tool={t} settings={props.settings} />}</For>
+          <For each={props.section.ordered}>
+            {(e) => (
+              <Show
+                when={e.kind !== "reasoning"}
+                fallback={<Undergrowth text={(e as any).text} settings={props.settings} />}
+              >
+                <RootEntry tool={e as any} settings={props.settings} />
+              </Show>
+            )}
+          </For>
         </div>
       </Show>
 
       <Show when={props.section.response.trim()}>
         <div class="text-14-regular text-text-base">
           <Markdown text={props.section.response} />
-        </div>
-      </Show>
-
-      <Show when={reasoning().length > 0}>
-        <div class="mt-6 flex flex-col border-t border-dashed border-border-weaker-base pt-2">
-          <For each={reasoning()}>{(r) => <Undergrowth text={r.text} settings={props.settings} />}</For>
         </div>
       </Show>
     </section>
@@ -357,7 +359,7 @@ function GroveView(props: Parameters<ViewEntry["component"]>[0]) {
           </Show>
           <div class="flex items-center gap-1 h-7 pl-2.5 pr-1 rounded-full border border-border-weak-base bg-background-stronger">
             <span class="hidden sm:block text-12-regular text-text-weaker">settings</span>
-            <SettingsPanel
+            <SettingsBody
               settings={props.settings}
               update={props.updateSettings}
               branding={{ backgroundUrl: backgroundUrl() }}

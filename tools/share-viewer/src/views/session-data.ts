@@ -25,6 +25,10 @@ export type SessionSection = {
   tools: ToolEntry[]
   reasoning: ReasoningEntry[]
   response: string
+  // tools + reasoning in the order they actually occurred (the typed
+  // arrays above are for views that group by kind; this one preserves
+  // the interleaved sequence)
+  ordered: (ToolEntry | ReasoningEntry)[]
 }
 
 export function useSessionSections(data: ShareData, sessionID: string): Accessor<SessionSection[]> {
@@ -44,6 +48,7 @@ export function useSessionSections(data: ShareData, sessionID: string): Accessor
           tools: [],
           reasoning: [],
           response: "",
+          ordered: [],
         }
         out.push(current)
         continue
@@ -51,15 +56,21 @@ export function useSessionSections(data: ShareData, sessionID: string): Accessor
       if (!current) continue
       for (const p of (data.part[m.id] ?? []) as AnyPart[]) {
         if (p.type === "text") current.response += (current.response ? "\n\n" : "") + (p.text ?? "")
-        else if (p.type === "tool")
-          current.tools.push({
+        else if (p.type === "tool") {
+          const entry: ToolEntry = {
             kind: "tool",
             tool: p.tool ?? "tool",
             title: String(p.state?.title ?? p.tool ?? "tool"),
             output: toolOutputText(p),
             part: p,
-          })
-        else if (p.type === "reasoning") current.reasoning.push({ kind: "reasoning", text: p.text ?? "", part: p })
+          }
+          current.tools.push(entry)
+          current.ordered.push(entry)
+        } else if (p.type === "reasoning") {
+          const entry: ReasoningEntry = { kind: "reasoning", text: p.text ?? "", part: p }
+          current.reasoning.push(entry)
+          current.ordered.push(entry)
+        }
       }
     }
     return out

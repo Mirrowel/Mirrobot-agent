@@ -1,9 +1,11 @@
 // The settings panel. Product register: earned familiarity, restrained
-// color, one control vocabulary. Sections: view (classic/reader), theme
-// (swatch chips), scale (segmented), reading text (segmented), behavior
-// (switches), search. The open state lives at module level: a settings
-// change can rebuild the header subtree (live-caught) and the panel must
-// persist through it.
+// color, one control vocabulary. The CONTENT (SettingsBody) is separate
+// from the classic chrome's gear+popover (SettingsPanel) so views can
+// embed it inside their own drawers and overlays without inheriting
+// popover positioning. Sections are collapsible, collapsed by default
+// except single-control ones. The open state lives at module level: a
+// settings change can rebuild the header subtree (live-caught) and the
+// panel must persist through it.
 import { createSignal, For, Show } from "solid-js"
 import { Icon } from "@opencode-ai/ui/icon"
 import type { JSX } from "solid-js"
@@ -15,8 +17,6 @@ const [panelOpen, setPanelOpen] = createSignal(false)
 export const togglePanel = () => setPanelOpen((v) => !v)
 export const closePanel = () => setPanelOpen(false)
 
-const VIEWS = VIEW_OPTIONS.map((v) => v.id as string)
-
 const THEMES: { id: OshSettings["theme"]; label: string; bg: string; fg: string }[] = [
   { id: "system", label: "system", bg: "#17181c", fg: "#d8dbe0" },
   { id: "light", label: "light", bg: "#fafafa", fg: "#171717" },
@@ -26,6 +26,25 @@ const THEMES: { id: OshSettings["theme"]; label: string; bg: string; fg: string 
   { id: "sepia", label: "sepia", bg: "#f4ecd8", fg: "#8a6d3b" },
   { id: "nord", label: "nord", bg: "#2e3440", fg: "#88c0d0" },
 ]
+
+// a visual signature per view for the selector grid
+const VIEW_MARKS: Record<string, string> = {
+  classic: "▣",
+  reader: "≡",
+  terminal: "❯",
+  casefile: "◫",
+  blueprint: "⊞",
+  cinema: "⬒",
+  timeline: "⋮",
+  letterpress: "A",
+  atlas: "△",
+  teletype: "≣",
+  grove: "❧",
+}
+
+function SectionLabel(props: { children: string }) {
+  return <div class="text-12-medium text-text-weaker tracking-[0.14em] uppercase">{props.children}</div>
+}
 
 function Section(props: { label: string; children: JSX.Element; alwaysOpen?: boolean }) {
   const [expanded, setExpanded] = createSignal(!!props.alwaysOpen)
@@ -52,10 +71,6 @@ function Section(props: { label: string; children: JSX.Element; alwaysOpen?: boo
       </Show>
     </div>
   )
-}
-
-function SectionLabel(props: { children: string }) {
-  return <div class="text-12-medium text-text-weaker tracking-[0.14em] uppercase">{props.children}</div>
 }
 
 function Segmented<T extends string>(props: {
@@ -120,6 +135,149 @@ function Switch(props: { on: boolean; label: string; hint?: string; onChange: ()
   )
 }
 
+// The panel content, embeddable anywhere. No positioning of its own.
+export function SettingsBody(props: {
+  settings: OshSettings
+  update: (patch: Partial<OshSettings>) => void
+  branding: Branding
+  search: string
+  onSearch: (v: string) => void
+}) {
+  return (
+    <div class="flex flex-col gap-1">
+      <Section label="view" alwaysOpen>
+        <div class="grid grid-cols-2 gap-1.5">
+          <For each={VIEW_OPTIONS}>
+            {(v) => (
+              <button
+                title={v.label}
+                class="flex items-center gap-2 px-2 py-1.5 rounded-lg border cursor-pointer transition-colors duration-150"
+                classList={{
+                  "border-icon-strong-base bg-surface-base": props.settings.view === v.id,
+                  "border-border-weak-base hover:border-border-strong-base bg-transparent": props.settings.view !== v.id,
+                }}
+                onClick={() => props.update({ view: v.id })}
+              >
+                <span class="text-12-mono text-text-weaker w-4 text-center shrink-0">
+                  {VIEW_MARKS[v.id] ?? v.label[0]}
+                </span>
+                <span class="text-12-regular text-text-base truncate">{v.label}</span>
+              </button>
+            )}
+          </For>
+        </div>
+      </Section>
+
+      <Section label="theme">
+        <div class="grid grid-cols-2 gap-1.5">
+          <For each={THEMES}>
+            {(t) => (
+              <button
+                class="flex items-center gap-2 px-2 py-1.5 rounded-lg border cursor-pointer transition-colors duration-150"
+                classList={{
+                  "border-icon-strong-base bg-surface-base": props.settings.theme === t.id,
+                  "border-border-weak-base hover:border-border-strong-base bg-transparent": props.settings.theme !== t.id,
+                }}
+                onClick={() => props.update({ theme: t.id })}
+              >
+                <span class="relative size-4 rounded-full border border-border-weak-base shrink-0" style={{ background: t.bg }}>
+                  <span class="absolute bottom-0.5 right-0.5 size-1.5 rounded-full" style={{ background: t.fg }} />
+                </span>
+                <span class="text-12-regular text-text-base">{t.label}</span>
+              </button>
+            )}
+          </For>
+        </div>
+      </Section>
+
+      <Section label="interface scale" alwaysOpen>
+        <Segmented
+          value={props.settings.textSize}
+          options={[
+            { id: "compact" as const, label: "compact" },
+            { id: "normal" as const, label: "normal" },
+            { id: "roomy" as const, label: "roomy" },
+          ]}
+          onChange={(textSize) => props.update({ textSize })}
+        />
+      </Section>
+
+      <Section label="reading text" alwaysOpen>
+        <Segmented
+          value={props.settings.readText}
+          options={[
+            { id: "compact" as const, label: "compact" },
+            { id: "normal" as const, label: "normal" },
+            { id: "large" as const, label: "large" },
+          ]}
+          onChange={(readText) => props.update({ readText })}
+        />
+      </Section>
+
+      <Section label="behavior">
+        <div class="flex flex-col">
+          <Switch
+            label="Continuous"
+            hint="every prompt in one scroll"
+            on={props.settings.continuous}
+            onChange={() => props.update({ continuous: !props.settings.continuous })}
+          />
+          <Switch
+            label="Center content"
+            on={props.settings.centerContent}
+            onChange={() => props.update({ centerContent: !props.settings.centerContent })}
+          />
+          <Switch
+            label="Follow live"
+            hint="keep the newest content visible while you are at the bottom"
+            on={props.settings.followLive}
+            onChange={() => props.update({ followLive: !props.settings.followLive })}
+          />
+          <Switch
+            label="Expanded reasoning"
+            on={props.settings.reasoningOpen}
+            onChange={() => props.update({ reasoningOpen: !props.settings.reasoningOpen })}
+          />
+          <Switch
+            label="Tool call info"
+            hint="invocation titles and queries"
+            on={props.settings.toolInfo}
+            onChange={() => props.update({ toolInfo: !props.settings.toolInfo })}
+          />
+          <Switch
+            label="Tool outputs"
+            hint="expand tool results by default"
+            on={props.settings.toolOutput}
+            onChange={() => props.update({ toolOutput: !props.settings.toolOutput })}
+          />
+          <Show when={props.branding.backgroundUrl}>
+            <Switch
+              label="Background image"
+              on={props.settings.backgroundOn}
+              onChange={() => props.update({ backgroundOn: !props.settings.backgroundOn })}
+            />
+          </Show>
+        </div>
+      </Section>
+
+      <Section label="search" alwaysOpen>
+        <div class="relative">
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-icon-weaker-base pointer-events-none">
+            <Icon name="magnifying-glass" size="small" />
+          </span>
+          <input
+            class="w-full box-border pl-8 pr-2.5 py-1.5 rounded-lg border border-border-weak-base bg-background-stronger text-text-base text-12-regular outline-none focus:border-icon-strong-base transition-colors duration-150"
+            placeholder="filter prompts (Ctrl+K)"
+            value={props.search}
+            onInput={(e) => props.onSearch(e.currentTarget.value)}
+          />
+        </div>
+      </Section>
+    </div>
+  )
+}
+
+// Classic chrome: gear + popover wrapping the shared body.
 export function SettingsPanel(props: {
   settings: OshSettings
   update: (patch: Partial<OshSettings>) => void
@@ -137,7 +295,7 @@ export function SettingsPanel(props: {
         <Icon name="settings-gear" size="small" />
       </button>
       <Show when={panelOpen()}>
-        <div class="absolute top-9 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl flex flex-col gap-1">
+        <div class="absolute top-9 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
           <div class="flex items-center justify-between pb-1">
             <div class="text-14-medium text-text-strong">Settings</div>
             <button
@@ -147,120 +305,13 @@ export function SettingsPanel(props: {
               <Icon name="close-small" size="small" />
             </button>
           </div>
-
-          <Section label="view" alwaysOpen>
-            <Segmented
-              value={VIEWS.includes(props.settings.view as any) ? props.settings.view : "classic"}
-              options={VIEW_OPTIONS}
-              onChange={(view) => props.update({ view })}
-            />
-          </Section>
-
-          <Section label="theme">
-            <div class="grid grid-cols-2 gap-1.5">
-              <For each={THEMES}>
-                {(t) => (
-                  <button
-                    class="flex items-center gap-2 px-2 py-1.5 rounded-lg border cursor-pointer transition-colors duration-150"
-                    classList={{
-                      "border-icon-strong-base bg-surface-base": props.settings.theme === t.id,
-                      "border-border-weak-base hover:border-border-strong-base bg-transparent": props.settings.theme !== t.id,
-                    }}
-                    onClick={() => props.update({ theme: t.id })}
-                  >
-                    <span class="relative size-4 rounded-full border border-border-weak-base shrink-0" style={{ background: t.bg }}>
-                      <span class="absolute bottom-0.5 right-0.5 size-1.5 rounded-full" style={{ background: t.fg }} />
-                    </span>
-                    <span class="text-12-regular text-text-base">{t.label}</span>
-                  </button>
-                )}
-              </For>
-            </div>
-          </Section>
-
-          <Section label="interface scale">
-            <Segmented
-              value={props.settings.textSize}
-              options={[
-                { id: "compact" as const, label: "compact" },
-                { id: "normal" as const, label: "normal" },
-                { id: "roomy" as const, label: "roomy" },
-              ]}
-              onChange={(textSize) => props.update({ textSize })}
-            />
-          </Section>
-
-          <Section label="reading text">
-            <Segmented
-              value={props.settings.readText}
-              options={[
-                { id: "compact" as const, label: "compact" },
-                { id: "normal" as const, label: "normal" },
-                { id: "large" as const, label: "large" },
-              ]}
-              onChange={(readText) => props.update({ readText })}
-            />
-          </Section>
-
-          <Section label="behavior">
-            <div class="flex flex-col">
-              <Switch
-                label="Continuous"
-                hint="every prompt in one scroll"
-                on={props.settings.continuous}
-                onChange={() => props.update({ continuous: !props.settings.continuous })}
-              />
-              <Switch
-                label="Center content"
-                on={props.settings.centerContent}
-                onChange={() => props.update({ centerContent: !props.settings.centerContent })}
-              />
-              <Switch
-                label="Follow live"
-                hint="keep the newest content visible while you are at the bottom"
-                on={props.settings.followLive}
-                onChange={() => props.update({ followLive: !props.settings.followLive })}
-              />
-              <Switch
-                label="Expanded reasoning"
-                on={props.settings.reasoningOpen}
-                onChange={() => props.update({ reasoningOpen: !props.settings.reasoningOpen })}
-              />
-              <Switch
-                label="Tool call info"
-                hint="invocation titles and queries"
-                on={props.settings.toolInfo}
-                onChange={() => props.update({ toolInfo: !props.settings.toolInfo })}
-              />
-              <Switch
-                label="Tool outputs"
-                hint="expand tool results by default"
-                on={props.settings.toolOutput}
-                onChange={() => props.update({ toolOutput: !props.settings.toolOutput })}
-              />
-              <Show when={props.branding.backgroundUrl}>
-                <Switch
-                  label="Background image"
-                  on={props.settings.backgroundOn}
-                  onChange={() => props.update({ backgroundOn: !props.settings.backgroundOn })}
-                />
-              </Show>
-            </div>
-          </Section>
-
-          <Section label="search">
-            <div class="relative">
-              <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-icon-weaker-base pointer-events-none">
-                <Icon name="magnifying-glass" size="small" />
-              </span>
-              <input
-                class="w-full box-border pl-8 pr-2.5 py-1.5 rounded-lg border border-border-weak-base bg-background-stronger text-text-base text-12-regular outline-none focus:border-icon-strong-base transition-colors duration-150"
-                placeholder="filter prompts (Ctrl+K)"
-                value={props.search}
-                onInput={(e) => props.onSearch(e.currentTarget.value)}
-              />
-            </div>
-          </Section>
+          <SettingsBody
+            settings={props.settings}
+            update={props.update}
+            branding={props.branding}
+            search={props.search}
+            onSearch={props.onSearch}
+          />
         </div>
       </Show>
     </div>

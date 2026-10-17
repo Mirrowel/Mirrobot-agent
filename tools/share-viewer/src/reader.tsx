@@ -70,11 +70,15 @@ function ToolLine(props: { tool: SessionSection["tools"][number]; settings: OshS
 function SectionBody(props: { section: SessionSection; settings: OshSettings }) {
   return (
     <div class="flex flex-col gap-3">
-      <For each={props.section.reasoning}>
-        {(r) => <ReasoningBlock text={r.text} defaultOpen={props.settings.reasoningOpen} />}
-      </For>
-      <For each={props.section.tools}>
-        {(t) => <ToolLine tool={t} settings={props.settings} />}
+      <For each={props.section.ordered}>
+        {(e) => (
+          <Show
+            when={e.kind !== "reasoning"}
+            fallback={<ReasoningBlock text={(e as any).text} defaultOpen={props.settings.reasoningOpen} />}
+          >
+            <ToolLine tool={e as any} settings={props.settings} />
+          </Show>
+        )}
       </For>
       <Show when={props.section.response}>
         <div class="text-14-regular text-text-base">

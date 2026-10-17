@@ -10,7 +10,7 @@ import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { SettingsPanel } from "../settings-panel"
+import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
 function ToolEcho(props: { tool: ToolEntry; settings: OshSettings }) {
@@ -185,7 +185,7 @@ function TerminalView(props: Parameters<ViewEntry["component"]>[0]) {
         >
           <div class="w-[19rem] max-h-[75vh] overflow-y-auto rounded-lg border border-border-weak-base bg-background-base shadow-xl">
             <div class="px-4 pt-3">
-              <SettingsPanel
+              <SettingsBody
                 settings={props.settings}
                 update={props.updateSettings}
                 branding={props.source.branding()}

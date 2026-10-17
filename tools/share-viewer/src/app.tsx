@@ -53,9 +53,9 @@ function FullPageView(props: {
   const view = createMemo(() => findView(props.settings.view))
   const sessionID = createMemo(() => resolveSessionID(props.source.data(), props.sub()))
   return (
-    <Show when={view()}>
+    <Show when={view()} keyed>
       {(entry) =>
-        entry().component({
+        entry.component({
           get data() {
             return props.source.data()
           },

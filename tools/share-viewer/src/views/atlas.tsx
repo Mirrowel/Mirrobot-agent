@@ -14,7 +14,7 @@ import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry, ViewProps } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { SettingsPanel } from "../settings-panel"
+import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
 type Counts = { stations: number; readings: number; inferences: number; notes: number }
@@ -532,7 +532,7 @@ function AtlasView(props: ViewProps) {
                 </span>
               </button>
               <div class="flex items-center rounded-md border border-border-weak-base bg-background-base p-0.5">
-<SettingsPanel
+<SettingsBody
                     settings={props.settings}
                     update={props.updateSettings}
                     branding={{ backgroundUrl: (brand() as any).backgroundUrl }}

@@ -15,7 +15,7 @@ import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry, ViewProps } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { SettingsPanel } from "../settings-panel"
+import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
 const pad = (n: number) => String(n + 1).padStart(2, "0")
@@ -457,7 +457,7 @@ export function BlueprintView(props: ViewProps) {
                 <Icon name="close-small" size="small" />
               </button>
             </div>
-            <SettingsPanel
+            <SettingsBody
               settings={props.settings}
               update={props.updateSettings}
               branding={props.source.branding()}

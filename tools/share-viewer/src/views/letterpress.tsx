@@ -16,7 +16,7 @@ import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { SettingsPanel } from "../settings-panel"
+import { SettingsBody } from "../settings-panel"
 import type { Branding } from "../data-source"
 import type { OshSettings } from "../settings"
 
@@ -552,7 +552,7 @@ function LetterpressView(props: Parameters<ViewEntry["component"]>[0]) {
             </a>
             <div class="flex items-center gap-1.5">
               <Sc class="hidden sm:inline text-12-regular text-text-weaker">settings</Sc>
-              <SettingsPanel
+              <SettingsBody
                 settings={props.settings}
                 update={props.updateSettings}
                 // the panel offers its background toggle only when the
