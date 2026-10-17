@@ -189,11 +189,11 @@ export const groveSkin: Skin = {
       </div>
     ),
 
-    // a root: the vendored row grows in the left column, the leaf and its
-    // hand-drawn arc ride its right edge, the arc touching the trunk
+    // a root: grows from the trunk - the row hugs the trunk side (no dead
+    // space between text and the leaf/arc that touch the line)
     ToolWrap: (p) => (
-      <div class="group/root grove-root relative flex items-start my-0.5 xl:pr-3">
-        <div class="min-w-0 flex-1">{p.children}</div>
+      <div class="group/root grove-root relative flex items-start my-0.5 xl:pr-3 xl:justify-end">
+        <div class="min-w-0 flex-1 xl:flex-initial xl:max-w-full">{p.children}</div>
         <span class="mt-1.5 shrink-0 text-icon-weaker-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100">
           <LeafGlyph class="w-3 h-3" />
         </span>

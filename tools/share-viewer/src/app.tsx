@@ -55,19 +55,22 @@ function FullPageView(props: {
 }) {
   const view = createMemo(() => findView(props.settings.view))
   const sessionID = createMemo(() => resolveSessionID(props.source.data(), props.sub()))
-  setVendoredData(props.source.data())
+  setVendoredData(props.source.data(), {
+    sessionHref: (id) => subHref(props.source, id),
+    navigateToSession: (id) => {
+      const href = subHref(props.source, id)
+      if (!href) return
+      if (props.source.prefs().openTasksInNewTab !== false) {
+        window.open(href, "_blank")
+      } else {
+        scrollMemory.set(location.pathname, window.scrollY)
+        window.history.pushState({}, "", href)
+        window.dispatchEvent(new PopStateEvent("popstate"))
+      }
+    },
+  })
   return (
     <>
-      <Show when={props.sub() != null}>
-        <a
-          href={`/s/${props.source.shareID}`}
-          class="fixed top-14 left-4 z-40 flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border-weak-base bg-background-base text-12-regular text-text-weaker hover:text-text-base shadow-lg transition-colors duration-150"
-          title="back to the main session"
-        >
-          <Icon name="arrow-left" size="small" />
-          main session
-        </a>
-      </Show>
       <Show when={view()} keyed>
         {(entry) =>
           entry.component({

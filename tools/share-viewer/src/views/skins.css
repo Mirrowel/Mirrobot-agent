@@ -870,6 +870,9 @@
     display: grid;
     grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
     column-gap: 2.5rem;
+    /* breathing room between successive entries, especially across the
+       two sides (a root's result and the next right-side thinking) */
+    row-gap: 0.75rem;
   }
   [data-view="grove"] .grove-root {
     grid-column: 1;
