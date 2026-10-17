@@ -605,7 +605,7 @@ function taskSession(
 }
 
 const CONTEXT_GROUP_TOOLS = new Set(["read", "glob", "grep", "list"])
-const HIDDEN_TOOLS = new Set(["todowrite"])
+const HIDDEN_TOOLS = new Set<string>([])
 
 function list<T>(value: T[] | undefined | null, fallback: T[]) {
   if (Array.isArray(value)) return value
@@ -1117,29 +1117,55 @@ export function ContextToolGroup(props: {
               const running = createMemo(
                 () => partAccessor().state.status === "pending" || partAccessor().state.status === "running",
               )
+              // mirrobot viewer: each grouped tool is expandable and shows
+              // its output (upstream rendered a static, non-clickable row)
+              const output = createMemo(() => {
+                const out = (partAccessor().state as any).output
+                return typeof out === "string" && out.trim() ? out : undefined
+              })
               return (
                 <div data-slot="context-tool-group-item">
-                  <div data-component="tool-trigger">
-                    <div data-slot="basic-tool-tool-trigger-content">
-                      <div data-slot="basic-tool-tool-info">
-                        <div data-slot="basic-tool-tool-info-structured">
-                          <div data-slot="basic-tool-tool-info-main">
-                            <span data-slot="basic-tool-tool-title">
-                              <TextShimmer text={trigger().title} active={running()} />
-                            </span>
-                            <Show when={trigger().subtitle}>
-                              <span data-slot="basic-tool-tool-subtitle">{trigger().subtitle}</span>
-                            </Show>
-                            <Show when={trigger().args?.length}>
-                              <For each={trigger().args}>
-                                {(arg) => <span data-slot="basic-tool-tool-arg">{arg}</span>}
-                              </For>
-                            </Show>
+                  <Collapsible variant="ghost" class="tool-collapsible">
+                    <Collapsible.Trigger>
+                      <div data-component="tool-trigger">
+                        <div data-slot="basic-tool-tool-trigger-content">
+                          <div data-slot="basic-tool-tool-info">
+                            <div data-slot="basic-tool-tool-info-structured">
+                              <div data-slot="basic-tool-tool-info-main">
+                                <span data-slot="basic-tool-tool-title">
+                                  <TextShimmer text={trigger().title} active={running()} />
+                                </span>
+                                <Show when={trigger().subtitle}>
+                                  <span data-slot="basic-tool-tool-subtitle">{trigger().subtitle}</span>
+                                </Show>
+                                <Show when={trigger().args?.length}>
+                                  <For each={trigger().args}>
+                                    {(arg) => <span data-slot="basic-tool-tool-arg">{arg}</span>}
+                                  </For>
+                                </Show>
+                              </div>
+                            </div>
                           </div>
                         </div>
+                        <Show when={output()}>
+                          <Collapsible.Arrow />
+                        </Show>
                       </div>
-                    </div>
-                  </div>
+                    </Collapsible.Trigger>
+                    <Collapsible.Content>
+                      <Show when={output()}>
+                        <div
+                          data-component="tool-output"
+                          data-scrollable
+                          tabIndex={0}
+                          role="region"
+                          aria-label={i18n.t("ui.scrollView.ariaLabel")}
+                        >
+                          <Markdown text={output()!} />
+                        </div>
+                      </Show>
+                    </Collapsible.Content>
+                  </Collapsible>
                 </div>
               )
             }}
@@ -1535,7 +1561,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
   const i18n = useI18n()
   const part = () => props.part as ToolPart
-  if (part().tool === "todowrite") return null
+  // mirrobot viewer: todowrite is shown (the registry renders a checklist)
 
   const hideQuestion = createMemo(
     () => part().tool === "question" && (part().state.status === "pending" || part().state.status === "running"),

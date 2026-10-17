@@ -14,6 +14,7 @@ import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import type { ViewEntry } from "./registry"
 import { toolCallLabel, useSessionSections, type SessionSection, type ToolEntry } from "./session-data"
 import { MetaLine } from "./meta-line"
+import { VendoredPart } from "./vendored-part"
 import { sessionModelLabel } from "./session-data"
 import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
@@ -58,38 +59,12 @@ function GrassGlyph(props: { class?: string }) {
 // A root: a small tool entry that lives in the left margin on wide
 // screens, connected to the stem by a soft arc; its output opens flush
 // with the reading column.
-function RootEntry(props: { tool: ToolEntry; settings: OshSettings }) {
-  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
-  const open = () => userOpen() ?? (props.tool.defaultOpen || props.settings.toolOutput)
-  createEffect(
-    on(
-      () => props.settings.toolOutput,
-      (v, prev) => {
-        if (prev !== undefined && v !== prev) setOpen(v)
-      },
-    ),
-  )
-  const label = () => toolCallLabel(props.tool)
+function RootEntry(props: { children?: JSX.Element }) {
   return (
     <div class="group/root flex flex-col min-w-0 xl:flex-row xl:items-start xl:-ml-[13.5rem]">
-      <button
-        class="flex items-center gap-1.5 min-w-0 py-0.5 bg-transparent border-none cursor-pointer text-left xl:w-[10.5rem] xl:shrink-0 xl:justify-end"
-        title={props.settings.toolInfo ? `${props.tool.tool}: ${label()}` : props.tool.tool}
-        aria-expanded={open()}
-        onClick={() => setOpen(!open())}
-      >
-        <span class="xl:order-3 shrink-0 text-icon-weaker-base transition-colors duration-150 group-hover/root:text-icon-strong-base">
-          <LeafGlyph class="w-3 h-3" />
-        </span>
-        <Show when={props.settings.toolInfo}>
-          <span class="xl:order-2 min-w-0 truncate text-12-regular text-text-weaker transition-colors duration-150 group-hover/root:text-text-base">
-            {label()}
-          </span>
-        </Show>
-        <span class="xl:order-1 shrink-0 text-12-mono text-text-weaker opacity-60 transition-opacity duration-150 group-hover/root:opacity-100">
-          {props.tool.tool}
-        </span>
-      </button>
+      <span class="hidden xl:block shrink-0 w-6 h-6 text-icon-weaker-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100">
+        <LeafGlyph class="w-3 h-3 mt-1.5" />
+      </span>
       <svg
         viewBox="0 0 24 24"
         fill="none"
@@ -98,11 +73,7 @@ function RootEntry(props: { tool: ToolEntry; settings: OshSettings }) {
       >
         <path d="M0 11 C 13 11 20 13 20 22" stroke="currentColor" stroke-width="1" />
       </svg>
-      <Show when={open() && props.tool.output}>
-        <pre class="min-w-0 mt-1.5 xl:mt-0 xl:ml-3 xl:flex-1 box-border max-h-72 overflow-auto rounded-lg border border-border-weaker-base bg-background-stronger p-3 text-12-mono text-text-weaker whitespace-pre-wrap break-words">
-          {props.tool.output}
-        </pre>
-      </Show>
+      <div class="min-w-0 mt-1.5 xl:mt-0 xl:ml-3 xl:flex-1">{props.children}</div>
     </div>
   )
 }
@@ -197,16 +168,21 @@ function SectionView(props: {
                 when={e.kind !== "reasoning"}
                 fallback={<Undergrowth text={(e as any).text} settings={props.settings} />}
               >
-                <RootEntry tool={e as any} settings={props.settings} />
+                <Show
+                  when={e.kind !== "text"}
+                  fallback={
+                    <div class="relative pl-7 my-4 text-14-regular text-text-base">
+                      <Markdown text={(e as any).text} />
+                    </div>
+                  }
+                >
+                  <RootEntry>
+                    <VendoredPart entry={e as any} settings={props.settings} />
+                  </RootEntry>
+                </Show>
               </Show>
             )}
           </For>
-        </div>
-      </Show>
-
-      <Show when={props.section.response.trim()}>
-        <div class="text-14-regular text-text-base">
-          <Markdown text={props.section.response} />
         </div>
       </Show>
     </section>

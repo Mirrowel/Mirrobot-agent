@@ -16,6 +16,7 @@ import { Title } from "@solidjs/meta"
 import type { ViewEntry, ViewProps } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
 import { MetaLine } from "./meta-line"
+import { VendoredPart } from "./vendored-part"
 import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
@@ -161,18 +162,20 @@ function Sheet(props: { section: SessionSection; continuous: boolean; settings: 
         </div>
       </div>
       <For each={s.ordered}>
-        {(e, i) => (
+        {(e) => (
           <Show
             when={e.kind !== "reasoning"}
             fallback={<Annotation text={(e as any).text} settings={props.settings} />}
           >
-            <Detail tool={e as any} no={props.detailNo(s.index, s.ordered.filter((x) => x.kind === "tool").indexOf(e as any))} settings={props.settings} />
+            <Show
+              when={e.kind !== "text"}
+              fallback={<Notes text={(e as any).text} />}
+            >
+              <VendoredPart entry={e as any} settings={props.settings} />
+            </Show>
           </Show>
         )}
       </For>
-      <Show when={s.response}>
-        <Notes text={s.response} />
-      </Show>
     </article>
   )
 }

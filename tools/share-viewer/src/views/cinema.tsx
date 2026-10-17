@@ -15,6 +15,7 @@ import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
 import { MetaLine } from "./meta-line"
+import { VendoredPart } from "./vendored-part"
 import { SettingsBody, togglePanel, closePanel } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
@@ -95,13 +96,13 @@ function WritersNotes(props: { text: string; settings: OshSettings }) {
   )
 }
 
-function Dialogue(props: { section: SessionSection }) {
+function Dialogue(props: { section: SessionSection; text?: string }) {
   const s = props.section
   return (
     <div class="mt-4 pl-5 sm:pl-10">
       <div class="text-12-mono uppercase tracking-widest text-text-weaker">{castName(s.model)}</div>
       <div class="mt-1.5 max-w-[40rem] text-14-regular text-text-base [&_p]:my-2 [&_li_p]:my-1">
-        <Markdown text={s.response} />
+        <Markdown text={props.text ?? s.response} />
       </div>
     </div>
   )
@@ -123,14 +124,18 @@ function Scene(props: { section: SessionSection; sceneNo: number; numbered: bool
               when={e.kind !== "reasoning"}
               fallback={<WritersNotes text={(e as any).text} settings={props.settings} />}
             >
-              <StageDirection tool={e as any} settings={props.settings} />
+              <Show
+                when={e.kind !== "text"}
+                fallback={
+                  <Dialogue section={s} text={(e as any).text} />
+                }
+              >
+                <VendoredPart entry={e as any} settings={props.settings} />
+              </Show>
             </Show>
           )}
         </For>
       </div>
-      <Show when={s.response}>
-        <Dialogue section={s} />
-      </Show>
     </section>
   )
 }

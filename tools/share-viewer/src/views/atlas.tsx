@@ -15,6 +15,7 @@ import { Title } from "@solidjs/meta"
 import type { ViewEntry, ViewProps } from "./registry"
 import { sessionModelLabel, useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
 import { MetaLine } from "./meta-line"
+import { VendoredPart } from "./vendored-part"
 import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
@@ -263,11 +264,19 @@ function Waypoint(props: {
               when={e.kind !== "reasoning"}
               fallback={<Inference text={(e as any).text} ordinal={i() + 1} settings={props.settings} />}
             >
-              <Show when={(e as any).kind === "tool"}>
-                <div class="mt-2.5">
-                  <div class="rounded-md border border-border-weak-base bg-background-base overflow-hidden">
-                    <Reading entry={e as any} ordinal={s.ordered.filter((x) => x.kind === "tool").indexOf(e as any) + 1} settings={props.settings} />
+              <Show
+                when={e.kind !== "text"}
+                fallback={
+                  <div class="mt-3">
+                    <div class="mb-1 text-12-mono uppercase tracking-[0.14em] text-text-weaker">field note</div>
+                    <div class="text-14-regular text-text-base">
+                      <Markdown text={(e as any).text} />
+                    </div>
                   </div>
+                }
+              >
+                <div class="mt-2.5">
+                  <VendoredPart entry={e as any} settings={props.settings} />
                 </div>
               </Show>
             </Show>

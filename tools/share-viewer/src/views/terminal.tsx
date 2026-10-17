@@ -11,6 +11,7 @@ import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
 import { MetaLine } from "./meta-line"
+import { VendoredPart } from "./vendored-part"
 import { sessionModelLabel } from "./session-data"
 import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
@@ -80,7 +81,16 @@ function SectionLog(props: { section: SessionSection; index: number; settings: O
             when={e.kind !== "reasoning"}
             fallback={<ReasoningEcho text={(e as any).text} settings={props.settings} />}
           >
-            <ToolEcho tool={e as any} settings={props.settings} />
+            <Show
+              when={e.kind !== "text"}
+              fallback={
+                <div class="text-14-regular text-text-base whitespace-pre-wrap pl-2">
+                  {(e as any).text}
+                </div>
+              }
+            >
+              <VendoredPart entry={e as any} settings={props.settings} />
+            </Show>
           </Show>
         )}
       </For>

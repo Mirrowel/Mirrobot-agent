@@ -20,6 +20,7 @@ import {
   type SessionSection,
   type ToolEntry,
 } from "./session-data"
+import { VendoredPart } from "./vendored-part"
 import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 import type { Branding } from "../data-source"
@@ -233,9 +234,18 @@ function Dispatch(props: {
             {(e) => (
               <Show
                 when={e.kind !== "reasoning"}
-                fallback={<EditorNote entry={(e as any).text ? e : { ...(e as any), text: (e as any).text }} settings={props.settings} />}
+                fallback={<EditorNote entry={e as any} settings={props.settings} />}
               >
-                <WireItem tool={e as any} settings={props.settings} />
+                <Show
+                  when={e.kind !== "text"}
+                  fallback={
+                    <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2.5 text-14-regular text-text-base">
+                      <Markdown text={(e as any).text} />
+                    </div>
+                  }
+                >
+                  <VendoredPart entry={e as any} settings={props.settings} />
+                </Show>
               </Show>
             )}
           </For>

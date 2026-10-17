@@ -40,6 +40,7 @@ import { SettingsPanel, togglePanel } from "./settings-panel"
 import { ReaderView } from "./reader"
 import { InfoPanel } from "./views/info-panel"
 import { findView, resolveSessionID } from "./views/registry"
+import { setVendoredData } from "./views/vendored-part"
 
 // full-page views (everything except classic/reader, which live in the
 // standard chrome) render INSTEAD of SessionView
@@ -53,28 +54,41 @@ function FullPageView(props: {
 }) {
   const view = createMemo(() => findView(props.settings.view))
   const sessionID = createMemo(() => resolveSessionID(props.source.data(), props.sub()))
+  setVendoredData(props.source.data())
   return (
-    <Show when={view()} keyed>
-      {(entry) =>
-        entry.component({
-          get data() {
-            return props.source.data()
-          },
-          get sessionID() {
-            return sessionID()
-          },
-          source: props.source,
-          get settings() {
-            return props.settings
-          },
-          updateSettings: props.updateSettings,
-          get search() {
-            return props.search
-          },
-          onSearch: props.onSearch,
-        })
-      }
-    </Show>
+    <>
+      <Show when={props.sub() != null}>
+        <a
+          href={`/s/${props.source.shareID}`}
+          class="fixed top-14 left-4 z-40 flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border-weak-base bg-background-base text-12-regular text-text-weaker hover:text-text-base shadow-lg transition-colors duration-150"
+          title="back to the main session"
+        >
+          <Icon name="arrow-left" size="small" />
+          main session
+        </a>
+      </Show>
+      <Show when={view()} keyed>
+        {(entry) =>
+          entry.component({
+            get data() {
+              return props.source.data()
+            },
+            get sessionID() {
+              return sessionID()
+            },
+            source: props.source,
+            get settings() {
+              return props.settings
+            },
+            updateSettings: props.updateSettings,
+            get search() {
+              return props.search
+            },
+            onSearch: props.onSearch,
+          })
+        }
+      </Show>
+    </>
   )
 }
 import { children, visibleMessages, type ShareData } from "./fold"
@@ -436,7 +450,7 @@ function SessionView(props: {
                               </SessionTurn>
                             }
                           >
-                            <div class={props.settings.centerContent ? "grow max-w-[52rem] mx-auto" : "grow"}>
+                            <div class={(props.settings.centerContent ? "grow max-w-[52rem] mx-auto " : "grow ") + "h-full min-h-0 overflow-y-auto"}>
                               <div class="flex flex-col gap-15 items-start justify-start mt-2">
                                 <For each={searching() ? filtered() : messages()}>
                                   {(message) => (
@@ -580,20 +594,17 @@ export function App() {
     })
   }
 
-  // follow-live: keep the newest content visible, only when already at bottom
-  let atBottom = true
-  const onScroll = () => {
-    atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 80
-  }
-  window.addEventListener("scroll", onScroll, { passive: true })
+  // follow-live: keep the newest content visible, only when already at
+  // bottom (evaluated at fire time - a fresh load starts at the top and
+  // must never jump down)
   createEffect(() => {
     const rev = source.rev()
     const s = settings()
     if (!s.followLive || source.status() !== "live") return
+    const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 80
     if (!atBottom) return
     requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight }))
   })
-  onCleanup(() => window.removeEventListener("scroll", onScroll))
 
   // in-page navigation (popstate) re-parses the sub segment
   window.addEventListener("popstate", () => {

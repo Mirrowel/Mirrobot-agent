@@ -15,7 +15,8 @@ import { Title } from "@solidjs/meta"
 import type { ViewEntry, ViewProps } from "./registry"
 import type { OshSettings } from "../settings"
 import { visibleMessages } from "../fold"
-import { toolCallLabel, toolOutputText, type AnyPart } from "./session-data"
+import { toolCallLabel, toolOutputText, type AnyPart , toolDefaultOpen } from "./session-data"
+import { VendoredPart } from "./vendored-part"
 import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 
 const COLS = "grid grid-cols-[3rem_1.25rem_1fr] sm:grid-cols-[3.75rem_1.5rem_1fr] gap-x-2 sm:gap-x-3"
@@ -49,6 +50,8 @@ type ToolItem = {
   title: string
   output?: string
   part: AnyPart
+  message?: any
+  defaultOpen?: boolean
 }
 
 type ReasonItem = { kind: "reasoning"; at?: number; text: string }
@@ -65,8 +68,6 @@ type Section = {
 }
 
 function ToolRow(props: { item: ToolItem; settings: OshSettings }) {
-  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
-  const open = () => userOpen() ?? props.settings.toolOutput
   const dur = () =>
     props.item.at != null && props.item.end != null ? fmtDur(props.item.end - props.item.at) : undefined
   return (
@@ -77,25 +78,7 @@ function ToolRow(props: { item: ToolItem; settings: OshSettings }) {
         <span class="relative z-10 mt-[11px] size-[5px] rounded-full bg-icon-base" />
       </div>
       <div class="min-w-0 py-0.5">
-        <button
-          class="group flex items-center gap-2 w-full text-left bg-transparent border-none cursor-pointer py-0.5"
-          onClick={() => setOpen(!open())}
-        >
-          <span class="text-icon-weaker-base group-hover:text-icon-strong-base transition-colors duration-150 shrink-0">
-            <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" />
-          </span>
-          <span class="text-12-medium text-text-weaker shrink-0">{props.item.tool}</span>
-          <Show when={props.settings.toolInfo}>
-            <span class="text-12-regular text-text-weaker group-hover:text-text-base transition-colors duration-150 truncate">
-              {toolCallLabel(props.item)}
-            </span>
-          </Show>
-        </button>
-        <Show when={open() && props.item.output}>
-          <pre class="mt-1 mb-2 p-3 max-h-64 overflow-auto rounded-md border border-border-weak-base bg-background-stronger text-12-mono text-text-weaker whitespace-pre-wrap break-words">
-            {props.item.output}
-          </pre>
-        </Show>
+        <VendoredPart entry={props.item as any} settings={props.settings} />
       </div>
     </div>
   )
@@ -282,15 +265,18 @@ function TimelineView(props: ViewProps) {
           cur.response += (cur.response ? "\n\n" : "") + (p.text ?? "")
         } else if (p.type === "tool") {
           const st = p.state ?? {}
-          cur.items.push({
+          const toolItem: ToolItem = {
             kind: "tool",
             at: finite(st?.time?.start),
             end: finite(st?.time?.end),
             tool: p.tool ?? "tool",
             title: String(st?.title ?? p.tool ?? "tool"),
-            output: toolOutputText(p),
+            output: (p.tool ?? "") === "task" ? undefined : toolOutputText(p),
             part: p,
-          })
+            message: m,
+          }
+          toolItem.defaultOpen = toolDefaultOpen(toolItem as any)
+          cur.items.push(toolItem)
         } else if (p.type === "reasoning") {
           cur.items.push({ kind: "reasoning", at: finite((p as any).time?.start), text: p.text ?? "" })
         }

@@ -14,12 +14,17 @@ export type ToolEntry = {
   output?: string
   input?: Record<string, unknown>
   part: AnyPart
+  // the owning assistant message (the vendored Part renderer wants it)
+  message?: any
   // the vendored per-tool rule (edit/write/patch open naturally unless
   // deletion-only); the toolOutput toggle adds the rest on top
   defaultOpen?: boolean
 }
 
 export type ReasoningEntry = { kind: "reasoning"; text: string; part: AnyPart }
+
+// a completion text part, positioned in the sequence where it occurred
+export type TextEntry = { kind: "text"; text: string; part: AnyPart }
 
 export type SessionSection = {
   id: string
@@ -32,7 +37,7 @@ export type SessionSection = {
   // tools + reasoning in the order they actually occurred (the typed
   // arrays above are for views that group by kind; this one preserves
   // the interleaved sequence)
-  ordered: (ToolEntry | ReasoningEntry)[]
+  ordered: (ToolEntry | ReasoningEntry | TextEntry)[]
   // per-prompt presentation facts (mode/model/time), classic-style
   mode?: string
   at?: number
@@ -64,7 +69,10 @@ export function useSessionSections(data: ShareData, sessionID: string): Accessor
       }
       if (!current) continue
       for (const p of (data.part[m.id] ?? []) as AnyPart[]) {
-        if (p.type === "text") current.response += (current.response ? "\n\n" : "") + (p.text ?? "")
+        if (p.type === "text") {
+          current.response += (current.response ? "\n\n" : "") + (p.text ?? "")
+          current.ordered.push({ kind: "text", text: p.text ?? "", part: p })
+        }
         else if (p.type === "tool") {
           // the task tool's output is the subagent's final response -
           // redundant in the share, never shown (even with the toggle on)
@@ -76,6 +84,7 @@ export function useSessionSections(data: ShareData, sessionID: string): Accessor
             output: isTask ? undefined : toolOutputText(p),
             input: p.state?.input,
             part: p,
+            message: m,
           }
           entry.defaultOpen = isTask ? false : toolDefaultOpen(entry)
           current.tools.push(entry)

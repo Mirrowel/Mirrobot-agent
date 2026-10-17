@@ -16,6 +16,7 @@ import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
+import { VendoredPart } from "./vendored-part"
 import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 import type { Branding } from "../data-source"
 import type { OshSettings } from "../settings"
@@ -282,24 +283,28 @@ function Leaf(props: {
                   when={e.kind !== "reasoning"}
                   fallback={<Aside text={(e as any).text} settings={props.settings} />}
                 >
-                  <Note
-                    n={section.tools.indexOf(e as any) + 1}
-                    tool={e as any}
-                    key={`${section.id}:${section.tools.indexOf(e as any)}`}
-                    bus={props.bus}
-                    settings={props.settings}
-                  />
+                  <Show
+                    when={e.kind !== "text"}
+                    fallback={
+                      <div class={PROSE_CLASSES} style={PROSE_TYPE}>
+                        <Markdown text={(e as any).text} class={PROSE_CLASSES} style={PROSE_TYPE} />
+                      </div>
+                    }
+                  >
+                    <Note
+                      n={section.tools.indexOf(e as any) + 1}
+                      tool={e as any}
+                      key={`${section.id}:${section.tools.indexOf(e as any)}`}
+                      bus={props.bus}
+                      settings={props.settings}
+                    />
+                  </Show>
                 </Show>
               )}
             </For>
           </div>
         </Show>
 
-        <Show when={section.response}>
-          <div class={PROSE_CLASSES} style={PROSE_TYPE}>
-            <Markdown text={section.response} class={PROSE_CLASSES} style={PROSE_TYPE} />
-          </div>
-        </Show>
       </div>
 
       <Show when={!props.continuous}>

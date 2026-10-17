@@ -5,6 +5,7 @@ import { createStore } from "solid-js/store"
 import { Collapsible } from "@opencode-ai/ui/collapsible"
 import type { IconProps } from "@opencode-ai/ui/icon"
 import { TextShimmer } from "@opencode-ai/ui/text-shimmer"
+import { Markdown } from "./markdown"
 
 export type TriggerTitle = {
   title: string
@@ -325,6 +326,7 @@ export function GenericTool(props: {
   status?: string
   hideDetails?: boolean
   input?: Record<string, unknown>
+  output?: string
 }) {
   const i18n = useI18n()
 
@@ -338,6 +340,24 @@ export function GenericTool(props: {
         args: args(props.input),
       }}
       hideDetails={props.hideDetails}
-    />
+    >
+      <Show when={props.output}>
+        <div
+          data-component="tool-output"
+          data-scrollable
+          tabIndex={0}
+          role="region"
+          aria-label={i18n.t("ui.scrollView.ariaLabel")}
+        >
+          <Markdown
+            text={
+              typeof props.output === "string"
+                ? props.output
+                : JSON.stringify(props.output, null, 2)
+            }
+          />
+        </div>
+      </Show>
+    </BasicTool>
   )
 }

@@ -18,6 +18,7 @@ import type { OshSettings } from "./settings"
 import { PageFooter } from "./app"
 import { useSessionSections, toolCallLabel, type SessionSection } from "./views/session-data"
 import { MetaLine } from "./views/meta-line"
+import { VendoredPart } from "./views/vendored-part"
 import { sessionModelLabel } from "./views/session-data"
 
 function ReasoningBlock(props: { text: string; defaultOpen: boolean }) {
@@ -78,15 +79,19 @@ function SectionBody(props: { section: SessionSection; settings: OshSettings }) 
             when={e.kind !== "reasoning"}
             fallback={<ReasoningBlock text={(e as any).text} defaultOpen={props.settings.reasoningOpen} />}
           >
-            <ToolLine tool={e as any} settings={props.settings} />
+            <Show
+              when={e.kind !== "text"}
+              fallback={
+                <div class="text-14-regular text-text-base">
+                  <Markdown text={(e as any).text} />
+                </div>
+              }
+            >
+              <VendoredPart entry={e as any} settings={props.settings} />
+            </Show>
           </Show>
         )}
       </For>
-      <Show when={props.section.response}>
-        <div class="text-14-regular text-text-base">
-          <Markdown text={props.section.response} />
-        </div>
-      </Show>
     </div>
   )
 }
@@ -246,7 +251,7 @@ export function ReaderView(props: {
                       <Show when={!continuous()} fallback={
                         <div class="flex items-baseline gap-2 mb-3">
                           <span class="text-12-mono text-text-weaker opacity-60">❯</span>
-                          <p class="text-14-medium text-text-weaker whitespace-pre-wrap">{section.prompt}</p>
+                          <p class="text-14-medium text-text-base whitespace-pre-wrap">{section.prompt}</p>
                         </div>
                       }>
                         {marker}

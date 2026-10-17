@@ -14,6 +14,7 @@ import type { ViewEntry } from "./registry"
 import type { OshSettings } from "../settings"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
 import { MetaLine } from "./meta-line"
+import { VendoredPart } from "./vendored-part"
 import { sessionModelLabel } from "./session-data"
 import { SettingsBody } from "../settings-panel"
 
@@ -99,22 +100,24 @@ function Memo(props: { section: SessionSection; settings: OshSettings; continuou
               <Annotations text={(e as any).text} settings={props.settings} />
             }
           >
-            <div class="flex items-start gap-3">
-              <span class="hidden sm:block text-12-mono text-text-weaker opacity-60 shrink-0 pt-2 w-20 text-right">evidence</span>
-              <div class="flex-1 min-w-0">
-                <Exhibit tool={e as any} index={s.ordered.filter((x) => x.kind === "tool").indexOf(e as any)} settings={props.settings} />
+            <Show
+              when={e.kind !== "text"}
+              fallback={
+                <div class="report-prose text-14-regular text-text-base">
+                  <Markdown text={(e as any).text} />
+                </div>
+              }
+            >
+              <div class="flex items-start gap-3">
+                <span class="hidden sm:block text-12-mono text-text-weaker opacity-60 shrink-0 pt-2 w-20 text-right">evidence</span>
+                <div class="flex-1 min-w-0">
+                  <VendoredPart entry={e as any} settings={props.settings} />
+                </div>
               </div>
-            </div>
+            </Show>
           </Show>
         )}
       </For>
-      {/* report */}
-      <div class="flex items-start gap-3 mt-3">
-        <span class="hidden sm:block text-12-mono text-text-weaker opacity-60 shrink-0 pt-1 w-20 text-right">report</span>
-        <div class="flex-1 min-w-0 text-14-regular text-text-base [&_p]:my-2">
-          <Markdown text={s.response} />
-        </div>
-      </div>
     </article>
   )
 }
