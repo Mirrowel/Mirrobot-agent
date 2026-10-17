@@ -16,7 +16,7 @@ import type { ViewEntry, ViewProps } from "./registry"
 import type { OshSettings } from "../settings"
 import { visibleMessages } from "../fold"
 import { toolCallLabel, toolOutputText, type AnyPart } from "./session-data"
-import { SettingsBody } from "../settings-panel"
+import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 
 const COLS = "grid grid-cols-[3rem_1.25rem_1fr] sm:grid-cols-[3.75rem_1.5rem_1fr] gap-x-2 sm:gap-x-3"
 const LINE = "absolute inset-y-0 left-1/2 -ml-[0.5px] w-px bg-border-strong-base"
@@ -65,7 +65,8 @@ type Section = {
 }
 
 function ToolRow(props: { item: ToolItem; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.toolOutput)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.toolOutput
   const dur = () =>
     props.item.at != null && props.item.end != null ? fmtDur(props.item.end - props.item.at) : undefined
   return (
@@ -101,7 +102,8 @@ function ToolRow(props: { item: ToolItem; settings: OshSettings }) {
 }
 
 function ReasonRow(props: { item: ReasonItem; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.reasoningOpen)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.reasoningOpen
   return (
     <div class={COLS}>
       <div class="pt-1.5 text-right text-12-mono text-text-weaker" />
@@ -456,7 +458,9 @@ function TimelineView(props: ViewProps) {
                 settings
               </button>
               <Show when={settingsOpen()}>
-                <div class="absolute top-9 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+                <div class="absolute top-8 right-0 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
+                onScroll={saveSettingsScroll}
+                ref={restoreSettingsScroll}>
                   <SettingsBody
                     settings={props.settings}
                     update={props.updateSettings}

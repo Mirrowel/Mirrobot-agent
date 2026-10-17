@@ -20,7 +20,7 @@ import {
   type SessionSection,
   type ToolEntry,
 } from "./session-data"
-import { SettingsBody } from "../settings-panel"
+import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 import type { Branding } from "../data-source"
 import { visibleMessages } from "../fold"
@@ -96,7 +96,8 @@ function wireKicker(tool: ToolEntry): Kicker {
 }
 
 function WireItem(props: { tool: ToolEntry; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.toolOutput)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? (props.tool.defaultOpen || props.settings.toolOutput)
   const kicker = () => wireKicker(props.tool)
   const start = () => asTime(props.tool.part.state?.time?.start)
   const held = () => duration(start(), asTime(props.tool.part.state?.time?.end))
@@ -149,7 +150,8 @@ function WireItem(props: { tool: ToolEntry; settings: OshSettings }) {
 }
 
 function EditorNote(props: { entry: ReasoningEntry; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.reasoningOpen)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.reasoningOpen
   const start = () => asTime(props.entry.part.time?.start)
   const held = () => duration(start(), asTime(props.entry.part.time?.end))
   return (
@@ -445,7 +447,9 @@ export function TeletypeView(props: Parameters<ViewEntry["component"]>[0]) {
                 <Icon name={settingsOpen() ? "chevron-up" : "chevron-down"} size="small" />
               </button>
               <Show when={settingsOpen()}>
-                <div class="absolute top-8 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+                <div class="absolute top-8 right-0 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
+                  onScroll={saveSettingsScroll}
+                  ref={restoreSettingsScroll}>
                   <SettingsBody
                     settings={props.settings}
                     update={props.updateSettings}

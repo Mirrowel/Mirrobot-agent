@@ -14,6 +14,7 @@ import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
+import { MetaLine } from "./meta-line"
 import { SettingsBody, togglePanel, closePanel } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
@@ -40,7 +41,8 @@ function castName(model?: { providerID?: string; modelID?: string }): string {
 }
 
 function StageDirection(props: { tool: ToolEntry; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.toolOutput)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? (props.tool.defaultOpen || props.settings.toolOutput)
   return (
     <div class="my-1">
       <button
@@ -69,7 +71,8 @@ function StageDirection(props: { tool: ToolEntry; settings: OshSettings }) {
 }
 
 function WritersNotes(props: { text: string; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.reasoningOpen)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.reasoningOpen
   return (
     <div class="my-1">
       <button
@@ -110,7 +113,7 @@ function Scene(props: { section: SessionSection; sceneNo: number; numbered: bool
   return (
     <section classList={{ "pt-10": !props.tight, "pt-3": props.tight }}>
       <h2 class="text-14-mono uppercase tracking-wide text-text-strong">{head()}</h2>
-      <Show when={s.prompt}>
+      <Show when={false}>
         <p class="mt-3 text-14-mono leading-relaxed text-text-base whitespace-pre-wrap">{s.prompt}</p>
       </Show>
       <div class="mt-3 pl-1 sm:pl-3">

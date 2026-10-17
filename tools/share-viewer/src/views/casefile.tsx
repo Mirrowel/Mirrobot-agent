@@ -13,13 +13,15 @@ import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import type { OshSettings } from "../settings"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
+import { MetaLine } from "./meta-line"
 import { sessionModelLabel } from "./session-data"
 import { SettingsBody } from "../settings-panel"
 
 const pad = (n: number) => String(n + 1).padStart(2, "0")
 
 function Exhibit(props: { tool: ToolEntry; index: number; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.toolOutput)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? (props.tool.defaultOpen || props.settings.toolOutput)
   return (
     <div class="my-2 rounded-lg border border-border-weak-base bg-background-stronger overflow-hidden">
       <button
@@ -47,7 +49,8 @@ function Exhibit(props: { tool: ToolEntry; index: number; settings: OshSettings 
 }
 
 function Annotations(props: { text: string; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.reasoningOpen)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.reasoningOpen
   return (
     <div class="my-2 flex items-start gap-3">
       <span class="text-12-mono text-text-weaker opacity-60 shrink-0 pt-1 w-20 text-right">annot.</span>
@@ -82,7 +85,10 @@ function Memo(props: { section: SessionSection; settings: OshSettings; continuou
             MEMO {pad(s.index)}
           </span>
         </Show>
-        <p class="flex-1 min-w-0 text-16-medium text-text-strong whitespace-pre-wrap">{s.prompt}</p>
+        <div class="flex-1 min-w-0">
+          <p class="text-16-medium text-text-strong whitespace-pre-wrap">{s.prompt}</p>
+          <MetaLine section={s} data={props.data} />
+        </div>
       </div>
       {/* annotations + evidence, in the order they occurred */}
       <For each={s.ordered}>

@@ -15,6 +15,7 @@ import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry, ViewProps } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
+import { MetaLine } from "./meta-line"
 import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
@@ -41,7 +42,8 @@ function Elbow(props: { solid?: boolean; top?: string }) {
 }
 
 function Detail(props: { tool: ToolEntry; no: string; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.toolOutput)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? (props.tool.defaultOpen || props.settings.toolOutput)
   const hasOutput = () => !!props.tool.output
   return (
     <div class="relative my-2">
@@ -87,7 +89,8 @@ function Detail(props: { tool: ToolEntry; no: string; settings: OshSettings }) {
 }
 
 function Annotation(props: { text: string; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.reasoningOpen)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.reasoningOpen
   return (
     <div class="relative my-1.5">
       <Elbow top="9px" />
@@ -150,9 +153,12 @@ function Sheet(props: { section: SessionSection; continuous: boolean; settings: 
             V-{pad(s.index)}
           </span>
         </Show>
-        <p class="flex-1 min-w-0 text-16-medium text-text-strong whitespace-pre-wrap osh-content">
-          {s.prompt || "(no prompt text)"}
-        </p>
+        <div class="flex-1 min-w-0">
+          <p class="text-16-medium text-text-strong whitespace-pre-wrap osh-content">
+            {s.prompt || "(no prompt text)"}
+          </p>
+          <MetaLine section={s} data={props.data} />
+        </div>
       </div>
       <For each={s.ordered}>
         {(e, i) => (

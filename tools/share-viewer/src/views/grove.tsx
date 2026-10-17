@@ -13,8 +13,9 @@ import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import type { ViewEntry } from "./registry"
 import { toolCallLabel, useSessionSections, type SessionSection, type ToolEntry } from "./session-data"
+import { MetaLine } from "./meta-line"
 import { sessionModelLabel } from "./session-data"
-import { SettingsBody } from "../settings-panel"
+import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
 const pad = (n: number) => String(n).padStart(2, "0")
@@ -58,7 +59,8 @@ function GrassGlyph(props: { class?: string }) {
 // screens, connected to the stem by a soft arc; its output opens flush
 // with the reading column.
 function RootEntry(props: { tool: ToolEntry; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.toolOutput)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? (props.tool.defaultOpen || props.settings.toolOutput)
   createEffect(
     on(
       () => props.settings.toolOutput,
@@ -106,7 +108,8 @@ function RootEntry(props: { tool: ToolEntry; settings: OshSettings }) {
 }
 
 function Undergrowth(props: { text: string; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.reasoningOpen)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.reasoningOpen
   createEffect(
     on(
       () => props.settings.reasoningOpen,
@@ -182,6 +185,7 @@ function SectionView(props: {
           <p class="mt-1.5 text-14-medium text-text-strong whitespace-pre-wrap break-words">
             {props.section.prompt || "(empty prompt)"}
           </p>
+          <MetaLine section={props.section} data={props.data} />
         </div>
       </Show>
 
@@ -370,7 +374,9 @@ function GroveView(props: Parameters<ViewEntry["component"]>[0]) {
               <Icon name={settingsOpen() ? "chevron-down" : "chevron-up"} size="small" />
             </button>
             <Show when={settingsOpen()}>
-              <div class="absolute top-9 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+              <div class="absolute top-8 right-0 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
+                onScroll={saveSettingsScroll}
+                ref={restoreSettingsScroll}>
                 <SettingsBody
                   settings={props.settings}
                   update={props.updateSettings}

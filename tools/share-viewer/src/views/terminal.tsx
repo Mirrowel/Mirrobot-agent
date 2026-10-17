@@ -10,12 +10,14 @@ import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
+import { MetaLine } from "./meta-line"
 import { sessionModelLabel } from "./session-data"
 import { SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
 function ToolEcho(props: { tool: ToolEntry; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.toolOutput)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? (props.tool.defaultOpen || props.settings.toolOutput)
   return (
     <div class="mb-1.5">
       <button
@@ -39,7 +41,8 @@ function ToolEcho(props: { tool: ToolEntry; settings: OshSettings }) {
 }
 
 function ReasoningEcho(props: { text: string; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.reasoningOpen)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.reasoningOpen
   return (
     <div class="mb-1.5">
       <button
@@ -57,7 +60,7 @@ function ReasoningEcho(props: { text: string; settings: OshSettings }) {
   )
 }
 
-function SectionLog(props: { section: SessionSection; index: number; settings: OshSettings; continuous: boolean }) {
+function SectionLog(props: { section: SessionSection; index: number; settings: OshSettings; continuous: boolean; data: any }) {
   return (
     <div class="mb-5">
       <Show when={!props.continuous}>
@@ -66,6 +69,7 @@ function SectionLog(props: { section: SessionSection; index: number; settings: O
           {props.index + 1}
         </div>
       </Show>
+      <MetaLine section={props.section} data={props.data} class="text-12-mono text-text-weaker opacity-80 mb-0.5" />
       <div class="font-mono text-14-mono text-text-strong whitespace-pre-wrap mb-1.5">
         <span class="text-icon-strong-base opacity-70">❯ </span>
         {props.section.prompt}
@@ -155,7 +159,7 @@ function TerminalView(props: Parameters<ViewEntry["component"]>[0]) {
           </div>
           <Show when={filtered().length > 0} fallback={<div class="text-12-regular text-text-weaker py-10">no matches in scrollback.</div>}>
             <For each={filtered()}>
-              {(s) => <SectionLog section={s} index={sections().indexOf(s)} settings={props.settings} continuous={continuous()} />}
+              {(s) => <SectionLog section={s} index={sections().indexOf(s)} settings={props.settings} continuous={continuous()} data={props.data} />}
             </For>
           </Show>
         </div>

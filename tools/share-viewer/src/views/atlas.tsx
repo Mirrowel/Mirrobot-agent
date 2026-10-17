@@ -14,7 +14,8 @@ import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry, ViewProps } from "./registry"
 import { sessionModelLabel, useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { SettingsBody } from "../settings-panel"
+import { MetaLine } from "./meta-line"
+import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 import type { OshSettings } from "../settings"
 
 type Counts = { stations: number; readings: number; inferences: number; notes: number }
@@ -117,7 +118,8 @@ function StatusStamp(props: { status: string }) {
 
 // one instrument reading: ordinal, instrument, query, value, disclosure
 function Reading(props: { entry: ToolEntry; ordinal: number; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.toolOutput)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? (props.entry.defaultOpen || props.settings.toolOutput)
   const state = () => readingState(props.entry)
   const value = () => {
     if (props.entry.output) return props.entry.output
@@ -172,7 +174,8 @@ function Reading(props: { entry: ToolEntry; ordinal: number; settings: OshSettin
 }
 
 function Inference(props: { text: string; ordinal: number; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.reasoningOpen)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.reasoningOpen
   return (
     <div class="mt-2">
       <button
@@ -242,6 +245,7 @@ function Waypoint(props: {
             >
               {s.prompt.trim() ? s.prompt : "station without a prompt"}
             </h2>
+            <MetaLine section={s} data={props.data} />
             <Show when={model()}>
               <div class="mt-1 text-12-mono text-text-weaker">{model()}</div>
             </Show>
@@ -541,7 +545,9 @@ function AtlasView(props: ViewProps) {
                   <Icon name={settingsOpen() ? "chevron-up" : "chevron-down"} size="small" />
                 </button>
                 <Show when={settingsOpen()}>
-                  <div class="absolute top-8 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+                  <div class="absolute top-8 right-0 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
+                  onScroll={saveSettingsScroll}
+                  ref={restoreSettingsScroll}>
                     <SettingsBody
                       settings={props.settings}
                       update={props.updateSettings}

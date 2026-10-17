@@ -140,3 +140,10 @@ html[data-osh-read-text="large"] .osh-content {
   opacity: 0.5;
   cursor: default;
 }
+
+/* classic view: toolInfo off hides the vendored invocation title + args
+   (subtitle/paths stay); the output behavior itself is the vendored
+   per-tool rule driven by shellToolDefaultOpen/editToolDefaultOpen */
+html[data-osh-toolinfo="off"] [data-slot="basic-tool-tool-info-structured"] {
+  display: none;
+}

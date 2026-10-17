@@ -38,6 +38,7 @@ import { createStore } from "solid-js/store"
 import { useShareSource, type Branding } from "./data-source"
 import { SettingsPanel, togglePanel } from "./settings-panel"
 import { ReaderView } from "./reader"
+import { InfoPanel } from "./views/info-panel"
 import { findView, resolveSessionID } from "./views/registry"
 
 // full-page views (everything except classic/reader, which live in the
@@ -311,6 +312,8 @@ function SessionView(props: {
                             )}
                           </Show>
                           <SessionTurn
+                            shellToolDefaultOpen={props.settings.toolOutput}
+                            editToolDefaultOpen={true}
                             sessionID={sessionID()}
                             messageID={message.id}
                             classes={{
@@ -662,6 +665,7 @@ export function App() {
           </Show>
         </Show>
       </ErrorBoundary>
+      <InfoPanel data={source.data()} sessionID={source.data().sessionID} />
     </Show>
   )
 }

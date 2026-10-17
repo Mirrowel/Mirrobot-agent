@@ -17,6 +17,7 @@ import type { useShareSource } from "./data-source"
 import type { OshSettings } from "./settings"
 import { PageFooter } from "./app"
 import { useSessionSections, toolCallLabel, type SessionSection } from "./views/session-data"
+import { MetaLine } from "./views/meta-line"
 import { sessionModelLabel } from "./views/session-data"
 
 function ReasoningBlock(props: { text: string; defaultOpen: boolean }) {
@@ -250,8 +251,8 @@ export function ReaderView(props: {
                       }>
                         {marker}
                       </Show>
-                      <Show when={modelChanged(idx) && !continuous()}>
-                        {(label) => <div class="text-12-mono text-text-weaker mb-3">→ {label()}</div>}
+                      <Show when={!continuous()}>
+                        <MetaLine section={section} data={props.data} class="text-12-mono text-text-weaker mb-3" />
                       </Show>
                       <SectionBody section={section} settings={props.settings} />
                     </section>

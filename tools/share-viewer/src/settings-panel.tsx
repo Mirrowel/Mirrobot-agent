@@ -21,6 +21,17 @@ export const closePanel = () => setPanelOpen(false)
 // rebuild the whole subtree - live-caught - and sections must not reset)
 const [expandedMap, setExpandedMap] = createSignal<Record<string, boolean>>({})
 
+// panel scroll position persists across the same rebuilds
+let settingsScroll = 0
+export const saveSettingsScroll = (el: HTMLDivElement) => {
+  settingsScroll = el.scrollTop
+}
+export const restoreSettingsScroll = (el: HTMLDivElement) => {
+  queueMicrotask(() => {
+    if (el && settingsScroll) el.scrollTop = settingsScroll
+  })
+}
+
 const THEMES: { id: OshSettings["theme"]; label: string; bg: string; fg: string }[] = [
   { id: "system", label: "system", bg: "#17181c", fg: "#d8dbe0" },
   { id: "light", label: "light", bg: "#fafafa", fg: "#171717" },
@@ -150,7 +161,7 @@ export function SettingsBody(props: {
 }) {
   return (
     <div class="flex flex-col gap-1">
-      <Section label="view" alwaysOpen>
+      <Section label="view">
         <div class="grid grid-cols-2 gap-1.5">
           <For each={VIEW_OPTIONS}>
             {(v) => (
@@ -300,7 +311,9 @@ export function SettingsPanel(props: {
         <Icon name="settings-gear" size="small" />
       </button>
       <Show when={panelOpen()}>
-        <div class="absolute top-9 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+        <div class="absolute top-9 right-0 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
+          onScroll={saveSettingsScroll}
+          ref={restoreSettingsScroll}>
           <div class="flex items-center justify-between pb-1">
             <div class="text-14-medium text-text-strong">Settings</div>
             <button

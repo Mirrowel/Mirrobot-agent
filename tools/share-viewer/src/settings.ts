@@ -62,6 +62,10 @@ export function applySettings(s: OshSettings) {
   html.dataset.oshReadText =
     s.readText === "compact" ? "compact" : s.readText === "large" ? "large" : "normal"
   html.dataset.oshReasoning = s.reasoningOpen ? "open" : "collapsed"
+  // tool invocation info + extra output expansion (the vendored per-tool
+  // rule still governs what shows naturally - see toolDefaultOpen)
+  html.dataset.oshToolInfo = s.toolInfo ? "on" : "off"
+  html.dataset.oshToolOutput = s.toolOutput ? "on" : "off"
 }
 
 export const TEXT_SIZES: Record<string, string> = {

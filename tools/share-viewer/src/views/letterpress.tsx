@@ -16,7 +16,7 @@ import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import { Title } from "@solidjs/meta"
 import type { ViewEntry } from "./registry"
 import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { SettingsBody } from "../settings-panel"
+import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
 import type { Branding } from "../data-source"
 import type { OshSettings } from "../settings"
 
@@ -192,7 +192,8 @@ function Markers(props: { section: SessionSection; bus: NotesBus }) {
 }
 
 function Aside(props: { text: string; settings: OshSettings }) {
-  const [open, setOpen] = createSignal(props.settings.reasoningOpen)
+  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
+  const open = () => userOpen() ?? props.settings.reasoningOpen
   return (
     <div class="mt-2">
       <button
@@ -230,41 +231,9 @@ function Leaf(props: {
   }
 
   return (
-    <article data-leaf={section.id} class="grid scroll-mt-24 lg:grid-cols-[12.5rem_minmax(0,1fr)] gap-x-10">
-      {/* the outer margin: notes and asides, below the text when narrow */}
-      <div class="order-2 lg:order-none min-w-0">
-        <Show when={section.ordered.length > 0}>
-          <div class="pt-7 lg:pt-1">
-            <For each={section.ordered}>
-              {(e) => (
-                <Show
-                  when={e.kind !== "reasoning"}
-                  fallback={<Aside text={(e as any).text} settings={props.settings} />}
-                >
-                  <Show
-                    when={section.ordered.indexOf(e) === 0 || section.ordered[section.ordered.indexOf(e) - 1]?.kind === "reasoning"}
-                  >
-                    <div class="mt-2 flex items-baseline gap-2 border-b border-border-weaker-base pb-1">
-                      <Sc class="text-12-medium text-text-base">Notes</Sc>
-                      <span class="text-12-mono text-text-weaker">{section.tools.length}</span>
-                    </div>
-                  </Show>
-                  <Note
-                    n={section.tools.indexOf(e as any) + 1}
-                    tool={e as any}
-                    key={`${section.id}:${section.tools.indexOf(e as any)}`}
-                    bus={props.bus}
-                    settings={props.settings}
-                  />
-                </Show>
-              )}
-            </For>
-          </div>
-        </Show>
-      </div>
-
-      {/* the text block */}
-      <div class="order-1 lg:order-none min-w-0 pt-9 lg:pt-1">
+    <article data-leaf={section.id} class="scroll-mt-24">
+      {/* the text block: single column, top to bottom */}
+      <div class="min-w-0 pt-9 lg:pt-1">
         <Show when={!props.continuous}>
           <div class="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <Sc class="text-12-medium text-text-strong">{`leaf ${roman(section.index + 1)}`}</Sc>
@@ -305,9 +274,24 @@ function Leaf(props: {
           </p>
         </Show>
 
-        <Show when={section.tools.length > 0}>
-          <div class="mb-3.5">
-            <Markers section={section} bus={props.bus} />
+        <Show when={section.ordered.length > 0}>
+          <div class="my-4 flex flex-col gap-2.5">
+            <For each={section.ordered}>
+              {(e) => (
+                <Show
+                  when={e.kind !== "reasoning"}
+                  fallback={<Aside text={(e as any).text} settings={props.settings} />}
+                >
+                  <Note
+                    n={section.tools.indexOf(e as any) + 1}
+                    tool={e as any}
+                    key={`${section.id}:${section.tools.indexOf(e as any)}`}
+                    bus={props.bus}
+                    settings={props.settings}
+                  />
+                </Show>
+              )}
+            </For>
           </div>
         </Show>
 
@@ -317,6 +301,12 @@ function Leaf(props: {
           </div>
         </Show>
       </div>
+
+      <Show when={!props.continuous}>
+        <div class="mt-6 text-center text-text-weaker select-none" aria-hidden="true">
+          <Fleuron class="inline-block h-4 opacity-70" />
+        </div>
+      </Show>
     </article>
   )
 }
@@ -564,7 +554,9 @@ function LetterpressView(props: Parameters<ViewEntry["component"]>[0]) {
                 <Icon name={settingsOpen() ? "chevron-down" : "chevron-up"} size="small" />
               </button>
               <Show when={settingsOpen()}>
-                <div class="absolute top-9 right-0 z-50 w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl">
+                <div class="absolute top-8 right-0 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
+                onScroll={saveSettingsScroll}
+                ref={restoreSettingsScroll}>
                   <SettingsBody
                     settings={props.settings}
                     update={props.updateSettings}
