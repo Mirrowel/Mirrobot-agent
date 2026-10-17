@@ -1,30 +1,34 @@
-// BLUEPRINT VIEW: the session as an engineering drafting sheet. A fine
-// token-only drafting grid carries the sheet; prompts are issued VIEW
-// items with datum diamonds on a construction rail, reasoning is ANNOT
-// margin notes, tool calls are globally numbered DETAIL boxes (chamfered
-// corners, leader elbows off the rail), responses are the NOTES block.
-// Metadata renders as dimension callouts; the footer is a title block
-// (ISSUE / DRAWN BY / SHEET / SCALE). Chrome: a drafting strip header
-// with the status stamp, and settings as a SHEET PARAMETERS drawer.
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
-import type { JSX } from "solid-js"
+// BLUEPRINT VIEW: the session as an engineering drafting sheet, now a
+// skin over the shared base. A fine token grid carries the sheet; each
+// prompt is an issued VIEW item on a dimension line, reasoning is an
+// ANNOT margin note, tool calls are D-numbered DETAIL boxes (chamfered
+// corners, leader elbows off the sheet rail), responses are the NOTES
+// block. Chrome: a drafting strip header with the status stamp, settings
+// as a SHEET PARAMETERS drawer, a bill of materials nav, and a
+// title-block footer. The base owns scroll, search, follow-live,
+// navigation and the vendored tool pipeline; this file only arranges
+// and decorates.
+import { For, Show, createSignal, type JSX } from "solid-js"
+import { Title } from "@solidjs/meta"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Mark } from "@opencode-ai/ui/logo"
-import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import { DateTime } from "luxon"
-import { Title } from "@solidjs/meta"
-import type { ViewEntry, ViewProps } from "./registry"
-import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { MetaLine } from "./meta-line"
-import { VendoredPart } from "./vendored-part"
+import { BaseSessionView, type Skin, type SkinWrappers } from "./base-view"
+import type { ViewEntry } from "./registry"
+import { sessionModelLabel, useSessionSections, type SessionSection } from "./session-data"
 import { SettingsBody } from "../settings-panel"
-import type { OshSettings } from "../settings"
+
+type HeaderProps = Parameters<NonNullable<SkinWrappers["Header"]>>[0]
+type FooterProps = Parameters<NonNullable<SkinWrappers["Footer"]>>[0]
+type NavProps = Parameters<NonNullable<SkinWrappers["Nav"]>>[0]
+type TurnProps = Parameters<NonNullable<SkinWrappers["TurnWrap"]>>[0]
+type ToolProps = Parameters<NonNullable<SkinWrappers["ToolWrap"]>>[0]
 
 const pad = (n: number) => String(n + 1).padStart(2, "0")
 
 const firstLine = (s: SessionSection) => s.prompt.split("\n")[0]?.slice(0, 90) || "(no prompt text)"
 
-// hollow diamond elbow: leader line from the rail to a content block
+// hollow diamond leader elbow off the sheet rail
 function Elbow(props: { solid?: boolean; top?: string }) {
   return (
     <span
@@ -42,215 +46,20 @@ function Elbow(props: { solid?: boolean; top?: string }) {
   )
 }
 
-function Detail(props: { tool: ToolEntry; no: string; settings: OshSettings }) {
-  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
-  const open = () => userOpen() ?? (props.tool.defaultOpen || props.settings.toolOutput)
-  const hasOutput = () => !!props.tool.output
-  return (
-    <div class="relative my-2">
-      <Elbow solid top="15px" />
-      <div
-        classList={{
-          "bp-cut bg-border-weak-base transition-colors duration-150": true,
-          "hover:bg-border-strong-base": hasOutput(),
-        }}
-      >
-        <div class="bp-cut-in bg-background-base">
-          <button
-            class="flex items-center gap-2.5 w-full px-3 py-2 bg-transparent border-none text-left"
-            classList={{ "cursor-pointer": hasOutput(), "cursor-default": !hasOutput() }}
-            onClick={() => hasOutput() && setOpen(!open())}
-          >
-            <span class="text-12-mono text-text-strong shrink-0 border-r border-border-weak-base pr-2.5">
-              D-{props.no}
-            </span>
-            <span class="text-12-mono uppercase tracking-wider text-text-weaker shrink-0">
-              {props.tool.tool}
-            </span>
-            <Show when={props.settings.toolInfo}>
-              <span class="text-12-regular text-text-base truncate flex-1 min-w-0">
-                {toolCallLabel(props.tool)}
-              </span>
-            </Show>
-            <Show when={hasOutput()}>
-              <span class="text-icon-weaker-base shrink-0">
-                <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" />
-              </span>
-            </Show>
-          </button>
-          <Show when={open() && props.tool.output}>
-            <pre class="m-0 px-3 py-2.5 max-h-72 overflow-auto border-t border-border-weak-base bg-surface-inset-base text-12-mono text-text-weaker whitespace-pre-wrap break-words">
-              {props.tool.output}
-            </pre>
-          </Show>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function Annotation(props: { text: string; settings: OshSettings }) {
-  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
-  const open = () => userOpen() ?? props.settings.reasoningOpen
-  return (
-    <div class="relative my-1.5">
-      <Elbow top="9px" />
-      <button
-        class="flex items-center gap-1.5 bg-transparent border-none cursor-pointer text-12-mono uppercase tracking-widest text-text-weaker hover:text-text-base transition-colors duration-150 p-0"
-        onClick={() => setOpen(!open())}
-      >
-        <span class="text-icon-weaker-base">
-          <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" />
-        </span>
-        annot.
-      </button>
-      <Show when={open()}>
-        <div class="mt-1 pl-3 border-l border-dashed border-border-weak-base text-12-regular italic text-text-weaker osh-content [&_p]:my-1">
-          <Markdown text={props.text} />
-        </div>
-      </Show>
-    </div>
-  )
-}
-
-function Notes(props: { text: string }) {
-  return (
-    <div class="relative mt-4">
-      <Elbow top="9px" />
-      <div class="flex items-center gap-3 mb-2">
-        <span class="text-12-mono uppercase tracking-widest text-text-weaker">notes</span>
-        <span class="flex-1 h-px bg-border-weak-base" />
-      </div>
-      <div class="text-14-regular text-text-base osh-content [&_p]:my-2">
-        <Markdown text={props.text} />
-      </div>
-    </div>
-  )
-}
-
-function Sheet(props: { section: SessionSection; continuous: boolean; settings: OshSettings; detailNo: (sectionIndex: number, toolIndex: number) => string }) {
-  const s = props.section
-  return (
-    <article
-      data-bp-id={s.id}
-      class="relative scroll-mt-16"
-      classList={{
-        "sm:pl-9": true,
-        "border-t border-border-weak-base mt-8 pt-8 first:mt-0 first:pt-0 first:border-t-0": !props.continuous,
-        "mt-7 first:mt-0": props.continuous,
-      }}
-    >
-      <span class="hidden sm:block absolute left-0 top-0 bottom-0 w-px bg-border-weak-base" aria-hidden="true" />
-      <span
-        class="hidden sm:block absolute -left-1 top-2 size-2 rotate-45 border border-border-strong-base bg-background-base"
-        aria-hidden="true"
-      />
-      <div class="flex items-start gap-3">
-        <Show
-          when={!props.continuous}
-          fallback={<span class="mt-2 size-1.5 bg-border-strong-base shrink-0" aria-hidden="true" />}
-        >
-          <span class="shrink-0 text-12-mono text-text-strong border border-border-base px-1.5 py-0.5">
-            V-{pad(s.index)}
-          </span>
-        </Show>
-        <div class="flex-1 min-w-0">
-          <p class="text-16-medium text-text-strong whitespace-pre-wrap osh-content">
-            {s.prompt || "(no prompt text)"}
-          </p>
-          <MetaLine section={s} data={props.data} />
-        </div>
-      </div>
-      <For each={s.ordered}>
-        {(e) => (
-          <Show
-            when={e.kind !== "reasoning"}
-            fallback={<Annotation text={(e as any).text} settings={props.settings} />}
-          >
-            <Show
-              when={e.kind !== "text"}
-              fallback={<Notes text={(e as any).text} />}
-            >
-              <VendoredPart entry={e as any} settings={props.settings} />
-            </Show>
-          </Show>
-        )}
-      </For>
-    </article>
-  )
-}
-
-function TitleBlockCell(props: { label: string; children: JSX.Element; span?: boolean }) {
-  return (
-    <div class="bg-background-base px-3 py-2 min-w-0" classList={{ "sm:col-span-2": props.span }}>
-      <div class="text-12-mono uppercase tracking-widest text-text-weaker">{props.label}</div>
-      <div class="text-12-mono text-text-base truncate">{props.children}</div>
-    </div>
-  )
-}
-
-export function BlueprintView(props: ViewProps) {
-  const info = createMemo(() => props.data.session.find((s: any) => s.id === props.sessionID))
-  const sections = useSessionSections(props.data, props.sessionID)
+// drafting strip header: title block fields, status stamp, settings drawer
+function DraftingHeader(props: HeaderProps) {
   const [drawer, setDrawer] = createSignal(false)
-
-  const filtered = createMemo(() => {
-    const q = props.search.trim().toLowerCase()
-    if (!q) return sections()
-    return sections().filter(
-      (s) => s.prompt.toLowerCase().includes(q) || s.response.toLowerCase().includes(q),
-    )
-  })
-  const searching = createMemo(() => props.search.trim().length > 0)
-
-  // global running D-NN numbering for tool details across the whole sheet
-  const detailNo = createMemo(() => {
-    const prefixes = new Map<number, number>()
-    let run = 0
-    for (const s of sections()) {
-      prefixes.set(s.index, run)
-      run += s.tools.length
-    }
-    return (sectionIndex: number, toolIndex: number) =>
-      String((prefixes.get(sectionIndex) ?? 0) + toolIndex + 1).padStart(2, "0")
-  })
-
-  // follow-live: stick to the bottom only when the reader already is
-  let scrollEl: HTMLDivElement | undefined
-  let atBottom = true
-  createEffect(() => {
-    props.source.rev()
-    if (props.source.status() === "live" && props.settings.followLive && atBottom && scrollEl) {
-      scrollEl.scrollTop = scrollEl.scrollHeight
-    }
-  })
-  const onScroll = () => {
-    const el = scrollEl
-    if (el) atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-  }
-
-  const status = () => props.source.status()
+  const info = () => (props.data.session as any[]).find((s) => s.id === props.sessionID)
+  const b = () => props.source.branding()
+  const dwgNo = () => (props.sessionID.replace(/^ses_/, "").slice(0, 8) || "00000000").toUpperCase()
   const stampClass = () =>
-    status() === "live"
+    props.status === "live"
       ? "border-icon-success-base text-icon-success-base"
-      : status() === "error"
+      : props.status === "error"
         ? "border-icon-critical-base text-icon-critical-base"
         : "border-border-strong-base text-text-weaker"
-
-  const dwgNo = () => (props.sessionID.replace(/^ses_/, "").slice(0, 8) || "00000000").toUpperCase()
-  const issued = () => DateTime.fromMillis(info()?.time?.created ?? Date.now()).toFormat("dd MMM yyyy HH:mm")
-  const drawnBy = () => {
-    const m = (info()?.model as any) ?? sections()[0]?.model
-    if (!m?.providerID && !m?.modelID) return "n/a"
-    return `${m.providerID ?? "?"}/${m.modelID ?? "?"}`
-  }
-
-  const scrollTo = (id: string) => {
-    scrollEl?.querySelector(`[data-bp-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" })
-  }
-
   return (
-    <div class="flex flex-col flex-1 min-h-0 relative z-10">
+    <>
       <style>{`
         .bp-grid {
           background-image:
@@ -278,30 +87,44 @@ export function BlueprintView(props: ViewProps) {
         }
         .bp-dim::before { left: 0; border-left: 7px solid var(--border-strong-base); }
         .bp-dim::after { right: 0; border-right: 7px solid var(--border-strong-base); }
+        .bp-sheet::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background-image:
+            linear-gradient(var(--border-strong-base), var(--border-strong-base)),
+            linear-gradient(var(--border-strong-base), var(--border-strong-base)),
+            linear-gradient(var(--border-strong-base), var(--border-strong-base)),
+            linear-gradient(var(--border-strong-base), var(--border-strong-base)),
+            linear-gradient(var(--border-strong-base), var(--border-strong-base)),
+            linear-gradient(var(--border-strong-base), var(--border-strong-base)),
+            linear-gradient(var(--border-strong-base), var(--border-strong-base)),
+            linear-gradient(var(--border-strong-base), var(--border-strong-base));
+          background-repeat: no-repeat;
+          background-size: 14px 2px, 2px 14px, 14px 2px, 2px 14px, 14px 2px, 2px 14px, 14px 2px, 2px 14px;
+          background-position: left top, left top, right top, right top, left bottom, left bottom, right bottom, right bottom;
+        }
       `}</style>
-      <Title>{info()?.title ?? "session"} | {props.source.branding().name || "openshare"}</Title>
-
-      {/* drafting strip header */}
-      <header class="shrink-0 flex items-center gap-3 h-11 px-4 bg-background-stronger border-b border-border-base">
-        <Show when={props.source.branding().logoUrl}>
-          <a href={props.source.branding().linkUrl || "#"} class="shrink-0 flex items-center">
-            <img src={props.source.branding().logoUrl} alt="" class="h-4 w-auto" />
+      <Title>{info()?.title ?? "session"} | {b().name || "openshare"}</Title>
+      <header class="h-10 px-4 flex items-center gap-3 bg-background-stronger border-b border-border-base shrink-0 relative z-30">
+        <Show when={props.isSub && props.onBack}>
+          <button
+            class="flex items-center gap-1 bg-transparent border-none cursor-pointer text-12-mono text-text-weaker hover:text-text-base shrink-0"
+            onClick={() => props.onBack?.()}
+          >
+            <Icon name="arrow-left" size="small" />
+            main
+          </button>
+        </Show>
+        <Show when={b().logoUrl}>
+          <a href={b().linkUrl || "#"} class="shrink-0 flex items-center">
+            <img src={b().logoUrl} alt="" class="h-4 w-auto" />
           </a>
         </Show>
         <span class="hidden sm:inline text-12-mono text-text-weaker shrink-0">DWG {dwgNo()}</span>
         <span class="hidden sm:block h-4 w-px bg-border-weak-base shrink-0" />
         <h1 class="min-w-0 flex-1 truncate text-14-medium text-text-strong">{info()?.title ?? "session"}</h1>
-        <div class="relative hidden md:block w-40 shrink-0">
-          <span class="absolute left-2 top-1/2 -translate-y-1/2 text-icon-weaker-base pointer-events-none">
-            <Icon name="magnifying-glass" size="small" />
-          </span>
-          <input
-            class="w-full box-border pl-7 pr-2 py-1 bg-transparent border border-border-weak-base text-12-mono text-text-base placeholder:text-text-weaker outline-none focus:border-icon-strong-base transition-colors duration-150"
-            placeholder="LOCATE"
-            value={props.search}
-            onInput={(e) => props.onSearch(e.currentTarget.value)}
-          />
-        </div>
         <a
           href="https://github.com/Mirrowel/Mirrobot-agent"
           target="_blank"
@@ -314,13 +137,16 @@ export function BlueprintView(props: ViewProps) {
           <Mark class="h-3" />
           v{info()?.version}
         </span>
+        <Show when={props.model}>
+          <span class="hidden md:inline text-12-mono text-text-weaker truncate max-w-48 shrink-0">{props.model}</span>
+        </Show>
         <span
           class={`flex items-center gap-1.5 border px-1.5 py-0.5 text-12-mono uppercase tracking-widest shrink-0 ${stampClass()}`}
         >
-          <Show when={status() === "live"}>
+          <Show when={props.status === "live"}>
             <span class="size-1.5 rounded-full bg-icon-success-base animate-pulse" aria-hidden="true" />
           </Show>
-          {status()}
+          {props.status}
         </span>
         <button
           class="flex items-center gap-1.5 shrink-0 bg-transparent border border-border-weak-base px-2 py-1 text-12-mono uppercase tracking-wider text-text-weaker hover:text-text-base hover:border-border-strong-base cursor-pointer transition-colors duration-150"
@@ -330,135 +156,8 @@ export function BlueprintView(props: ViewProps) {
           <span class="hidden sm:inline">params</span>
         </button>
       </header>
-
-      {/* the sheet */}
-      <div ref={scrollEl} onScroll={onScroll} class="flex-1 min-h-0 overflow-y-auto no-scrollbar bp-grid">
-        <div class="max-w-[56rem] mx-auto px-3 sm:px-6 py-6">
-          <div class="relative border border-border-base px-4 sm:px-8 pt-8 pb-0">
-            {/* registration ticks */}
-            <span class="absolute -top-px -left-px w-3 h-3 border-t-2 border-l-2 border-border-strong-base" aria-hidden="true" />
-            <span class="absolute -top-px -right-px w-3 h-3 border-t-2 border-r-2 border-border-strong-base" aria-hidden="true" />
-            <span class="absolute -bottom-px -left-px w-3 h-3 border-b-2 border-l-2 border-border-strong-base" aria-hidden="true" />
-            <span class="absolute -bottom-px -right-px w-3 h-3 border-b-2 border-r-2 border-border-strong-base" aria-hidden="true" />
-
-            {/* title + dimension callouts */}
-            <div class="text-12-mono uppercase tracking-widest text-text-weaker">project</div>
-            <h2 class="mt-1 text-20-medium text-text-strong break-words">{info()?.title ?? "session"}</h2>
-            <div class="relative my-6 h-8" aria-hidden="true">
-              <div class="bp-dim absolute inset-x-0 top-1/2 -translate-y-1/2" />
-              <span class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background-base px-3 text-12-mono uppercase tracking-widest text-text-weaker whitespace-nowrap">
-                issue {issued()}
-              </span>
-            </div>
-            <div class="flex flex-wrap gap-x-5 gap-y-1 text-12-mono uppercase tracking-wider text-text-weaker -mt-2 mb-8">
-              <span>drawn by {drawnBy()}</span>
-              <span>dwg no. {dwgNo()}</span>
-              <span>rev v{info()?.version ?? "?"}</span>
-            </div>
-
-            {/* bill of materials: the sheet nav, dropped in continuous flow */}
-            <Show when={!props.settings.continuous && sections().length > 0}>
-              <div class="border border-border-weak-base bg-background-base">
-                <div class="flex items-center justify-between gap-3 px-3 py-2 border-b border-border-weak-base bg-background-stronger">
-                  <span class="text-12-mono uppercase tracking-widest text-text-weaker">bill of materials</span>
-                  <span class="text-12-mono text-text-weaker">
-                    {filtered().length} of {sections().length}
-                  </span>
-                </div>
-                <div class="max-h-56 overflow-y-auto">
-                  <For each={filtered()}>
-                    {(s) => (
-                      <button
-                        class="grid grid-cols-[2.75rem_1fr_4rem] items-baseline gap-2 w-full px-3 py-1.5 text-left bg-transparent border-none first:border-t-0 border-t border-border-weak-base hover:bg-surface-base-hover cursor-pointer transition-colors duration-150"
-                        onClick={() => scrollTo(s.id)}
-                      >
-                        <span class="text-12-mono text-text-strong">{pad(s.index)}</span>
-                        <span class="text-12-regular text-text-base truncate">{firstLine(s)}</span>
-                        <span class="text-12-mono text-text-weaker text-right">
-                          {s.tools.length > 0 ? `D:${s.tools.length}` : "-"}
-                        </span>
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </div>
-            </Show>
-
-            {/* the issued views */}
-            <Show
-              when={sections().length > 0}
-              fallback={
-                <div class="border border-dashed border-border-strong-base px-4 py-12 text-center">
-                  <div class="text-12-mono uppercase tracking-widest text-text-weaker">sheet empty</div>
-                  <div class="text-14-regular text-text-weaker mt-1">no issued prompts on this drawing yet.</div>
-                </div>
-              }
-            >
-              <Show
-                when={filtered().length > 0}
-                fallback={
-                  <div class="mt-8 border border-dashed border-border-strong-base px-4 py-10 text-center">
-                    <div class="text-12-mono uppercase tracking-widest text-text-weaker">no match</div>
-                    <div class="text-14-regular text-text-weaker mt-1">locate returned no items on this sheet.</div>
-                    <button
-                      class="mt-3 bg-transparent border border-border-weak-base px-3 py-1 text-12-mono uppercase tracking-wider text-text-weaker hover:text-text-base hover:border-border-strong-base cursor-pointer transition-colors duration-150"
-                      onClick={() => props.onSearch("")}
-                    >
-                      clear locate
-                    </button>
-                  </div>
-                }
-              >
-                <div class="pt-8">
-                  <For each={filtered()}>
-                    {(s) => (
-                      <Sheet
-                        section={s}
-                        continuous={props.settings.continuous}
-                        settings={props.settings}
-                        detailNo={detailNo()}
-                      />
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </Show>
-
-            {/* title block */}
-            <div class="grid grid-cols-2 sm:grid-cols-5 gap-px bg-border-weak-base border-t border-border-base -mx-4 sm:-mx-8 mt-10">
-              <TitleBlockCell label="title" span>
-                <span class="flex items-center gap-2 min-w-0">
-                  <Show when={props.source.branding().logoUrl}>
-                    <img src={props.source.branding().logoUrl} alt="" class="h-3.5 rounded-sm shrink-0" />
-                  </Show>
-                  <Show
-                    when={props.source.branding().wordmarkUrl}
-                    fallback={
-                      <span class="truncate">
-                        {props.source.branding().name ? props.source.branding().name + " · " : ""}Open(code)Share
-                      </span>
-                    }
-                  >
-                    <img src={props.source.branding().wordmarkUrl} alt="" class="h-3.5" />
-                  </Show>
-                </span>
-              </TitleBlockCell>
-              <TitleBlockCell label="issue">{issued()}</TitleBlockCell>
-              <TitleBlockCell label="drawn by">{drawnBy()}</TitleBlockCell>
-              <TitleBlockCell label="sheet">
-                {sections().length} sht · scale nts
-              </TitleBlockCell>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* sheet parameters drawer */}
       <Show when={drawer()}>
-        <div
-          class="fixed inset-0 z-40"
-          onClick={(e) => e.target === e.currentTarget && setDrawer(false)}
-        >
+        <div class="fixed inset-0 z-40" onClick={(e) => e.target === e.currentTarget && setDrawer(false)}>
           <div
             class="absolute top-0 right-0 bottom-0 w-[19rem] max-w-[85vw] overflow-y-auto border-l border-border-base bg-background-base p-4"
             style={{ animation: "osh-slide-in 180ms ease-out" }}
@@ -475,19 +174,169 @@ export function BlueprintView(props: ViewProps) {
             <SettingsBody
               settings={props.settings}
               update={props.updateSettings}
-              branding={props.source.branding()}
+              branding={b()}
               search={props.search}
               onSearch={props.onSearch}
             />
           </div>
         </div>
       </Show>
+    </>
+  )
+}
+
+// title block: the drafting sheet's corner stamp, as page chrome
+function TitleBlockCell(props: { label: string; children: JSX.Element; span?: boolean }) {
+  return (
+    <div class="bg-background-base px-3 py-2 min-w-0" classList={{ "sm:col-span-2": props.span }}>
+      <div class="text-12-mono uppercase tracking-widest text-text-weaker">{props.label}</div>
+      <div class="text-12-mono text-text-base truncate">{props.children}</div>
     </div>
   )
+}
+
+function TitleBlockFooter(props: FooterProps) {
+  const sections = useSessionSections(props.data, props.sessionID)
+  const info = () => (props.data.session as any[]).find((s) => s.id === props.sessionID)
+  const b = () => props.source.branding()
+  const issued = () => DateTime.fromMillis(info()?.time?.created ?? Date.now()).toFormat("dd MMM yyyy HH:mm")
+  const drawnBy = () => sessionModelLabel(props.data, props.sessionID) || "n/a"
+  return (
+    <div class="shrink-0 grid grid-cols-2 sm:grid-cols-5 gap-px bg-border-weak-base border-t border-border-base">
+      <TitleBlockCell label="title" span>
+        <span class="flex items-center gap-2 min-w-0">
+          <Show when={b().logoUrl}>
+            <img src={b().logoUrl} alt="" class="h-3.5 rounded-sm shrink-0" />
+          </Show>
+          <Show
+            when={b().wordmarkUrl}
+            fallback={
+              <span class="truncate">
+                {b().name ? b().name + " · " : ""}Open(code)Share
+              </span>
+            }
+          >
+            <img src={b().wordmarkUrl} alt="" class="h-3.5" />
+          </Show>
+        </span>
+      </TitleBlockCell>
+      <TitleBlockCell label="issue">{issued()}</TitleBlockCell>
+      <TitleBlockCell label="drawn by">{drawnBy()}</TitleBlockCell>
+      <TitleBlockCell label="sheet">{sections().length} sht · scale nts</TitleBlockCell>
+    </div>
+  )
+}
+
+// the bill of materials: the base's nav slot, listing every issued view
+function BillOfMaterials(props: NavProps) {
+  return (
+    <div class="w-60 border border-border-weak-base bg-background-base">
+      <div class="flex items-center justify-between gap-3 px-3 py-2 border-b border-border-weak-base bg-background-stronger">
+        <span class="text-12-mono uppercase tracking-widest text-text-weaker">bill of materials</span>
+        <span class="text-12-mono text-text-weaker">{props.sections.length}</span>
+      </div>
+      <For each={props.sections}>
+        {(s, i) => (
+          <button
+            class="grid grid-cols-[2.75rem_1fr_3rem] items-baseline gap-2 w-full px-3 py-1.5 text-left bg-transparent border-t border-border-weak-base first:border-t-0 cursor-pointer transition-colors duration-150"
+            classList={{
+              "bg-surface-base": props.active === i(),
+              "hover:bg-surface-base-hover": props.active !== i(),
+            }}
+            onClick={() => props.onSelect(i())}
+          >
+            <span class="text-12-mono text-text-strong">{pad(s.index)}</span>
+            <span class="text-12-regular text-text-base truncate">{firstLine(s)}</span>
+            <span class="text-12-mono text-text-weaker text-right">
+              {s.tools.length > 0 ? `D:${s.tools.length}` : "-"}
+            </span>
+          </button>
+        )}
+      </For>
+    </div>
+  )
+}
+
+// one issued view: a construction rail with datum diamond and V-NN tag
+function Sheet(props: TurnProps) {
+  return (
+    <article class="relative sm:pl-9 scroll-mt-16">
+      <span class="hidden sm:block absolute left-0 top-0 bottom-0 w-px bg-border-weak-base" aria-hidden="true" />
+      <span
+        class="hidden sm:block absolute -left-1 top-2 size-2 rotate-45 border border-border-strong-base bg-background-base"
+        aria-hidden="true"
+      />
+      {props.children}
+    </article>
+  )
+}
+
+// D-numbered detail box: chamfered frame around the vendored tool part
+function DetailBox(props: ToolProps) {
+  return (
+    <div class="relative my-2">
+      <Elbow solid top="15px" />
+      <div class="bp-cut bg-border-weak-base p-px">
+        <div class="bp-cut-in bg-background-base px-3 py-1">
+          <div class="flex items-center gap-2 pb-1 border-b border-border-weak-base">
+            <span class="shrink-0 text-12-mono text-text-strong">D-{pad(props.index)}</span>
+            <span class="min-w-0 truncate text-12-mono uppercase tracking-wider text-text-weaker">
+              {props.entry.tool}
+            </span>
+          </div>
+          <div class="min-w-0 py-1">{props.children}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export const blueprintSkin: Skin = {
+  id: "blueprint",
+  mode: "composed",
+  columnClass:
+    "bp-sheet bp-grid relative w-full max-w-[56rem] mx-auto px-4 sm:px-8 py-8 flex flex-col gap-10 border border-border-base",
+  wrappers: {
+    Header: DraftingHeader,
+    Footer: TitleBlockFooter,
+    Nav: BillOfMaterials,
+    TurnWrap: Sheet,
+    PromptWrap: (p) => (
+      <div class="relative">
+        <div class="flex items-center gap-2.5 mb-1.5">
+          <span class="shrink-0 text-12-mono text-text-strong border border-border-base px-1.5 py-0.5">
+            V-{pad(p.section.index)}
+          </span>
+          <span class="bp-dim flex-1" aria-hidden="true" />
+          <span class="shrink-0 text-12-mono uppercase tracking-widest text-text-weaker">issued</span>
+        </div>
+        {p.children}
+      </div>
+    ),
+    ToolWrap: DetailBox,
+    ReasoningWrap: (p) => (
+      <div class="relative my-1.5">
+        <Elbow top="9px" />
+        <div class="border-l border-dashed border-border-weak-base pl-3">{p.children}</div>
+      </div>
+    ),
+    ResponseWrap: (p) => (
+      <Show when={p.text.trim()}>
+        <div class="relative mt-4">
+          <Elbow top="9px" />
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-12-mono uppercase tracking-widest text-text-weaker">notes</span>
+            <span class="flex-1 h-px bg-border-weak-base" />
+          </div>
+          {p.children}
+        </div>
+      </Show>
+    ),
+  },
 }
 
 export const blueprint: ViewEntry = {
   id: "blueprint",
   label: "blueprint",
-  component: BlueprintView,
+  component: (p) => <BaseSessionView {...p} skin={blueprintSkin} />,
 }

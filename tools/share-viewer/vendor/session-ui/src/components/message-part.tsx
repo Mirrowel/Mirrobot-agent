@@ -660,6 +660,14 @@ export function sameGroups(a: readonly PartGroup[] | undefined, b: readonly Part
   return a.every((item, i) => sameGroup(item, b[i]!))
 }
 
+// mirrobot viewer: tool grouping ("Explored N matches") is a display
+// choice - the app toggles it (default off: every tool renders as its
+// own row with its own output)
+let groupingEnabled = true
+export function setToolGrouping(enabled: boolean) {
+  groupingEnabled = enabled
+}
+
 export function groupParts(parts: { messageID: string; part: PartType }[]) {
   const result: PartGroup[] = []
   let start = -1
@@ -684,7 +692,7 @@ export function groupParts(parts: { messageID: string; part: PartType }[]) {
   }
 
   parts.forEach((item, index) => {
-    if (isContextGroupTool(item.part)) {
+    if (groupingEnabled && isContextGroupTool(item.part)) {
       if (start < 0) start = index
       return
     }
@@ -1120,8 +1128,13 @@ export function ContextToolGroup(props: {
               // mirrobot viewer: each grouped tool is expandable and shows
               // its output (upstream rendered a static, non-clickable row)
               const output = createMemo(() => {
-                const out = (partAccessor().state as any).output
-                return typeof out === "string" && out.trim() ? out : undefined
+                const st = partAccessor().state as any
+                const out = st.output
+                if (typeof out === "string" && out.trim()) return out
+                // errored tools carry their message in state.error (a failed
+                // read shows "file not found" here) - show it as the output
+                if (typeof st.error === "string" && st.error.trim()) return st.error
+                return undefined
               })
               return (
                 <div data-slot="context-tool-group-item">
@@ -1816,6 +1829,7 @@ ToolRegistry.register({
   render(props) {
     const data = useData()
     const i18n = useI18n()
+    const fileComponent = useFileComponent()
     const args: string[] = []
     if (props.input.offset) args.push("offset=" + props.input.offset)
     if (props.input.limit) args.push("limit=" + props.input.limit)
@@ -1825,17 +1839,71 @@ ToolRegistry.register({
       if (!value || !Array.isArray(value)) return []
       return value.filter((p): p is string => typeof p === "string")
     })
+    // the parsed file content: metadata.preview when present, otherwise the
+    // <content> block of the raw output with its line-number prefixes
+    // stripped; errored reads surface state.error as the output instead
+    const fileContents = createMemo(() => {
+      const preview = props.metadata?.preview
+      if (typeof preview === "string" && preview) return preview
+      const out = props.output ?? ""
+      const m = /<content>\n?([\s\S]*?)\n?<\/content>/.exec(out)
+      if (!m) return undefined
+      return m[1]
+        .split("\n")
+        .filter((l) => l.trim() !== "(End of file)" && l.trim() !== "")
+        .map((l) => l.replace(/^\s*\d+:\s?/, ""))
+        .join("\n")
+    })
+    const errorText = createMemo(() => {
+      const st = props as any
+      return typeof st.error === "string" && st.error.trim() ? st.error : undefined
+    })
+    const path = createMemo(() => props.input.filePath || "")
     return (
       <>
         <BasicTool
           {...props}
           icon="glasses"
+          defer={props.deferContent !== false}
           trigger={{
             title: i18n.t("ui.tool.read"),
-            subtitle: props.input.filePath ? getFilename(props.input.filePath) : "",
+            subtitle: props.input.filePath ? relativizeProjectPath(props.input.filePath, data.directory) : "",
             args,
           }}
-        />
+        >
+          <Show
+            when={fileContents() && path()}
+            fallback={
+              <Show when={props.output || errorText()}>
+                <div
+                  data-component="tool-output"
+                  data-scrollable
+                  tabIndex={0}
+                  role="region"
+                  aria-label={i18n.t("ui.scrollView.ariaLabel")}
+                >
+                  <Markdown text={errorText() ?? props.output!} />
+                </div>
+              </Show>
+            }
+          >
+            <ToolFileAccordion path={path()}>
+              <div data-component="read-content">
+                <Dynamic
+                  component={fileComponent}
+                  mode="text"
+                  file={{
+                    name: props.input.filePath,
+                    contents: fileContents(),
+                    cacheKey: checksum(fileContents() ?? ""),
+                  }}
+                  overflow="scroll"
+                  onRendered={props.onContentRendered}
+                />
+              </div>
+            </ToolFileAccordion>
+          </Show>
+        </BasicTool>
         <For each={loaded()}>
           {(filepath) => (
             <div data-component="tool-loaded-file">
@@ -2583,7 +2651,6 @@ ToolRegistry.register({
     return (
       <BasicTool
         {...props}
-        defaultOpen
         icon="checklist"
         trigger={{
           title: i18n.t("ui.tool.todos"),

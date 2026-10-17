@@ -28,6 +28,7 @@ export const SETTINGS_DEFAULTS: OshSettings = {
   centerContent: false,
   toolInfo: true,
   toolOutput: false,
+  toolGrouping: false,
 }
 
 const COOKIE = "osh_settings"

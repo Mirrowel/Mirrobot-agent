@@ -362,14 +362,20 @@ export const OpenSharePlugin = async (input) => {
     return { items, status: st.status }
   }
 
+  // returns a promise when the frame goes out via HTTP (the dispose path
+  // awaits it - an unawaited fetch dies with the exiting process and the
+  // final status never lands, live-caught as shares stuck on "live")
   const flush = (st) => {
     if (st.closed) return
     const f = frameFrom(st)
     if (!f) return
     st.pending.push(f)
     spoolSave(st)
-    if (st.wsReady) wsSend(st, { op: "sync", ...f })
-    else flushViaHttp(st).catch(() => {})
+    if (st.wsReady) {
+      wsSend(st, { op: "sync", ...f })
+      return
+    }
+    return flushViaHttp(st)
   }
 
   const flushViaHttp = async (st) => {
@@ -460,7 +466,12 @@ export const OpenSharePlugin = async (input) => {
         } else if (type === "idle") {
           st.status = st.badSignal ? "error" : "completed"
           st.badSignal = false
-          scheduleFlush(st)
+          // terminal state: flush NOW, not on the debounce - the process
+          // can exit before a 3s timer fires and the final status (the
+          // whole "completed" signal) would be lost with it
+          if (st.timer) clearTimeout(st.timer)
+          st.timer = null
+          flush(st)
         } else if (type === "retry") {
           st.badSignal = true
         }
@@ -492,7 +503,8 @@ export const OpenSharePlugin = async (input) => {
       for (const st of sessions.values()) {
         if (st.timer) clearTimeout(st.timer)
         st.timer = null
-        flush(st)
+        const flushed = flush(st)
+        if (flushed && typeof flushed.then === "function") await flushed.catch(() => {})
         if (st.metaTimer) clearTimeout(st.metaTimer)
         st.metaTimer = null
         await writeBinding(st).catch(() => {})

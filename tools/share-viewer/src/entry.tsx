@@ -1,8 +1,11 @@
 // @refresh reload
 import { render } from "solid-js/web"
 import { applySettings, readSettings } from "./settings"
+import { setToolGrouping } from "../vendor/session-ui/src/components/message-part"
 // pre-paint: apply the settings cookie before anything renders (no theme flash)
-applySettings(readSettings())
+const __s = readSettings()
+applySettings(__s)
+setToolGrouping(__s.toolGrouping ?? false)
 import { Font } from "@opencode-ai/ui/font"
 import { MetaProvider } from "@solidjs/meta"
 import { MarkedProvider } from "@opencode-ai/ui/context/marked"

@@ -1,183 +1,73 @@
-// CASEFILE VIEW — the session as a numbered investigation file. Prompts
-// are MEMO entries with index tags, responses are report prose in a
-// generous measure, tool calls are EVIDENCE exhibits (tagged, titled,
-// collapsible document insets), reasoning is an annotations block.
-// Chrome: a folder-tab header with a status stamp, an archive-line
-// footer, and settings as an index-card drawer from the right.
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+// casefile: the investigation-dossier skin over the shared base. Prompts
+// are MEMO blocks, tool calls are exhibit-numbered evidence rows, reasoning
+// is an annotations block, responses are report prose. Chrome: a folder-tab
+// header with a rotated status stamp, settings as an index-card drawer from
+// the right, an archive-line footer.
+import { Show, createSignal } from "solid-js"
+import { BaseSessionView, type Skin, type SkinWrappers } from "./base-view"
+import { SettingsBody } from "../settings-panel"
+import type { ViewEntry } from "./registry"
+import type { SessionSection } from "./session-data"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Mark } from "@opencode-ai/ui/logo"
-import { Markdown } from "../../vendor/session-ui/src/components/markdown"
 import { DateTime } from "luxon"
 import { Title } from "@solidjs/meta"
-import type { ViewEntry } from "./registry"
-import type { OshSettings } from "../settings"
-import { useSessionSections, toolCallLabel, type SessionSection, type ToolEntry } from "./session-data"
-import { MetaLine } from "./meta-line"
-import { VendoredPart } from "./vendored-part"
-import { sessionModelLabel } from "./session-data"
-import { SettingsBody } from "../settings-panel"
 
 const pad = (n: number) => String(n + 1).padStart(2, "0")
 
-function Exhibit(props: { tool: ToolEntry; index: number; settings: OshSettings }) {
-  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
-  const open = () => userOpen() ?? (props.tool.defaultOpen || props.settings.toolOutput)
-  return (
-    <div class="my-2 rounded-lg border border-border-weak-base bg-background-stronger overflow-hidden">
-      <button
-        class="flex items-center gap-2.5 w-full px-3 py-2 bg-transparent border-none cursor-pointer text-left"
-        onClick={() => setOpen(!open())}
-      >
-        <span class="text-12-mono text-text-weaker shrink-0 border border-border-weak-base rounded px-1">
-          E-{pad(props.index)}
-        </span>
-        <Show when={props.settings.toolInfo}>
-          <span class="text-12-regular text-text-base truncate flex-1">{toolCallLabel(props.tool)}</span>
-        </Show>
-        <span class="text-12-medium text-text-weaker opacity-70 shrink-0">{props.tool.tool}</span>
-        <span class="text-icon-weaker-base shrink-0">
-          <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" />
-        </span>
-      </button>
-      <Show when={open() && props.tool.output}>
-        <pre class="m-2 mt-0 p-3 max-h-64 overflow-auto rounded-md border border-border-weak-base bg-background-base text-12-mono text-text-weaker whitespace-pre-wrap break-words">
-          {props.tool.output}
-        </pre>
-      </Show>
-    </div>
-  )
+const fileNo = (sessionID: string) =>
+  (sessionID.replace(/^ses_/, "").slice(0, 8) || "00000000").toUpperCase()
+
+function modelLabel(s: SessionSection) {
+  if (s.model?.providerID && s.model?.modelID) return `${s.model.providerID}/${s.model.modelID}`
+  return s.model?.modelID ?? ""
 }
 
-function Annotations(props: { text: string; settings: OshSettings }) {
-  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
-  const open = () => userOpen() ?? props.settings.reasoningOpen
-  return (
-    <div class="my-2 flex items-start gap-3">
-      <span class="text-12-mono text-text-weaker opacity-60 shrink-0 pt-1 w-20 text-right">annot.</span>
-      <div class="flex-1 min-w-0">
-        <button
-          class="flex items-center gap-1.5 bg-transparent border-none cursor-pointer text-12-medium text-text-weaker hover:text-text-base transition-colors duration-150 p-0"
-          onClick={() => setOpen(!open())}
-        >
-          <span class="text-icon-weaker-base">
-            <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" />
-          </span>
-          reasoning
-        </button>
-        <Show when={open()}>
-          <div class="text-12-regular italic text-text-weaker [&_p]:my-1">
-            <Markdown text={props.text} />
-          </div>
-        </Show>
-      </div>
-    </div>
-  )
+function filedLine(s: SessionSection) {
+  const at = DateTime.fromMillis(s.at ?? Date.now()).toFormat("dd MMM yyyy HH:mm")
+  const model = modelLabel(s)
+  return model ? `${at} · ${model}` : at
 }
 
-function Memo(props: { section: SessionSection; settings: OshSettings; continuous: boolean }) {
-  const s = props.section
-  return (
-    <article class="py-7 border-b border-border-weak-base last:border-none">
-      {/* memo head */}
-      <div class="flex items-start gap-4 mb-3">
-        <Show when={!props.continuous}>
-          <span class="shrink-0 text-12-mono text-text-weaker border border-border-weak-base rounded px-1.5 py-0.5">
-            MEMO {pad(s.index)}
-          </span>
-        </Show>
-        <div class="flex-1 min-w-0">
-          <p class="text-16-medium text-text-strong whitespace-pre-wrap">{s.prompt}</p>
-          <MetaLine section={s} data={props.data} />
-        </div>
-      </div>
-      {/* annotations + evidence, in the order they occurred */}
-      <For each={s.ordered}>
-        {(e) => (
-          <Show
-            when={e.kind !== "reasoning"}
-            fallback={
-              <Annotations text={(e as any).text} settings={props.settings} />
-            }
-          >
-            <Show
-              when={e.kind !== "text"}
-              fallback={
-                <div class="report-prose text-14-regular text-text-base">
-                  <Markdown text={(e as any).text} />
-                </div>
-              }
-            >
-              <div class="flex items-start gap-3">
-                <span class="hidden sm:block text-12-mono text-text-weaker opacity-60 shrink-0 pt-2 w-20 text-right">evidence</span>
-                <div class="flex-1 min-w-0">
-                  <VendoredPart entry={e as any} settings={props.settings} />
-                </div>
-              </div>
-            </Show>
-          </Show>
-        )}
-      </For>
-    </article>
-  )
-}
-
-function CasefileView(props: Parameters<ViewEntry["component"]>[0]) {
-  const info = createMemo(() => props.data.session.find((s: any) => s.id === props.sessionID))
-  const sections = useSessionSections(props.data, props.sessionID)
+function CasefileHeader(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0]) {
   const [drawer, setDrawer] = createSignal(false)
-
-  const filtered = createMemo(() => {
-    const q = props.search.trim().toLowerCase()
-    if (!q) return sections()
-    return sections().filter((s) => s.prompt.toLowerCase().includes(q) || s.response.toLowerCase().includes(q))
-  })
-
-  // follow-live
-  let scrollEl: HTMLDivElement | undefined
-  let atBottom = true
-  createEffect(() => {
-    props.source.rev()
-    if (props.source.status() === "live" && props.settings.followLive && atBottom && scrollEl) {
-      scrollEl.scrollTop = scrollEl.scrollHeight
-    }
-  })
-  const onScroll = () => {
-    const el = scrollEl
-    if (el) atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-  }
-
-  const status = () => props.source.status()
+  const info = () => (props.data.session as any[]).find((s) => s.id === props.sessionID)
   const stampColor = () =>
-    status() === "live" ? "text-icon-strong-base border-icon-strong-base" : status() === "error" ? "text-red-400 border-red-400" : "text-text-weaker border-border-strong-base"
-
-  const fileNo = () => (props.sessionID.replace(/^ses_/, "").slice(0, 8) || "00000000").toUpperCase()
-
+    props.status === "live"
+      ? "text-icon-strong-base border-icon-strong-base"
+      : props.status === "error"
+        ? "text-icon-critical-base border-icon-critical-base"
+        : "text-text-weaker border-border-strong-base"
   return (
-    <div class="flex flex-col flex-1 min-h-0 relative z-10">
+    <>
       <Title>{info()?.title} | {props.source.branding().name || "openshare"}</Title>
-
-      {/* folder tab header */}
-      <header class="shrink-0 px-5 pt-3 bg-background-stronger border-b border-border-weak-base">
+      <header class="shrink-0 px-5 pt-3 bg-background-stronger border-b border-border-weak-base relative z-30">
         <div class="flex items-end justify-between gap-4">
           <div class="flex items-end gap-3 min-w-0">
+            <Show when={props.isSub && props.onBack}>
+              <button
+                class="flex items-center gap-1 self-center bg-transparent border-none cursor-pointer text-12-regular text-text-weaker hover:text-text-base shrink-0 transition-colors duration-150"
+                onClick={() => props.onBack?.()}
+              >
+                <Icon name="arrow-left" size="small" />
+                main
+              </button>
+            </Show>
             <div class="px-3 py-1 rounded-t-lg border border-b-0 border-border-weak-base bg-background-base text-12-mono text-text-weaker">
-              CASE {fileNo()}
+              CASE {fileNo(props.sessionID)}
             </div>
-            <h1 class="text-16-medium text-text-strong truncate pb-1">{info()?.title}</h1>
+            <h1 class="text-16-medium text-text-strong truncate pb-1">{info()?.title ?? "session"}</h1>
           </div>
           <div class="flex items-center gap-3 pb-1.5 shrink-0">
             <span class="text-12-mono text-text-weaker flex items-center gap-1.5">
               <Mark class="h-3" />
-              v{info()?.version}
+              v{info()?.version ?? "?"}
             </span>
             <span
               class="text-12-mono uppercase tracking-widest border rounded px-1.5 py-0.5 rotate-[-2deg]"
-              classList={{
-                [stampColor()]: true,
-              }}
+              classList={{ [stampColor()]: true }}
             >
-              {status()}
+              {props.status}
             </span>
             <button
               class="flex items-center gap-1.5 bg-transparent border border-border-weak-base rounded px-2 py-1 text-12-regular text-text-weaker hover:text-text-base hover:border-border-strong-base cursor-pointer transition-colors duration-150"
@@ -189,51 +79,11 @@ function CasefileView(props: Parameters<ViewEntry["component"]>[0]) {
           </div>
         </div>
       </header>
-
-      {/* the file */}
-      <div ref={scrollEl} onScroll={onScroll} class="flex-1 min-h-0 overflow-y-auto no-scrollbar">
-        <div class="max-w-[52rem] mx-auto px-6 py-6">
-          <div class="text-12-mono text-text-weaker opacity-70 mb-6">
-            FILED {DateTime.fromMillis(info()?.time?.created ?? Date.now()).toFormat("dd MMM yyyy HH:mm")}
-            {" · "}{sessionModelLabel(props.data, props.sessionID)}
-            {" · "}MEMOS {sections().length}
-          </div>
-          <Show when={filtered().length > 0} fallback={<div class="text-14-regular text-text-weaker py-16">nothing in the file matches.</div>}>
-            <For each={filtered()}>
-              {(s) => <Memo section={s} settings={props.settings} continuous={props.settings.continuous} />}
-            </For>
-          </Show>
-          {/* archive line */}
-          <div class="mt-10 pt-4 border-t border-border-weak-base flex items-center justify-between gap-4 text-12-mono text-text-weaker">
-            <span class="flex items-center gap-2 min-w-0">
-              <Show when={props.source.branding().logoUrl}>
-                <img src={props.source.branding().logoUrl} alt="" class="h-4 rounded-sm" />
-              </Show>
-              <span class="truncate">
-                {props.source.branding().wordmarkUrl
-                  ? ""
-                  : `${props.source.branding().name ? props.source.branding().name + " · " : ""}Open(code)Share`}
-              </span>
-              {props.source.branding().wordmarkUrl ? <img src={props.source.branding().wordmarkUrl} alt="" class="h-3.5" /> : null}
-            </span>
-            <a
-              href="https://github.com/Mirrowel/Mirrobot-agent"
-              target="_blank"
-              rel="noreferrer"
-              class="text-icon-weaker-base hover:text-icon-strong-base"
-            >
-              <Icon name="github" size="small" />
-            </a>
-          </div>
-        </div>
-      </div>
-
-      {/* index-card drawer */}
       <Show when={drawer()}>
         <div class="fixed inset-0 z-40" onClick={(e) => e.target === e.currentTarget && setDrawer(false)}>
           <div
             class="absolute top-0 right-0 bottom-0 w-[19rem] max-w-[85vw] overflow-y-auto border-l border-border-weak-base bg-background-base shadow-xl p-4"
-            style={{ "animation": "osh-slide-in 180ms ease-out" }}
+            style={{ animation: "osh-slide-in 180ms ease-out" }}
           >
             <div class="flex items-center justify-between pb-2">
               <span class="text-14-medium text-text-strong">Index</span>
@@ -254,8 +104,83 @@ function CasefileView(props: Parameters<ViewEntry["component"]>[0]) {
           </div>
         </div>
       </Show>
+    </>
+  )
+}
+
+function ArchiveLine(props: Parameters<NonNullable<SkinWrappers["Footer"]>>[0]) {
+  const b = () => props.source.branding()
+  return (
+    <div class="shrink-0 px-6 py-3 border-t border-border-weak-base bg-background-base">
+      <div class="max-w-[52rem] mx-auto flex items-center justify-between gap-4 text-12-mono text-text-weaker">
+        <span class="flex items-center gap-2 min-w-0">
+          <Show when={b().logoUrl}>
+            <img src={b().logoUrl} alt="" class="h-4 rounded-sm" />
+          </Show>
+          <span class="truncate">
+            {b().wordmarkUrl ? "" : `${b().name ? b().name + " · " : ""}Open(code)Share`}
+          </span>
+          <Show when={b().wordmarkUrl}>
+            <img src={b().wordmarkUrl} alt="" class="h-3.5" />
+          </Show>
+        </span>
+        <a
+          href="https://github.com/Mirrowel/Mirrobot-agent"
+          target="_blank"
+          rel="noreferrer"
+          class="text-icon-weaker-base hover:text-icon-strong-base"
+        >
+          <Icon name="github" size="small" />
+        </a>
+      </div>
     </div>
   )
+}
+
+export const casefileSkin: Skin = {
+  id: "casefile",
+  mode: "composed",
+  columnClass: "max-w-[52rem] mx-auto px-6 py-6",
+  wrappers: {
+    Header: CasefileHeader,
+    Footer: ArchiveLine,
+    TurnWrap: (p) => (
+      <article class="py-7 border-b border-border-weak-base last:border-none">
+        <Show when={p.index === 0}>
+          <div class="text-12-mono text-text-weaker opacity-70 mb-6">FILED {filedLine(p.section)}</div>
+        </Show>
+        {p.children}
+      </article>
+    ),
+    PromptWrap: (p) => (
+      <div class="flex items-start gap-4 mb-3">
+        <span class="shrink-0 text-12-mono text-text-weaker border border-border-weak-base rounded px-1.5 py-0.5">
+          MEMO {pad(p.section.index)}
+        </span>
+        <div class="flex-1 min-w-0">{p.children}</div>
+      </div>
+    ),
+    ToolWrap: (p) => (
+      <div class="flex items-start gap-3 my-2">
+        <span class="hidden sm:flex flex-col items-end gap-1 shrink-0 pt-1.5 w-20">
+          <span class="text-12-mono text-text-weaker opacity-60">evidence</span>
+          <span class="text-12-mono text-text-weaker border border-border-weak-base rounded px-1">E-{pad(p.index)}</span>
+        </span>
+        <div class="flex-1 min-w-0">{p.children}</div>
+      </div>
+    ),
+    ReasoningWrap: (p) => (
+      <div class="flex items-start gap-3 my-1">
+        <span class="hidden sm:block text-12-mono text-text-weaker opacity-60 shrink-0 pt-1 w-20 text-right">annot.</span>
+        <div class="flex-1 min-w-0">{p.children}</div>
+      </div>
+    ),
+    ResponseWrap: (p) => <div class="report-prose">{p.children}</div>,
+  },
+}
+
+export function CasefileView(props: Parameters<ViewEntry["component"]>[0]) {
+  return <BaseSessionView {...props} skin={casefileSkin} />
 }
 
 export const casefile = {

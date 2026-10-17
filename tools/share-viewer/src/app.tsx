@@ -41,6 +41,7 @@ import { ReaderView } from "./reader"
 import { InfoPanel } from "./views/info-panel"
 import { findView, resolveSessionID } from "./views/registry"
 import { setVendoredData } from "./views/vendored-part"
+import { setToolGrouping } from "../vendor/session-ui/src/components/message-part"
 
 // full-page views (everything except classic/reader, which live in the
 // standard chrome) render INSTEAD of SessionView
@@ -559,19 +560,38 @@ function subHref(source: ReturnType<typeof useShareSource>, childSessionID: stri
 
 // serialize the visible session to markdown (clipboard)
 async function copySessionMarkdown(data: ShareData, sessionID: string) {
-  const parts: string[] = [`# ${data.session.find((s) => s.id === sessionID)?.title ?? sessionID}`, ""]
+  const info = data.session.find((s: any) => s.id === sessionID) as any
+  const parts: string[] = [
+    `# ${info?.title ?? sessionID}`,
+    "",
+    `_model: ${sessionModelLabel(data, sessionID) || "?"} · v${info?.version ?? "?"} · ${info?.directory ?? ""}_`,
+    "",
+  ]
   for (const m of visibleMessages(data, sessionID)) {
     const role = m.role === "user" ? "## user" : "## assistant"
     parts.push(role, "")
     for (const p of data.part[m.id] ?? []) {
       const any = p as any
       if (p.type === "text" && any.text) parts.push(any.text, "")
-      else if (p.type === "tool") parts.push(`> _tool: ${any.tool ?? "tool"}_`, "")
       else if (p.type === "reasoning" && any.text) parts.push("<details><summary>thinking</summary>", "", any.text, "", "</details>", "")
+      else if (p.type === "tool") {
+        const st = any.state ?? {}
+        const input = st.input ?? {}
+        const inv =
+          [input.query, input.command, input.prompt, input.pattern, input.filePath, input.description]
+            .find((v: unknown) => typeof v === "string" && v.trim()) ??
+          (any.tool === "task" && Array.isArray(input.prompts) ? String(input.prompts[0] ?? "") : "")
+        let out = typeof st.output === "string" ? st.output : ""
+        if (any.tool === "task") out = ""
+        if (out.length > 600) out = out.slice(0, 600) + "…"
+        parts.push(`> _tool: ${any.tool ?? "tool"}${inv ? ` — ${String(inv).slice(0, 120)}` : ""}_`, "")
+        if (out) parts.push("> ```", out.split("\n").map((l: string) => "> " + l).join("\n"), "> ```", "")
+      }
     }
   }
   await navigator.clipboard.writeText(parts.join("\n"))
 }
+
 
 export function App() {
   const source = useShareSource()
@@ -580,6 +600,7 @@ export function App() {
   const [search, setSearch] = createSignal("")
 
   const updateSettings = (patch: Partial<OshSettings>) => {
+    if (patch.toolGrouping !== undefined) setToolGrouping(patch.toolGrouping)
     setSettings((prev) => {
       const next = { ...prev, ...patch }
       writeSettings(next)

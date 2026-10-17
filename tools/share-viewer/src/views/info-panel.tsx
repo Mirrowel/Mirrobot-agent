@@ -75,13 +75,20 @@ export function InfoPanel(props: { data: ShareData; sessionID: string }) {
           </div>
           <div class="flex flex-col gap-1">
             <Group label="identity">
+              <Row label="title" value={String(info()?.title ?? "untitled").slice(0, 60)} />
               <Row label="session" value={info()?.id ?? props.sessionID} />
+              <Show when={info()?.parentID}>
+                <Row label="parent" value={String(info().parentID)} />
+              </Show>
+              <Row label="status" value={String(props.source.status())} />
               <Row label="version" value={info()?.version ? `v${info().version}` : "?"} />
               <Row label="model" value={sessionModelLabel(props.data, props.sessionID) || "?"} />
               <Row label="provider" value={(info()?.model as any)?.providerID ?? "?"} />
               <Show when={info()?.directory}>
                 <Row label="worktree" value={String(info().directory)} />
               </Show>
+              <Row label="share" value={props.source.shareID} />
+              <Row label="sync rev" value={String(props.source.rev() ?? 0)} />
             </Group>
             <Group label="counts">
               <Row label="prompts" value={fmt(usage().prompts)} />

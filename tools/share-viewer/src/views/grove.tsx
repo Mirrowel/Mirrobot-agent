@@ -1,26 +1,19 @@
-// GROVE: the session as an organic growth log. Prompts are growth rings
-// threaded on the trunk, responses grow as the stem (a softly indented
-// reading column), tool calls are roots hanging in the left margin that
-// feed a section through curved connectors, and reasoning rests beneath
-// as quiet, collapsible undergrowth. Typographic and restrained: design
-// tokens only, soft curves, generous air.
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
-import { Title } from "@solidjs/meta"
+// GROVE: the growth-log skin over the shared base. Prompts are growth rings
+// threaded on the trunk, tool calls are roots hanging in the left margin
+// that feed the stem through hand-drawn arcs, reasoning rests beneath as
+// quiet undergrowth, responses open as blooms. Typographic and restrained:
+// design tokens only, soft curves, generous air.
+import { Show, createSignal } from "solid-js"
 import { DateTime } from "luxon"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Mark } from "@opencode-ai/ui/logo"
-import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
-import { Markdown } from "../../vendor/session-ui/src/components/markdown"
-import type { ViewEntry } from "./registry"
-import { toolCallLabel, useSessionSections, type SessionSection, type ToolEntry } from "./session-data"
-import { MetaLine } from "./meta-line"
-import { VendoredPart } from "./vendored-part"
-import { sessionModelLabel } from "./session-data"
+import { BaseSessionView, type Skin, type SkinWrappers } from "./base-view"
 import { saveSettingsScroll, restoreSettingsScroll, SettingsBody } from "../settings-panel"
-import type { OshSettings } from "../settings"
+import type { ViewEntry } from "./registry"
 
 const pad = (n: number) => String(n).padStart(2, "0")
 
+// ------------------------------------------------------------- glyphs ----
 function RingGlyph(props: { class?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" class={props.class} aria-hidden="true">
@@ -56,394 +49,207 @@ function GrassGlyph(props: { class?: string }) {
   )
 }
 
-// A root: a small tool entry that lives in the left margin on wide
-// screens, connected to the stem by a soft arc; its output opens flush
-// with the reading column.
-function RootEntry(props: { children?: JSX.Element }) {
+function BloomGlyph(props: { class?: string }) {
   return (
-    <div class="group/root flex flex-col min-w-0 xl:flex-row xl:items-start xl:-ml-[13.5rem]">
-      <span class="hidden xl:block shrink-0 w-6 h-6 text-icon-weaker-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100">
-        <LeafGlyph class="w-3 h-3 mt-1.5" />
-      </span>
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        class="hidden xl:block w-6 h-6 shrink-0 text-border-strong-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100"
-        aria-hidden="true"
-      >
-        <path d="M0 11 C 13 11 20 13 20 22" stroke="currentColor" stroke-width="1" />
-      </svg>
-      <div class="min-w-0 mt-1.5 xl:mt-0 xl:ml-3 xl:flex-1">{props.children}</div>
-    </div>
+    <svg viewBox="0 0 16 16" fill="none" class={props.class} aria-hidden="true">
+      <circle cx="8" cy="8" r="1.5" stroke="currentColor" stroke-width="0.9" />
+      <path d="M8 6.5 C 8 4.4 8.1 3.1 8.2 2.5 C 10.4 3.3 10.5 5.2 8 6.5 Z" stroke="currentColor" stroke-width="0.85" stroke-linejoin="round" />
+      <path d="M9.5 8 C 11.6 8 12.9 8.1 13.5 8.2 C 12.7 10.4 10.8 10.5 9.5 8 Z" stroke="currentColor" stroke-width="0.85" stroke-linejoin="round" />
+      <path d="M8 9.5 C 8 11.6 7.9 12.9 7.8 13.5 C 5.6 12.7 5.5 10.8 8 9.5 Z" stroke="currentColor" stroke-width="0.85" stroke-linejoin="round" />
+      <path d="M6.5 8 C 4.4 8 3.1 7.9 2.5 7.8 C 3.3 5.6 5.2 5.5 6.5 8 Z" stroke="currentColor" stroke-width="0.85" stroke-linejoin="round" />
+    </svg>
   )
 }
 
-function Undergrowth(props: { text: string; settings: OshSettings }) {
-  const [userOpen, setOpen] = createSignal<boolean | undefined>(undefined)
-  const open = () => userOpen() ?? props.settings.reasoningOpen
-  createEffect(
-    on(
-      () => props.settings.reasoningOpen,
-      (v, prev) => {
-        if (prev !== undefined && v !== prev) setOpen(v)
-      },
-    ),
-  )
+// -------------------------------------------------------------- chrome ----
+// the canopy: the grove name in a ring, the session title, and the growing
+// facts (version, model, status) with settings dropping out of a pill.
+function CanopyHeader(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0]) {
+  const [menuOpen, setMenuOpen] = createSignal(false)
+  const info = () => (props.data.session as any[]).find((s) => s.id === props.sessionID)
+  const live = () => props.status === "live"
   return (
-    <div>
-      <button
-        class="group/ug flex items-center gap-2 py-1.5 bg-transparent border-none cursor-pointer text-12-mono text-text-weaker hover:text-text-base transition-colors duration-150"
-        aria-expanded={open()}
-        onClick={() => setOpen(!open())}
-      >
-        <span class="text-icon-weaker-base transition-colors duration-150 group-hover/ug:text-icon-strong-base">
-          <GrassGlyph class="w-3 h-3" />
-        </span>
-        <span>undergrowth</span>
-        <span class="text-icon-weaker-base">
-          <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" />
-        </span>
-      </button>
-      <Show when={open()}>
-        <div class="mb-2 text-12-regular italic text-text-weaker [&_p]:my-1">
-          <Markdown text={props.text} />
-        </div>
-      </Show>
-    </div>
-  )
-}
-
-function SectionView(props: {
-  section: SessionSection
-  settings: OshSettings
-  continuous: boolean
-  modelLabel?: string
-}) {
-  return (
-    <section
-      class="relative"
-      classList={{
-        "mt-14 first:mt-0 border-l border-border-weaker-base pl-7": !props.continuous,
-        "mt-10 first:mt-0": props.continuous,
-      }}
-    >
-      <Show
-        when={!props.continuous}
-        fallback={
-          <div class="relative mb-3 flex items-baseline gap-2 min-w-0">
-            <span class="absolute -left-2 top-1 text-icon-weaker-base" aria-hidden="true">
-              <RingGlyph class="w-4 h-4" />
-            </span>
-            <p class="min-w-0 text-14-medium text-text-weaker whitespace-pre-wrap break-words">
-              {props.section.prompt || "(empty prompt)"}
-            </p>
-            <Show when={props.modelLabel}>
-              <span class="shrink-0 text-12-mono text-text-weaker opacity-80">{props.modelLabel}</span>
-            </Show>
-          </div>
-        }
-      >
-        <div class="relative mb-5">
-          <span class="absolute -left-3 -top-0.5 text-icon-weaker-base" aria-hidden="true">
-            <RingGlyph class="w-6 h-6" />
-          </span>
-          <div class="text-12-mono uppercase tracking-widest text-text-weaker">
-            ring {pad(props.section.index + 1)}
-            <Show when={props.modelLabel}>
-              <span class="normal-case tracking-normal"> · {props.modelLabel}</span>
-            </Show>
-          </div>
-          <p class="mt-1.5 text-14-medium text-text-strong whitespace-pre-wrap break-words">
-            {props.section.prompt || "(empty prompt)"}
-          </p>
-          <MetaLine section={props.section} data={props.data} />
-        </div>
-      </Show>
-
-      <Show when={props.section.ordered.length > 0}>
-        <div class="mb-5 flex flex-col gap-1.5">
-          <For each={props.section.ordered}>
-            {(e) => (
-              <Show
-                when={e.kind !== "reasoning"}
-                fallback={<Undergrowth text={(e as any).text} settings={props.settings} />}
-              >
-                <Show
-                  when={e.kind !== "text"}
-                  fallback={
-                    <div class="relative pl-7 my-4 text-14-regular text-text-base">
-                      <Markdown text={(e as any).text} />
-                    </div>
-                  }
-                >
-                  <RootEntry>
-                    <VendoredPart entry={e as any} settings={props.settings} />
-                  </RootEntry>
-                </Show>
-              </Show>
-            )}
-          </For>
-        </div>
-      </Show>
-    </section>
-  )
-}
-
-function GroveView(props: Parameters<ViewEntry["component"]>[0]) {
-  const info = createMemo(() => props.data.session.find((s: any) => s.id === props.sessionID))
-  const sections = useSessionSections(props.data, props.sessionID)
-  const continuous = () => props.settings.continuous
-
-  const query = createMemo(() => props.search.trim().toLowerCase())
-  const searching = createMemo(() => query().length > 0)
-
-  const filtered = createMemo(() => {
-    const q = query()
-    if (!q) return sections()
-    return sections().filter(
-      (s) =>
-        s.prompt.toLowerCase().includes(q) ||
-        s.response.toLowerCase().includes(q) ||
-        s.reasoning.some((r) => r.text.toLowerCase().includes(q)) ||
-        s.tools.some((t) => t.tool.toLowerCase().includes(q) || toolCallLabel(t).toLowerCase().includes(q)),
-    )
-  })
-
-  const ringCount = () => sections().length
-  const rootCount = () => sections().reduce((n, s) => n + s.tools.length, 0)
-
-  const modelLabelFor = (section: SessionSection) => {
-    const cur = section.model
-    if (!cur) return undefined
-    const prev = sections()[section.index - 1]?.model
-    if (section.index !== 0 && prev?.providerID === cur.providerID && prev?.modelID === cur.modelID) return undefined
-    const label = `${cur.providerID ?? ""}/${cur.modelID ?? ""}`
-    if (label === "/") return undefined
-    return label
-  }
-
-  // follow-live: keep the newest growth visible while live and at bottom
-  let scrollEl: HTMLDivElement | undefined
-  let atBottom = true
-  const onScroll = () => {
-    const el = scrollEl
-    if (el) atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-  }
-  createEffect(() => {
-    props.source.rev()
-    if (props.source.status() === "live" && props.settings.followLive && atBottom && scrollEl) {
-      scrollEl.scrollTop = scrollEl.scrollHeight
-    }
-  })
-
-  const branding = () => props.source.branding()
-  const backgroundUrl = () => (branding() as any).backgroundUrl as string | undefined
-  const created = () => DateTime.fromMillis((info() as any)?.time?.created ?? Date.now()).toFormat("dd MMM yyyy, HH:mm")
-  const [settingsOpen, setSettingsOpen] = createSignal(false)
-  const providerID = () => (info() as any)?.model?.providerID as string | undefined
-  const modelID = () => (info() as any)?.model?.modelID as string | undefined
-
-  const emptyState = (
-    <div class="flex flex-col items-start gap-3 pl-7 py-20">
-      <RingGlyph class="w-8 h-8 text-icon-weaker-base opacity-70" />
-      <p class="text-14-medium text-text-base">This session is still a seedling</p>
-      <p class="text-12-regular text-text-weaker">Rings appear here as prompts arrive and the grove grows.</p>
-    </div>
-  )
-
-  const noMatch = (
-    <div class="flex flex-col items-start gap-3 pl-7 py-20">
-      <GrassGlyph class="w-6 h-6 text-icon-weaker-base opacity-70" />
-      <p class="text-14-medium text-text-base">No rings match "{props.search.trim()}"</p>
-      <button
-        class="bg-transparent border-none cursor-pointer p-0 text-12-regular text-text-weaker underline underline-offset-2 hover:text-text-base transition-colors duration-150"
-        onClick={() => props.onSearch("")}
-      >
-        clear the filter
-      </button>
-    </div>
-  )
-
-  return (
-    <div class="relative flex flex-col flex-1 min-h-0 bg-background-base text-text-base">
-      <Title>{info()?.title ?? "session"} | {branding().name || "openshare"}</Title>
-
-      <Show when={backgroundUrl() && props.settings.backgroundOn}>
-        <div class="osh-bg" style={{ "background-image": `url(${backgroundUrl()})` }} />
-      </Show>
-
-      <header class="relative z-30 shrink-0 h-10 px-4 flex items-center justify-between gap-4 bg-background-base border-b border-border-weak-base">
+    <>
+      <header class="h-10 px-4 flex items-center justify-between gap-4 self-stretch bg-background-base border-b border-border-weak-base relative z-30">
         <div class="flex items-center gap-2 min-w-0">
-          <Show
-            when={branding().logoUrl}
-            fallback={<span class="text-12-mono text-text-weaker truncate">{branding().name || "grove"}</span>}
-          >
-            <Show
-              when={branding().linkUrl}
-              fallback={<img src={branding().logoUrl} alt="" class="h-4 w-auto rounded-sm" />}
+          <Show when={props.isSub && props.onBack}>
+            <button
+              class="flex items-center gap-1 shrink-0 bg-transparent border-none cursor-pointer text-12-regular text-text-weaker hover:text-text-base transition-colors duration-150"
+              onClick={() => props.onBack?.()}
             >
-              <a
-                href={branding().linkUrl}
-                target="_blank"
-                rel="noreferrer"
-                class="flex items-center"
-                title={branding().name || ""}
-              >
-                <img src={branding().logoUrl} alt="" class="h-4 w-auto rounded-sm" />
-              </a>
-            </Show>
-            <Show when={branding().name}>
-              <span class="hidden lg:block text-12-mono text-text-weaker truncate">{branding().name}</span>
-            </Show>
+              <Icon name="arrow-left" size="small" />
+              main
+            </button>
           </Show>
-        </div>
-
-        <div class="flex items-center gap-2 shrink-0 text-12-mono text-text-weaker">
-          <span
-            classList={{
-              "inline-block size-1.5 shrink-0 rounded-full": true,
-              "status-dot animate-pulse": props.source.status() === "live",
-              "bg-icon-weak-base": props.source.status() !== "live",
-            }}
-          />
-          <span>{props.source.status()}</span>
+          <RingGlyph class="w-4 h-4 shrink-0 text-icon-weaker-base" />
+          <span class="text-14-medium text-text-strong truncate">{info()?.title ?? "session"}</span>
         </div>
 
         <div class="flex items-center gap-1.5 shrink-0">
-          <div class="hidden md:flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-full border border-border-weak-base bg-background-stronger text-text-weaker focus-within:border-border-strong-base transition-colors duration-150">
-            <span class="text-icon-weaker-base">
-              <Icon name="magnifying-glass" size="small" />
-            </span>
-            <input
-              class="w-32 lg:w-40 bg-transparent border-none outline-none text-12-regular text-text-base placeholder:text-text-weaker"
-              placeholder="filter rings"
-              aria-label="filter rings"
-              autocomplete="off"
-              value={props.search}
-              onInput={(e) => props.onSearch(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") props.onSearch("")
+          <span class="flex items-center gap-1.5 h-7 px-2 rounded-full border border-border-weak-base text-12-mono text-text-weaker">
+            <Mark class="h-3 shrink-0" />
+            <span class="text-text-base">v{info()?.version ?? "?"}</span>
+          </span>
+          <Show when={props.model}>
+            <span class="hidden lg:inline text-12-mono text-text-weaker truncate max-w-48">{props.model}</span>
+          </Show>
+          <span class="flex items-center gap-1.5 h-7 px-2 rounded-full border border-border-weak-base text-12-regular text-text-weaker">
+            <span
+              classList={{
+                "inline-block size-1.5 shrink-0 rounded-full": true,
+                "status-dot animate-pulse": live(),
+                "bg-icon-weak-base": !live(),
               }}
             />
-          </div>
-          <a
-            href="https://github.com/Mirrowel/Mirrobot-agent"
-            target="_blank"
-            rel="noreferrer"
-            class="p-1 text-icon-weaker-base hover:text-icon-strong-base transition-colors duration-150"
-            title="Open(code)Share"
+            {props.status}
+          </span>
+          <button
+            class="flex items-center gap-1 h-7 px-2.5 rounded-full border border-border-weak-base bg-background-stronger text-12-regular text-text-weaker hover:text-text-base hover:border-border-strong-base cursor-pointer transition-colors duration-150"
+            onClick={() => setMenuOpen(!menuOpen())}
           >
-            <Icon name="github" size="small" />
-          </a>
-          <Show when={info()?.version}>
-            <span class="flex items-center gap-1.5 h-7 px-2 rounded-full border border-border-weak-base text-12-mono text-text-weaker">
-              <Mark class="h-3 shrink-0" />
-              <span class="text-text-base">v{info()?.version}</span>
-            </span>
-          </Show>
-          <div class="relative">
-            <button
-              class="flex items-center gap-1 h-7 px-2.5 rounded-full border border-border-weak-base bg-background-stronger text-12-regular text-text-weaker hover:text-text-base cursor-pointer transition-colors duration-150"
-              onClick={() => setSettingsOpen(!settingsOpen())}
-            >
-              <span class="hidden sm:block">settings</span>
-              <Icon name={settingsOpen() ? "chevron-down" : "chevron-up"} size="small" />
-            </button>
-            <Show when={settingsOpen()}>
-              <div class="absolute top-8 right-0 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
-                onScroll={saveSettingsScroll}
-                ref={restoreSettingsScroll}>
-                <SettingsBody
-                  settings={props.settings}
-                  update={props.updateSettings}
-                  branding={{ backgroundUrl: backgroundUrl() }}
-                  search={props.search}
-                  onSearch={props.onSearch}
-                />
-              </div>
-            </Show>
-          </div>
+            <span class="hidden sm:block">settings</span>
+            <Icon name={menuOpen() ? "chevron-down" : "chevron-up"} size="small" />
+          </button>
         </div>
       </header>
 
-      <div
-        ref={scrollEl}
-        onScroll={onScroll}
-        class="osh-content no-scrollbar relative z-10 flex-1 min-h-0 overflow-y-auto"
-      >
-        <div class="mx-auto w-full max-w-[38rem] px-6 pt-10 pb-2 xl:max-w-[48rem] xl:pl-[12rem]">
-          <div class="relative pl-7 mb-12">
-            <span class="absolute right-0 top-0 hidden sm:block text-icon-weaker-base opacity-20" aria-hidden="true">
-              <RingGlyph class="w-16 h-16" />
-            </span>
-            <div class="text-12-mono uppercase tracking-widest text-text-weaker">
-              grove · {created()} · {ringCount()} rings · {rootCount()} roots
-            </div>
-            <h1 class="mt-3 text-20-medium text-text-strong break-words">{info()?.title ?? "session"}</h1>
-            <Show when={providerID()}>
-              <div class="mt-4 flex items-center gap-1.5 text-12-mono text-text-weaker">
-                <ProviderIcon id={providerID()!} class="size-3.5 shrink-0 text-icon-strong-base" />
-                <span>{sessionModelLabel(props.data, props.sessionID) || "model"}</span>
-              </div>
+      <Show when={menuOpen()}>
+        <div
+          class="fixed top-10 right-4 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
+          onScroll={saveSettingsScroll}
+          ref={restoreSettingsScroll}
+        >
+          <SettingsBody
+            settings={props.settings}
+            update={props.updateSettings}
+            branding={props.source.branding()}
+            search={props.search}
+            onSearch={props.onSearch}
+          />
+        </div>
+      </Show>
+    </>
+  )
+}
+
+function GroveFooter(props: Parameters<NonNullable<SkinWrappers["Footer"]>>[0]) {
+  const b = () => props.source.branding()
+  return (
+    <footer class="px-6 py-10 flex flex-col items-center gap-3 select-none">
+      <div class="flex items-center gap-3 w-full">
+        <div class="h-px flex-1 bg-border-weaker-base" />
+        <RingGlyph class="w-4 h-4 text-icon-weaker-base opacity-70" />
+        <div class="h-px flex-1 bg-border-weaker-base" />
+      </div>
+      <Show
+        when={b().wordmarkUrl}
+        fallback={
+          <div class="text-12-mono text-text-weaker">
+            <Show when={b().name}>
+              <span class="text-text-base">{b().name}</span>
+              <span> · </span>
             </Show>
+            <span>Open(code)Share</span>
           </div>
+        }
+      >
+        <img src={b().wordmarkUrl} alt="" class="h-4 opacity-70" />
+      </Show>
+    </footer>
+  )
+}
 
-          <Show when={searching() && filtered().length > 0}>
-            <div class="flex items-center gap-3 pl-7 mb-8 text-12-mono text-text-weaker">
-              <span>
-                {filtered().length} of {ringCount()} rings match "{props.search.trim()}"
-              </span>
-              <button
-                class="bg-transparent border-none cursor-pointer p-0 text-text-weaker underline underline-offset-2 hover:text-text-base transition-colors duration-150"
-                onClick={() => props.onSearch("")}
-              >
-                clear
-              </button>
-            </div>
+// ---------------------------------------------------------------- skin ----
+export const groveSkin: Skin = {
+  id: "grove",
+  mode: "composed",
+  columnClass: "osh-content mx-auto w-full max-w-[38rem] px-6 pt-10 pb-8 flex flex-col xl:max-w-[48rem] xl:pl-[12rem]",
+  wrappers: {
+    Header: CanopyHeader,
+    Footer: GroveFooter,
+
+    // the trunk: one hairline per turn, segments joined by padding so the
+    // line reads as a single trunk running the length of the season.
+    TurnWrap: (p) => (
+      <div class="relative pl-7 border-l border-border-weaker-base py-8 first:py-0">
+        <Show when={p.index === 0}>
+          <div class="relative mb-7">
+            <span class="absolute right-0 top-0 hidden sm:block text-icon-weaker-base opacity-20" aria-hidden="true">
+              <RingGlyph class="w-14 h-14" />
+            </span>
+            <div class="text-12-mono uppercase tracking-widest text-text-weaker">grove</div>
+          </div>
+        </Show>
+        {p.children}
+      </div>
+    ),
+
+    // a ring on the trunk, and the season label above the prompt
+    PromptWrap: (p) => (
+      <div class="relative mb-5">
+        <span class="absolute -left-3 -top-1 text-icon-weaker-base" aria-hidden="true">
+          <RingGlyph class="w-6 h-6" />
+        </span>
+        <div class="text-12-mono uppercase tracking-widest text-text-weaker">
+          ring {pad(p.section.index + 1)}
+          <Show when={p.section.at}>
+            <span class="normal-case tracking-normal">
+              {" · "}
+              {DateTime.fromMillis(p.section.at!).toFormat("dd MMM, HH:mm")}
+            </span>
           </Show>
+        </div>
+        <div class="mt-1.5">{p.children}</div>
+      </div>
+    ),
 
-          <Show when={ringCount() > 0} fallback={emptyState}>
-            <Show when={filtered().length > 0} fallback={noMatch}>
-              <div classList={{ "relative border-l border-border-weaker-base pl-7": continuous() }}>
-                <For each={filtered()}>
-                  {(s) => (
-                    <SectionView
-                      section={s}
-                      settings={props.settings}
-                      continuous={continuous()}
-                      modelLabel={modelLabelFor(s)}
-                    />
-                  )}
-                </For>
-              </div>
-            </Show>
-          </Show>
+    // a root: the tool hangs in the left margin, a hand-drawn arc carries
+    // it back to the stem, and its output opens flush with the column.
+    ToolWrap: (p) => (
+      <div class="group/root flex flex-col min-w-0 my-0.5 xl:flex-row xl:items-start xl:-ml-[13.5rem]">
+        <span class="hidden xl:block shrink-0 w-6 h-6 text-icon-weaker-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100">
+          <LeafGlyph class="w-3 h-3 mt-1.5" />
+        </span>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          class="hidden xl:block w-6 h-6 shrink-0 text-border-strong-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100"
+          aria-hidden="true"
+        >
+          <path d="M0 11 C 13 11 20 13 20 22" stroke="currentColor" stroke-width="1" />
+        </svg>
+        <div class="min-w-0 mt-1.5 xl:mt-0 xl:ml-3 xl:flex-1">{p.children}</div>
+      </div>
+    ),
 
-          <footer class="flex flex-col items-center gap-3 pl-7 pt-20 pb-10">
-            <div class="flex items-center gap-3 w-full">
-              <div class="h-px flex-1 bg-border-weaker-base" />
-              <RingGlyph class="w-4 h-4 text-icon-weaker-base opacity-70" />
-              <div class="h-px flex-1 bg-border-weaker-base" />
-            </div>
-            <Show
-              when={branding().wordmarkUrl}
-              fallback={
-                <div class="text-12-mono text-text-weaker select-none">
-                  <Show when={branding().name}>
-                    <span class="text-text-base">{branding().name}</span>
-                    <span> · </span>
-                  </Show>
-                  <span>Open(code)Share</span>
-                </div>
-              }
-            >
-              <img src={branding().wordmarkUrl} alt="" class="h-4 opacity-70" />
-            </Show>
-          </footer>
+    // undergrowth: quiet, dashed, tucked beside the trunk
+    ReasoningWrap: (p) => (
+      <div class="relative my-1 xl:-ml-[13.5rem] xl:pl-9">
+        <span class="absolute -left-[1.55rem] top-0.5 hidden xl:block text-icon-weaker-base opacity-70" aria-hidden="true">
+          <GrassGlyph class="w-3 h-3" />
+        </span>
+        <div
+          class="italic text-text-weaker [&_summary]:not-italic [&_summary]:uppercase [&_summary]:tracking-widest [&_summary]:text-12-mono [&_summary+div]:border-dashed [&_summary+div]:border-border-weaker-base"
+        >
+          {p.children}
         </div>
       </div>
-    </div>
-  )
+    ),
+
+    // a bloom: the response opens off the stem in a soft petal of surface
+    ResponseWrap: (p) => (
+      <div class="relative my-6">
+        <span class="absolute -left-[1.6rem] top-3 hidden xl:block text-icon-weaker-base opacity-70" aria-hidden="true">
+          <BloomGlyph class="w-3.5 h-3.5" />
+        </span>
+        <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base px-5 py-4">{p.children}</div>
+      </div>
+    ),
+  },
+}
+
+export function GroveView(props: Parameters<ViewEntry["component"]>[0]) {
+  return <BaseSessionView {...props} skin={groveSkin} />
 }
 
 export const grove: ViewEntry = {

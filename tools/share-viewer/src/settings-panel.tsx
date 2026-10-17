@@ -266,6 +266,12 @@ export function SettingsBody(props: {
             on={props.settings.toolOutput}
             onChange={() => props.update({ toolOutput: !props.settings.toolOutput })}
           />
+          <Switch
+            label="Group read/search tools"
+            hint="classic Explored bundle (off: every tool is its own row)"
+            on={props.settings.toolGrouping}
+            onChange={() => props.update({ toolGrouping: !props.settings.toolGrouping })}
+          />
           <Show when={props.branding.backgroundUrl}>
             <Switch
               label="Background image"
