@@ -21,6 +21,7 @@ import { dict as uiEn } from "@opencode-ai/ui/i18n/en"
 import { Suspense } from "solid-js"
 import { App } from "./app"
 import "./app.css"
+import "./views/skins.css"
 
 // Provider stack mirrored from the enterprise app shell; en locale only,
 // but with the REAL dictionary (raw keys like "ui.tool.shell" rendering on
