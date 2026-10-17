@@ -697,7 +697,7 @@ export function App() {
           </Show>
         </Show>
       </ErrorBoundary>
-      <InfoPanel data={source.data()} sessionID={source.data().sessionID} />
+      <InfoPanel data={source.data()} sessionID={source.data().sessionID} source={source} />
     </Show>
   )
 }

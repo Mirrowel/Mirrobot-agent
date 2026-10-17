@@ -41,7 +41,10 @@ function clock(at?: number): string {
   })
 }
 
-export function InfoPanel(props: { data: ShareData; sessionID: string }) {
+export function InfoPanel(props: { data: ShareData; sessionID: string; source?: { status(): string; shareID: string; rev(): number } }) {
+  const status = () => { try { return props.source?.status() ?? "?" } catch { return "?" } }
+  const shareId = () => { try { return props.source?.shareID ?? "?" } catch { return "?" } }
+  const rev = () => { try { return String(props.source?.rev?.() ?? 0) } catch { return "0" } }
   const usage = (): SessionUsage => sessionUsage(props.data, props.sessionID)
   const info = () => (props.data.session as any[]).find((s) => s.id === props.sessionID)
   const dur = () => {
@@ -80,15 +83,15 @@ export function InfoPanel(props: { data: ShareData; sessionID: string }) {
               <Show when={info()?.parentID}>
                 <Row label="parent" value={String(info().parentID)} />
               </Show>
-              <Row label="status" value={String(props.source.status())} />
+              <Row label="status" value={status()} />
               <Row label="version" value={info()?.version ? `v${info().version}` : "?"} />
               <Row label="model" value={sessionModelLabel(props.data, props.sessionID) || "?"} />
               <Row label="provider" value={(info()?.model as any)?.providerID ?? "?"} />
               <Show when={info()?.directory}>
                 <Row label="worktree" value={String(info().directory)} />
               </Show>
-              <Row label="share" value={props.source.shareID} />
-              <Row label="sync rev" value={String(props.source.rev() ?? 0)} />
+              <Row label="share" value={shareId()} />
+              <Row label="sync rev" value={rev()} />
             </Group>
             <Group label="counts">
               <Row label="prompts" value={fmt(usage().prompts)} />

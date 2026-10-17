@@ -38,6 +38,8 @@ function fmtDur(ms: number | undefined): string | undefined {
 const fmtClock = (t: number | undefined) =>
   t == null ? undefined : DateTime.fromMillis(t).toFormat("HH:mm")
 
+const pad2 = (n: number) => String(n).padStart(2, "0")
+
 const promptTitle = (s: { prompt: string }) =>
   (s.prompt.split("\n")[0] || "(empty prompt)").slice(0, 60)
 
@@ -176,6 +178,23 @@ function TimelineHeader(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0
                 main
               </button>
             </Show>
+            <Show
+              when={brand().logoUrl}
+              fallback={
+                <Show when={brand().name}>
+                  <a
+                    href={brand().linkUrl || "#"}
+                    class="shrink-0 text-12-mono text-text-weaker hover:text-text-base transition-colors duration-150"
+                  >
+                    {brand().name}
+                  </a>
+                </Show>
+              }
+            >
+              <a href={brand().linkUrl || "#"} class="shrink-0">
+                <img src={brand().logoUrl} alt="" class="h-4.5 w-auto rounded-sm" />
+              </a>
+            </Show>
             <h1 class="flex-1 min-w-0 truncate text-16-medium text-text-strong">{info()?.title ?? "session"}</h1>
             <span class={`shrink-0 text-12-mono uppercase tracking-widest border rounded px-1.5 py-0.5 ${statusClass()}`}>
               {props.status}
@@ -238,6 +257,17 @@ function TimelineHeader(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0
 
 function RailEnd(props: Parameters<NonNullable<SkinWrappers["Footer"]>>[0]) {
   const brand = () => props.source.branding()
+  const lastEnd = () => {
+    let end: number | undefined
+    for (const s of sharedSections()) {
+      if (s.at != null && (end == null || s.at > end)) end = s.at
+      for (const e of s.ordered) {
+        const t = e.kind === "tool" ? finite(e.part?.state?.time?.end) : undefined
+        if (t != null && (end == null || t > end)) end = t
+      }
+    }
+    return end
+  }
   return (
     <div class="shrink-0 px-4 sm:px-6 py-3 border-t border-border-weak-base bg-background-base">
       <div class="max-w-[52rem] mx-auto flex items-center justify-between gap-4 text-12-mono text-text-weaker">
@@ -261,6 +291,9 @@ function RailEnd(props: Parameters<NonNullable<SkinWrappers["Footer"]>>[0]) {
               <span class="size-2 rounded-full bg-icon-success-base animate-pulse" />
             </Show>
             end of session
+            <Show when={fmtClock(lastEnd())}>
+              {(c) => <span class="opacity-70">· {c()}</span>}
+            </Show>
           </span>
           <a
             href="https://github.com/Mirrowel/Mirrobot-agent"
@@ -362,6 +395,14 @@ function PromptWrapComp(p: { section: SessionSection; children: JSX.Element }) {
     if (p.section.reasoning.length > 0) parts.push(`${p.section.reasoning.length} reasoning`)
     return parts.join(" · ")
   }
+  const modelChip = () => {
+    const m = p.section.model
+    if (!m?.modelID) return undefined
+    const prev = sharedSections()[p.section.index - 1]?.model
+    if (p.section.index > 0 && prev?.providerID === m.providerID && prev?.modelID === m.modelID)
+      return undefined
+    return `${m.providerID ?? ""}/${m.modelID}`
+  }
   return (
     <div class={COLS}>
       <div class="flex flex-col items-end gap-0.5 pt-1 text-right">
@@ -374,9 +415,19 @@ function PromptWrapComp(p: { section: SessionSection; children: JSX.Element }) {
         node={<span class="relative z-10 mt-1 size-2.5 rounded-full border-2 border-icon-strong-base bg-background-base" />}
       />
       <div class="min-w-0 pt-0.5 pb-2">
-        {p.children}
-        <Show when={counts()}>
-          <div class="mt-1 flex flex-wrap items-center gap-2 text-12-mono text-text-weaker">{counts()}</div>
+        <div class="tl-prompt grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 items-baseline">
+          <span class="text-12-mono text-text-weaker select-none">{pad2(p.section.index + 1)}</span>
+          {p.children}
+        </div>
+        <Show when={counts() || modelChip()}>
+          <div class="mt-1 flex flex-wrap items-center gap-2 text-12-mono text-text-weaker">
+            <Show when={counts()}>
+              <span>{counts()}</span>
+            </Show>
+            <Show when={modelChip()}>
+              <span class="border border-border-weak-base rounded px-1">{modelChip()}</span>
+            </Show>
+          </div>
         </Show>
       </div>
     </div>
@@ -394,7 +445,7 @@ function ToolWrapComp(p: Parameters<NonNullable<SkinWrappers["ToolWrap"]>>[0]) {
     <div class={COLS}>
       <div class="pt-1.5 text-right text-12-mono text-text-weaker">{dur()}</div>
       <Rail node={<span class="relative z-10 mt-[11px] size-[5px] rounded-full bg-icon-base" />} />
-      <div class="min-w-0 py-0.5">{p.children}</div>
+      <div class="tl-tool min-w-0 py-0.5">{p.children}</div>
     </div>
   )
 }
@@ -406,7 +457,7 @@ function ReasoningWrapComp(p: { children: JSX.Element }) {
       <Rail
         node={<span class="relative z-10 mt-[10px] size-[5px] rounded-full border border-icon-weak-base bg-background-base" />}
       />
-      <div class="min-w-0 py-0.5">{p.children}</div>
+      <div class="tl-reason min-w-0 py-0.5">{p.children}</div>
     </div>
   )
 }
@@ -419,7 +470,7 @@ function ResponseWrapComp(p: { text: string; children: JSX.Element }) {
         <span class="text-12-mono text-text-weaker">{t.dur}</span>
       </div>
       <Rail node={<span class="relative z-10 mt-[9px] size-2 rounded-[2px] bg-icon-strong-base" />} />
-      <div class="min-w-0 pt-1">{p.children}</div>
+      <div class="tl-response min-w-0 pt-1">{p.children}</div>
     </div>
   )
 }

@@ -1,19 +1,22 @@
 // TELETYPE: the wire-service skin over the shared base. The masthead
-// carries the edition band, every turn is a dispatch (dateline slug, headline
-// and lede, correspondent byline), tool calls arrive as kickered wire updates
-// rendered by the base's vendored pipeline, reasoning is filed as an editor's
-// note, the copy runs in a narrow column and the ticker footer keeps the
-// desk's running count. The skin only arranges and styles: no data handling,
-// no scroll or search plumbing of its own.
-import { Show, createMemo, createSignal, type JSX } from "solid-js"
-import { DateTime } from "luxon"
+// carries the edition band, every turn is a dispatch (ruled dateline
+// slug, tight headline, lede, correspondent byline, end mark), tool
+// calls arrive as kickered wire updates with the time and hold time
+// stamped beside the chip, reasoning is filed as an editor's note, the
+// copy runs in a newsroom measure and the ticker footer keeps the desk's
+// running count. The skin only arranges and styles: no data handling, no
+// scroll or search plumbing of its own (deep styling of the shared tool
+// rows, reasoning blocks and prose lives in the teletype section of
+// skins.css).
+import { For, Show, createMemo, createSignal, type JSX } from "solid-js"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Mark } from "@opencode-ai/ui/logo"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { BaseSessionView, type Skin, type SkinWrappers } from "./base-view"
 import { SettingsBody, restoreSettingsScroll, saveSettingsScroll } from "../settings-panel"
-import { useSessionSections, type SessionSection, type ToolEntry } from "./session-data"
+import { useSessionSections, type ReasoningEntry, type SessionSection, type ToolEntry } from "./session-data"
 import type { ViewEntry } from "./registry"
+import { visibleMessages } from "../fold"
 
 const OPENSHARE_REPO = "https://github.com/Mirrowel/Mirrobot-agent"
 
@@ -24,9 +27,54 @@ const fileNo = (sessionID: string) =>
 const pad = (n: number) => String(n + 1).padStart(2, "0")
 
 // timestamps arrive as epoch millis on live data and are simply absent on
-// cached snapshots, so every stamp is gated on a real number
+// cached snapshots, so every stamp is gated on a real number; formatted
+// locally (no luxon types in this package)
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+const two = (n: number) => String(n).padStart(2, "0")
+
 const millis = (v: unknown): number | undefined =>
   typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined
+
+const stampParts = (t: number) => {
+  const d = new Date(t)
+  return {
+    dd: two(d.getDate()),
+    mo: MONTHS[d.getMonth()] ?? "",
+    yyyy: d.getFullYear(),
+    hh: two(d.getHours()),
+    mm: two(d.getMinutes()),
+    ss: two(d.getSeconds()),
+  }
+}
+
+const clock = (t?: number) => (t == null ? undefined : `${stampParts(t).hh}:${stampParts(t).mm}`)
+const clockSec = (t?: number) =>
+  t == null ? undefined : `${stampParts(t).hh}:${stampParts(t).mm}:${stampParts(t).ss}`
+const stamp = (t?: number) => {
+  if (t == null) return undefined
+  const p = stampParts(t)
+  return `${p.dd} ${p.mo} ${p.yyyy} ${p.hh}:${p.mm}`
+}
+
+const holdTime = (from?: number, to?: number) => {
+  if (from == null || to == null || to < from) return undefined
+  const s = (to - from) / 1000
+  if (s < 0.1) return "<0.1s"
+  return s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`
+}
+
+// the wire slug: first line is the headline, the rest of the prompt is
+// the lede, so together they carry the full prompt exactly once
+function splitPrompt(prompt: string): { headline: string; lede: string } {
+  const lines = prompt.split("\n")
+  let i = 0
+  while (i < lines.length && !lines[i].trim()) i++
+  const headline = (lines[i] ?? "").trim()
+  const lede = lines.slice(i + 1).join("\n").trim()
+  return { headline: headline || "(untitled dispatch)", lede }
+}
+
+const slug = (s: SessionSection) => splitPrompt(s.prompt).headline.slice(0, 48)
 
 const statusDot = (status: string) =>
   status === "live"
@@ -34,18 +82,6 @@ const statusDot = (status: string) =>
     : status === "error"
       ? "bg-icon-critical-base"
       : "bg-icon-weak-base"
-
-// The base lays a prompt down as one pre-wrap block. Wire copy wants the
-// first line to read as the headline and the rest as the lede, and pre-wrap
-// keeps every prompt newline as a real line break, so ::first-line lands
-// exactly on the headline: the base's own block, typeset as wire copy.
-// Sizes come from the design system tokens, so the reading-text setting
-// still drives them.
-const HEADLINE_AND_LEDE =
-  "[&>div>p]:mt-1 [&>div>p]:max-w-[42rem] [&>div>p]:text-[length:var(--font-size-base)] " +
-  "[&>div>p]:font-regular [&>div>p]:text-text-base " +
-  "[&>div>p]:first-line:text-[length:var(--font-size-x-large)] [&>div>p]:first-line:font-medium " +
-  "[&>div>p]:first-line:tracking-tightest [&>div>p]:first-line:text-text-strong"
 
 // ------------------------------------------------------------- masthead ----
 function BrandTile(props: { logoUrl?: string }) {
@@ -135,12 +171,12 @@ function Masthead(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0]) {
               onClick={() => setSettingsOpen(!settingsOpen())}
             >
               <span class="hidden sm:inline">settings</span>
-              <Icon name={settingsOpen() ? "chevron-up" : "chevron-down"} size="small" />
+              <Icon name="chevron-down" size="small" />
             </button>
             <Show when={settingsOpen()}>
               <div
                 class="absolute top-8 right-0 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
-                onScroll={saveSettingsScroll}
+                onScroll={(e) => saveSettingsScroll(e.currentTarget)}
                 ref={restoreSettingsScroll}
               >
                 <SettingsBody
@@ -162,9 +198,7 @@ function Masthead(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0]) {
           {(t) => (
             <>
               <span class="shrink-0 opacity-50">·</span>
-              <span class="shrink-0 hidden sm:inline">
-                received {DateTime.fromMillis(t()).toFormat("dd MMM yyyy HH:mm")}
-              </span>
+              <span class="shrink-0 hidden sm:inline">received {stamp(t())}</span>
             </>
           )}
         </Show>
@@ -184,6 +218,23 @@ function Ticker(props: Parameters<NonNullable<SkinWrappers["Footer"]>>[0]) {
   const status = () => props.source.status()
   const wireItems = createMemo(() => sections().reduce((n, s) => n + s.tools.length, 0))
   const notes = createMemo(() => sections().reduce((n, s) => n + s.reasoning.length, 0))
+  const searching = () => props.search.trim().length > 0
+  const matches = createMemo(() => {
+    const q = props.search.trim().toLowerCase()
+    if (!q) return undefined
+    return sections().filter(
+      (s) => s.prompt.toLowerCase().includes(q) || s.response.toLowerCase().includes(q),
+    ).length
+  })
+  // the newest completed message is the last copy the desk filed
+  const lastFiled = createMemo(() => {
+    let last: number | undefined
+    for (const m of visibleMessages(props.data, props.sessionID)) {
+      const t = millis((m as any).time?.completed) ?? millis((m as any).time?.created)
+      if (t != null) last = Math.max(last ?? 0, t)
+    }
+    return last
+  })
   return (
     <footer class="shrink-0 border-t border-border-strong-base bg-background-base">
       <div class="flex items-center gap-3 px-4 h-9 overflow-x-auto no-scrollbar whitespace-nowrap text-12-mono text-text-weaker">
@@ -215,10 +266,59 @@ function Ticker(props: Parameters<NonNullable<SkinWrappers["Footer"]>>[0]) {
         <span class="shrink-0 hidden md:inline">
           {sections().length} dispatches · {wireItems()} wire items · {notes()} notes
         </span>
+        <Show when={searching() && matches() != null}>
+          <span class="shrink-0 opacity-50 hidden sm:inline">·</span>
+          <span class="shrink-0 hidden sm:inline">
+            filter "{props.search.trim()}" · {matches()} matches
+          </span>
+        </Show>
         <span class="flex-1" />
+        <Show when={lastFiled()}>
+          {(t) => <span class="shrink-0 hidden lg:inline">last filed {clockSec(t())}</span>}
+        </Show>
         <span class="shrink-0">teletype</span>
       </div>
     </footer>
+  )
+}
+
+// ----------------------------------------------------------- wire index ----
+// the Nav slot as a dispatch index: numbers and slugs, the active sheet
+// highlighted. Selection, filtering and rendering stay with the base.
+function WireIndex(props: Parameters<NonNullable<SkinWrappers["Nav"]>>[0]) {
+  return (
+    <div class="hidden sm:flex flex-col gap-0.5 w-40 max-w-[10rem]">
+      <div class="pb-1 mb-1 text-12-mono uppercase text-text-weaker border-b border-border-weak-base">
+        wire index
+      </div>
+      <For each={props.sections}>
+        {(s, i) => (
+          <button
+            class={
+              "flex items-baseline gap-2 w-full text-left rounded-md px-1.5 py-1 bg-transparent border-none cursor-pointer transition-colors duration-150 " +
+              (props.active === i() ? "bg-surface-base" : "hover:bg-surface-base")
+            }
+            title={splitPrompt(s.prompt).headline}
+            onClick={() => props.onSelect(i())}
+          >
+            <span
+              class={
+                "text-12-mono shrink-0 " + (props.active === i() ? "text-text-strong" : "text-text-weaker")
+              }
+            >
+              {pad(s.index)}
+            </span>
+            <span
+              class={
+                "text-12-regular truncate " + (props.active === i() ? "text-text-base" : "text-text-weaker")
+              }
+            >
+              {slug(s)}
+            </span>
+          </button>
+        )}
+      </For>
+    </div>
   )
 }
 
@@ -231,8 +331,8 @@ const KICKER_TONE: Record<Kicker["tone"], string> = {
   weak: "border-border-weak-base text-text-weaker",
 }
 
-// what the wire calls a tool part: urgent when it broke, developing while it
-// runs, a draft before it starts, otherwise a filed update
+// what the wire calls a tool part: urgent when it broke, developing while
+// it runs, a draft before it starts, otherwise a filed update
 function wireKicker(tool: ToolEntry): Kicker {
   const status = tool.part.state?.status
   if (status === "error") return { label: "urgent", tone: "critical" }
@@ -248,32 +348,39 @@ function correspondent(section: SessionSection): string | undefined {
   return m.modelID ?? m.providerID
 }
 
-function Dispatch(props: { section: SessionSection; children: JSX.Element }) {
+// one dispatch: a ruled frame closed with the wire's end mark (also the
+// only closing signal in nav mode, where no next dispatch draws the rule)
+function Dispatch(props: { section: SessionSection; index: number; children: JSX.Element }) {
   return (
     <article class="pt-8 first:pt-2 border-t border-border-strong-base first:border-none">
       {props.children}
+      <div class="pt-1 pb-2 text-12-mono text-text-weaker opacity-60 select-none">-30-</div>
     </article>
   )
 }
 
 function Slug(props: { section: SessionSection; children: JSX.Element }) {
+  const split = () => splitPrompt(props.section.prompt)
   const model = () => correspondent(props.section)
   return (
     <div>
-      {/* dateline slug: number, wire mark, received time, ruled off */}
+      {/* dateline slug: number, wordmark, received time, ruled off to the edge */}
       <div class="flex items-center gap-2.5 text-12-mono text-text-weaker">
         <span class="text-text-strong">{pad(props.section.index)}</span>
         <span class="uppercase">dispatch</span>
-        <Show when={props.section.at}>
-          {(t) => <span>{DateTime.fromMillis(t()).toFormat("HH:mm")}</span>}
-        </Show>
+        <Show when={clock(props.section.at)}>{(t) => <span>{t()}</span>}</Show>
         <span class="flex-1 border-t border-border-weak-base" />
       </div>
-      {/* the base's prompt block, set as wire copy: headline over lede */}
-      <div class={HEADLINE_AND_LEDE}>{props.children}</div>
+      {/* headline over lede: the prompt set as wire copy */}
+      <h2 class="mt-2 text-20-medium text-text-strong break-words">{split().headline}</h2>
+      <Show when={split().lede}>
+        <p class="mt-2 max-w-[40rem] text-14-regular text-text-base whitespace-pre-wrap">
+          {split().lede}
+        </p>
+      </Show>
       {/* byline: who filed the copy */}
       <Show when={model()}>
-        <div class="mt-3 flex items-center gap-2 min-w-0 border-t border-border-weaker-base pt-2 text-12-mono text-text-weaker">
+        <div class="mt-3 flex items-center gap-2 min-w-0 text-12-mono text-text-weaker">
           <Show when={props.section.model?.providerID}>
             {(id) => <ProviderIcon id={id()} class="size-3.5 shrink-0 text-icon-strong-base" />}
           </Show>
@@ -281,45 +388,73 @@ function Slug(props: { section: SessionSection; children: JSX.Element }) {
           <span class="text-text-base truncate">{model()}</span>
         </div>
       </Show>
+      {/* the base's own prompt block and meta line stay in the tree (and
+          stay reactive) but this wrapper typesets the copy itself, so
+          they are kept out of view: same text, wire presentation */}
+      <div hidden>{props.children}</div>
     </div>
   )
 }
 
 function WireUpdate(props: { entry: ToolEntry; children: JSX.Element }) {
   const kicker = () => wireKicker(props.entry)
+  const start = () => millis(props.entry.part.state?.time?.start)
+  const held = () => holdTime(start(), millis(props.entry.part.state?.time?.end))
   return (
-    <div class="flex items-start gap-2.5">
-      <span
-        class={"shrink-0 mt-1 rounded-xs border px-1.5 text-12-mono uppercase " + KICKER_TONE[kicker().tone]}
-      >
-        {kicker().label}
-      </span>
+    <div class="my-2 flex items-start gap-2.5">
+      {/* stamped rail: kicker chip over the time the wire item crossed
+          and how long it was held */}
+      <div class="flex flex-col items-center gap-1 shrink-0 pt-1 w-22">
+        <span
+          class={
+            "w-full text-center rounded-xs border px-1.5 text-12-mono uppercase " +
+            KICKER_TONE[kicker().tone]
+          }
+        >
+          {kicker().label}
+        </span>
+        <Show when={clockSec(start())}>
+          {(t) => <span class="text-12-mono text-text-weaker whitespace-nowrap">{t()}</span>}
+        </Show>
+        <Show when={held()}>
+          {(d) => <span class="text-12-mono text-text-weaker whitespace-nowrap">{d()}</span>}
+        </Show>
+      </div>
       <div class="flex-1 min-w-0">{props.children}</div>
     </div>
   )
 }
 
-function EditorNote(props: { children: JSX.Element }) {
+// the base's reasoning block is relabeled as the note by skins.css (the
+// label line, the meta stamps and the chevron are generated there); this
+// wrapper supplies the aside frame and the meta stamps themselves
+function EditorNote(props: { entry: ReasoningEntry; children: JSX.Element }) {
+  const start = () => millis(props.entry.part.time?.start)
+  const held = () => holdTime(start(), millis(props.entry.part.time?.end))
+  const meta = () => [clockSec(start()), held()].filter(Boolean).join(" · ")
   return (
-    <aside class="mt-1 rounded-md border border-dashed border-border-weak-base px-3 py-2">
-      <div class="mb-1 text-12-mono uppercase text-text-weaker">editor's note</div>
-      <div class="text-14-regular italic text-text-weaker [&_p]:my-1">{props.children}</div>
+    <aside
+      class="mt-1 rounded-md border border-dashed border-border-weak-base px-3 py-2"
+      style={meta() ? ({ "--note-meta": ` " · ${meta()}"` } as JSX.CSSProperties) : undefined}
+    >
+      {props.children}
     </aside>
   )
 }
 
 function Copy(props: { children: JSX.Element }) {
-  return <div class="mt-2 max-w-[44rem] [&_p]:my-2 [&_ul]:pl-5">{props.children}</div>
+  return <div class="tt-copy mt-2 max-w-[40rem]">{props.children}</div>
 }
 
 // ----------------------------------------------------------------- skin ----
 export const teletypeSkin: Skin = {
   id: "teletype",
   mode: "composed",
-  columnClass: "max-w-[54rem] mx-auto px-4 sm:px-6 py-6 osh-content flex flex-col gap-3",
+  columnClass: "max-w-[54rem] mx-auto px-4 sm:px-6 py-6 osh-content flex flex-col",
   wrappers: {
     Header: Masthead,
     Footer: Ticker,
+    Nav: WireIndex,
     TurnWrap: Dispatch,
     PromptWrap: Slug,
     ToolWrap: WireUpdate,

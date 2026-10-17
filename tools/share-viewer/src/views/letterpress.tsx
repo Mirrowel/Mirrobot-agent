@@ -60,19 +60,10 @@ const PROMPT_LEAF =
 const PROMPT_RUNNING =
   "[&_p:first-of-type]:[font-size:calc(var(--font-size-large)*1.05)]! [&_p:first-of-type]:[line-height:1.5]!"
 
-// sizes stay in font-size tokens so settings.readText still drives them;
-// the base's text-14 wrappers set their own size, so the reading sizes ride
-// on as important overrides aimed at the base's child wrappers
-const PROSE_CLASSES =
-  "max-w-[44rem] [&>div]:[font-size:calc(var(--font-size-base)*1.14)]! [&>div]:[line-height:1.72]! " +
-  "[&_p]:mb-[0.95em] [&_h1]:text-[1.42em] [&_h1]:my-[1.4em] [&_h2]:text-[1.2em] [&_h2]:my-[1.2em] [&_h3]:text-[1.04em] " +
-  "[&_ul]:pl-[1.5em] [&_ol]:pl-[1.5em] [&_li]:mb-[0.35em] [&_blockquote]:italic [&_hr]:my-[1.6em] " +
-  "lg:[&_p]:text-justify lg:[&_p]:hyphens-auto"
-// narrow measure in the margin: never justified, it opens rivers
-const MARGIN_CLASSES =
-  "my-2 max-w-[42rem] pl-3 border-l border-border-weaker-base [&_details>div]:italic " +
-  "[&_details>div]:[font-size:calc(var(--font-size-small)*1.02)]! [&_details>div]:[line-height:1.62]! " +
-  "[&_p]:mb-[0.8em] [&_ul]:pl-[1.4em] [&_ol]:pl-[1.4em]"
+// the reading sizes ride in skins.css ([data-view="letterpress"]); these
+// wrappers carry only layout: the measure and the rhythm
+const PROSE_WRAP = "my-1"
+const MARGIN_WRAP = "my-1.5"
 
 // small-caps label: the workhorse of a printed page
 function Sc(props: { children?: JSX.Element; class?: string }) {
@@ -181,7 +172,7 @@ function RunningHead(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0]) 
             onClick={() => setOpen(!open())}
           >
             <Sc class="hidden sm:inline">settings</Sc>
-            <Icon name={open() ? "chevron-down" : "chevron-up"} size="small" />
+            <Icon name="settings-gear" size="small" />
           </button>
         </div>
       </header>
@@ -193,7 +184,7 @@ function RunningHead(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0]) 
           }}
         >
           <div class="w-[19rem] max-h-[75vh] overflow-y-auto rounded-lg border border-border-weak-base bg-background-base shadow-xl"
-            onScroll={saveSettingsScroll}
+            onScroll={(e) => saveSettingsScroll(e.currentTarget)}
             ref={restoreSettingsScroll}
           >
             <div class="px-4 pt-3">
@@ -329,7 +320,7 @@ function FrontMatter(props: Parameters<NonNullable<SkinWrappers["Nav"]>>[0] & { 
               >
                 <span class="w-7 shrink-0 text-right text-12-mono text-text-weaker">{roman(s.index + 1)}</span>
                 <span
-                  class="min-w-0 flex-1 truncate text-13-regular text-text-base transition-colors duration-150 group-hover:text-text-strong"
+                  class="min-w-0 flex-1 truncate text-14-regular text-text-base transition-colors duration-150 group-hover:text-text-strong"
                   style={{ "font-family": SERIF }}
                 >
                   {firstTextLine(s.prompt)}
@@ -356,14 +347,16 @@ export function letterpressSkin(props: ViewProps): Skin {
   return {
     id: "letterpress",
     mode: "composed",
-    columnClass: "mx-auto w-full max-w-[56rem] px-5 lg:px-10 py-8 flex flex-col gap-10",
+    // one measure for the whole volume: prompt, notes and prose share the
+    // text column, so the leaf reads like a page, not a dashboard
+    columnClass: "mx-auto w-full max-w-[40rem] px-6 lg:px-8 py-10 flex flex-col gap-12",
     wrappers: {
       Header: RunningHead,
       Footer: Colophon,
       Nav: (nav) => <FrontMatter {...nav} ctx={props} />,
       TurnWrap: (p) => (
         <article data-leaf={p.section.id} class="scroll-mt-24">
-          <Show when={p.index > 0}>
+          <Show when={p.index > 0 && !continuous()}>
             <div
               class="flex items-center justify-center py-9 text-text-weaker opacity-45"
               style={{ "font-family": SERIF }}
@@ -382,9 +375,11 @@ export function letterpressSkin(props: ViewProps): Skin {
         }
         return (
           <div style={{ "font-family": SERIF_DISPLAY }}>
-            <div class="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <Sc class="text-12-medium text-text-strong">{`leaf ${roman(p.section.index + 1)}`}</Sc>
-            </div>
+            <Show when={!continuous()}>
+              <div class="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <Sc class="text-12-medium text-text-strong">{`leaf ${roman(p.section.index + 1)}`}</Sc>
+              </div>
+            </Show>
             <div
               class={`text-text-strong ${drop() ? DROP_CAP : ""} ${
                 continuous() ? PROMPT_RUNNING : PROMPT_LEAF
@@ -396,30 +391,25 @@ export function letterpressSkin(props: ViewProps): Skin {
         )
       },
       ToolWrap: (p) => (
-        <div
-          class={`flex items-start gap-2 ${
-            p.index === 0 ? "mt-3 pt-3 border-t border-border-weaker-base" : "mt-2"
-          }`}
-        >
-          <span
-            class="shrink-0 select-none align-super pt-1 text-[0.72em] leading-none font-medium text-text-weaker"
-            style={{ "font-family": SERIF }}
-          >
-            {p.index + 1}
-          </span>
-          <div class="min-w-0 flex-1">{p.children}</div>
+        <div class={p.index === 0 ? "mt-4" : "mt-1.5"}>
+          <Show when={p.index === 0}>
+            <div class="mb-1.5 flex items-baseline gap-2 border-b border-border-weaker-base pb-1">
+              <Sc class="text-12-medium text-text-base">notes</Sc>
+            </div>
+          </Show>
+          <div class="flex items-start gap-2">
+            <span
+              class="w-3 shrink-0 select-none pt-1 text-left text-[0.72em] leading-none font-medium text-text-weaker"
+              style={{ "font-family": SERIF }}
+            >
+              {p.index + 1}
+            </span>
+            <div class="min-w-0 flex-1">{p.children}</div>
+          </div>
         </div>
       ),
-      ReasoningWrap: (p) => (
-        <div class={MARGIN_CLASSES} style={{ "font-family": SERIF }}>
-          {p.children}
-        </div>
-      ),
-      ResponseWrap: (p) => (
-        <div class={PROSE_CLASSES} style={{ "font-family": SERIF }}>
-          {p.children}
-        </div>
-      ),
+      ReasoningWrap: (p) => <div class={MARGIN_WRAP}>{p.children}</div>,
+      ResponseWrap: (p) => <div class={PROSE_WRAP}>{p.children}</div>,
     },
   }
 }

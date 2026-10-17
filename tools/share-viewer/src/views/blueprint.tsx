@@ -87,6 +87,31 @@ function DraftingHeader(props: HeaderProps) {
         }
         .bp-dim::before { left: 0; border-left: 7px solid var(--border-strong-base); }
         .bp-dim::after { right: 0; border-right: 7px solid var(--border-strong-base); }
+        .bp-dim-l, .bp-dim-r {
+          position: relative;
+          height: 1px;
+          background: var(--border-weak-base);
+        }
+        .bp-dim-l::before {
+          content: "";
+          position: absolute;
+          top: 50%;
+          margin-top: -4px;
+          left: 0;
+          border-top: 4px solid transparent;
+          border-bottom: 4px solid transparent;
+          border-right: 7px solid var(--border-weak-base);
+        }
+        .bp-dim-r::after {
+          content: "";
+          position: absolute;
+          top: 50%;
+          margin-top: -4px;
+          right: 0;
+          border-top: 4px solid transparent;
+          border-bottom: 4px solid transparent;
+          border-left: 7px solid var(--border-weak-base);
+        }
         .bp-sheet::before {
           content: "";
           position: absolute;
@@ -235,6 +260,11 @@ function BillOfMaterials(props: NavProps) {
         <span class="text-12-mono uppercase tracking-widest text-text-weaker">bill of materials</span>
         <span class="text-12-mono text-text-weaker">{props.sections.length}</span>
       </div>
+      <div class="grid grid-cols-[2.75rem_1fr_3rem] gap-2 px-3 py-1 border-b border-border-weak-base text-12-mono uppercase tracking-widest text-text-weaker">
+        <span>no.</span>
+        <span>description</span>
+        <span class="text-right">det</span>
+      </div>
       <For each={props.sections}>
         {(s, i) => (
           <button
@@ -257,10 +287,20 @@ function BillOfMaterials(props: NavProps) {
   )
 }
 
-// one issued view: a construction rail with datum diamond and V-NN tag
+// one issued view: a construction rail with datum diamond and V-NN tag;
+// between views, a dimensioned sheet break (SHT NN) centered in the gap
 function Sheet(props: TurnProps) {
   return (
     <article class="relative sm:pl-9 scroll-mt-16">
+      <Show when={props.index > 0}>
+        <div class="absolute -top-6 left-0 right-0 flex items-center gap-3" aria-hidden="true">
+          <span class="bp-dim-l flex-1" />
+          <span class="shrink-0 text-12-mono uppercase tracking-widest text-text-weaker">
+            sht {pad(props.index)}
+          </span>
+          <span class="bp-dim-r flex-1" />
+        </div>
+      </Show>
       <span class="hidden sm:block absolute left-0 top-0 bottom-0 w-px bg-border-weak-base" aria-hidden="true" />
       <span
         class="hidden sm:block absolute -left-1 top-2 size-2 rotate-45 border border-border-strong-base bg-background-base"
@@ -271,7 +311,8 @@ function Sheet(props: TurnProps) {
   )
 }
 
-// D-numbered detail box: chamfered frame around the vendored tool part
+// D-numbered detail box: chamfered frame around the vendored tool part;
+// the bar carries the detail number, the tool name, and a REF-style label
 function DetailBox(props: ToolProps) {
   return (
     <div class="relative my-2">
@@ -280,11 +321,14 @@ function DetailBox(props: ToolProps) {
         <div class="bp-cut-in bg-background-base px-3 py-1">
           <div class="flex items-center gap-2 pb-1 border-b border-border-weak-base">
             <span class="shrink-0 text-12-mono text-text-strong">D-{pad(props.index)}</span>
-            <span class="min-w-0 truncate text-12-mono uppercase tracking-wider text-text-weaker">
+            <span class="min-w-0 flex-1 truncate text-12-mono uppercase tracking-wider text-text-weaker">
               {props.entry.tool}
             </span>
+            <span class="shrink-0 text-12-mono uppercase tracking-widest text-text-weaker opacity-70">
+              detail
+            </span>
           </div>
-          <div class="min-w-0 py-1">{props.children}</div>
+          <div class="bp-tool min-w-0 py-1">{props.children}</div>
         </div>
       </div>
     </div>
@@ -295,14 +339,14 @@ export const blueprintSkin: Skin = {
   id: "blueprint",
   mode: "composed",
   columnClass:
-    "bp-sheet bp-grid relative w-full max-w-[56rem] mx-auto px-4 sm:px-8 py-8 flex flex-col gap-10 border border-border-base",
+    "bp-sheet bp-grid relative w-full max-w-[56rem] mx-auto px-4 sm:px-8 py-8 flex flex-col gap-8 border border-border-base",
   wrappers: {
     Header: DraftingHeader,
     Footer: TitleBlockFooter,
     Nav: BillOfMaterials,
     TurnWrap: Sheet,
     PromptWrap: (p) => (
-      <div class="relative">
+      <div class="bp-req relative">
         <div class="flex items-center gap-2.5 mb-1.5">
           <span class="shrink-0 text-12-mono text-text-strong border border-border-base px-1.5 py-0.5">
             V-{pad(p.section.index)}
@@ -317,7 +361,7 @@ export const blueprintSkin: Skin = {
     ReasoningWrap: (p) => (
       <div class="relative my-1.5">
         <Elbow top="9px" />
-        <div class="border-l border-dashed border-border-weak-base pl-3">{p.children}</div>
+        {p.children}
       </div>
     ),
     ResponseWrap: (p) => (
@@ -325,7 +369,10 @@ export const blueprintSkin: Skin = {
         <div class="relative mt-4">
           <Elbow top="9px" />
           <div class="flex items-center gap-3 mb-2">
-            <span class="text-12-mono uppercase tracking-widest text-text-weaker">notes</span>
+            <span class="flex items-center gap-1.5 shrink-0 text-12-mono uppercase tracking-widest text-text-weaker">
+              <span class="size-1.5 bg-border-strong-base" aria-hidden="true" />
+              notes
+            </span>
             <span class="flex-1 h-px bg-border-weak-base" />
           </div>
           {p.children}

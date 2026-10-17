@@ -39,16 +39,6 @@ function LeafGlyph(props: { class?: string }) {
   )
 }
 
-function GrassGlyph(props: { class?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" class={props.class} aria-hidden="true">
-      <path d="M3 13 C 4.6 9.6 4.8 6.8 4 3.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
-      <path d="M8 13 C 8 9 8 6 8 2.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
-      <path d="M13 13 C 11.4 9.6 11.2 6.8 12 3.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
-    </svg>
-  )
-}
-
 function BloomGlyph(props: { class?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" class={props.class} aria-hidden="true">
@@ -108,7 +98,7 @@ function CanopyHeader(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0])
             onClick={() => setMenuOpen(!menuOpen())}
           >
             <span class="hidden sm:block">settings</span>
-            <Icon name={menuOpen() ? "chevron-down" : "chevron-up"} size="small" />
+            <Icon name="chevron-down" size="small" classList={{ "rotate-180": menuOpen() }} />
           </button>
         </div>
       </header>
@@ -116,7 +106,7 @@ function CanopyHeader(props: Parameters<NonNullable<SkinWrappers["Header"]>>[0])
       <Show when={menuOpen()}>
         <div
           class="fixed top-10 right-4 z-[70] w-72 max-h-[calc(100vh-4rem)] overflow-y-auto p-4 rounded-xl border border-border-weak-base bg-background-base shadow-xl"
-          onScroll={saveSettingsScroll}
+          onScroll={(e) => saveSettingsScroll(e.currentTarget)}
           ref={restoreSettingsScroll}
         >
           <SettingsBody
@@ -177,17 +167,23 @@ export const groveSkin: Skin = {
             <span class="absolute right-0 top-0 hidden sm:block text-icon-weaker-base opacity-20" aria-hidden="true">
               <RingGlyph class="w-14 h-14" />
             </span>
-            <div class="text-12-mono uppercase tracking-widest text-text-weaker">grove</div>
+            <div class="text-12-mono uppercase tracking-widest text-text-weaker">
+              grove
+              <Show when={p.section.at}>
+                {" · "}
+                {DateTime.fromMillis(p.section.at!).toFormat("dd MMM yyyy")}
+              </Show>
+            </div>
           </div>
         </Show>
         {p.children}
       </div>
     ),
 
-    // a ring on the trunk, and the season label above the prompt
+    // a ring threaded on the trunk, and the season label above the prompt
     PromptWrap: (p) => (
       <div class="relative mb-5">
-        <span class="absolute -left-3 -top-1 text-icon-weaker-base" aria-hidden="true">
+        <span class="absolute -left-10 -top-1 text-icon-weaker-base" aria-hidden="true">
           <RingGlyph class="w-6 h-6" />
         </span>
         <div class="text-12-mono uppercase tracking-widest text-text-weaker">
@@ -203,46 +199,41 @@ export const groveSkin: Skin = {
       </div>
     ),
 
-    // a root: the tool hangs in the left margin, a hand-drawn arc carries
-    // it back to the stem, and its output opens flush with the column.
+    // a root: the leaf and its hand-drawn arc hang in the left gutter and
+    // the arc lands on the trunk; the vendored row and its output open
+    // flush with the reading measure
     ToolWrap: (p) => (
-      <div class="group/root flex flex-col min-w-0 my-0.5 xl:flex-row xl:items-start xl:-ml-[13.5rem]">
-        <span class="hidden xl:block shrink-0 w-6 h-6 text-icon-weaker-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100">
-          <LeafGlyph class="w-3 h-3 mt-1.5" />
-        </span>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          class="hidden xl:block w-6 h-6 shrink-0 text-border-strong-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100"
-          aria-hidden="true"
-        >
-          <path d="M0 11 C 13 11 20 13 20 22" stroke="currentColor" stroke-width="1" />
-        </svg>
-        <div class="min-w-0 mt-1.5 xl:mt-0 xl:ml-3 xl:flex-1">{p.children}</div>
+      <div class="group/root flex flex-col min-w-0 my-0.5 xl:flex-row xl:items-start xl:-ml-40">
+        <div class="hidden xl:flex items-start justify-end shrink-0 w-40">
+          <span class="mt-1.5 shrink-0 text-icon-weaker-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100">
+            <LeafGlyph class="w-3 h-3" />
+          </span>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            class="w-6 h-6 shrink-0 text-border-strong-base opacity-70 transition-opacity duration-150 group-hover/root:opacity-100"
+            aria-hidden="true"
+          >
+            <path d="M0 11 C 13 11 20 13 20 22" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </div>
+        <div class="min-w-0 mt-1.5 xl:mt-0 xl:pl-7 xl:flex-1">{p.children}</div>
       </div>
     ),
 
-    // undergrowth: quiet, dashed, tucked beside the trunk
-    ReasoningWrap: (p) => (
-      <div class="relative my-1 xl:-ml-[13.5rem] xl:pl-9">
-        <span class="absolute -left-[1.55rem] top-0.5 hidden xl:block text-icon-weaker-base opacity-70" aria-hidden="true">
-          <GrassGlyph class="w-3 h-3" />
-        </span>
-        <div
-          class="italic text-text-weaker [&_summary]:not-italic [&_summary]:uppercase [&_summary]:tracking-widest [&_summary]:text-12-mono [&_summary+div]:border-dashed [&_summary+div]:border-border-weaker-base"
-        >
-          {p.children}
-        </div>
-      </div>
-    ),
+    // undergrowth: a quiet dashed layer beneath the bloom (skins.css
+    // swaps the label for the grass mark and the word undergrowth)
+    ReasoningWrap: (p) => <div class="grove-undergrowth">{p.children}</div>,
 
     // a bloom: the response opens off the stem in a soft petal of surface
     ResponseWrap: (p) => (
-      <div class="relative my-6">
-        <span class="absolute -left-[1.6rem] top-3 hidden xl:block text-icon-weaker-base opacity-70" aria-hidden="true">
+      <div class="grove-bloom relative my-6">
+        <span class="absolute -left-9 top-3 hidden xl:block text-icon-weaker-base opacity-70" aria-hidden="true">
           <BloomGlyph class="w-3.5 h-3.5" />
         </span>
-        <div class="rounded-xl border border-border-weaker-base bg-surface-raised-base px-5 py-4">{p.children}</div>
+        <div class="rounded-[12px_18px_12px_20px] border border-border-weaker-base bg-surface-raised-base px-5 py-4">
+          {p.children}
+        </div>
       </div>
     ),
   },
