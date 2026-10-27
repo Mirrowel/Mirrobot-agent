@@ -53,7 +53,7 @@ Agent sessions are viewable two ways, both encrypted end-to-end against `SHARE_L
 - **Passive (always on):** every run exports the finished session (including reasoning, plus subagent sessions) as a gzip + AES/RSA artifact (`MRB2`), uploaded as a private Actions artifact; the run summary carries a small encrypted meta blob with the context (repo, run, and the live URL when present). Nothing session-shaped is ever readable in logs.
 - **Live (optional, `OPENSHARE_CONFIG_JSON`):** sessions stream to the operator's [OpenShare](https://github.com/Mirrowel/OpenShare) worker as they run. Share URLs and the read-auth credentials never appear in public output — the plugin writes URLs to a runner-temp file, which only feeds the encrypted summary blob.
 
-Independent of both, `share-filter.sh` redacts credential-shaped content from any output line before it can reach a log or share: GitHub token families, provider key prefixes (`cr_`, `sk-`, `xai-`, ...), and JSON key/value credential pairs — masked and replaced with `[REDACTED]` — so a leak needs both an unknown shape and a broken rule to land.
+Independent of both, `share-filter.sh` redacts credential-shaped content from the run's output stream before it reaches the **public Actions log**: GitHub token families, provider key prefixes (`cr_`, `sk-`, `xai-`, ...), and JSON key/value credential pairs — masked and replaced with `[REDACTED]`. This covers logs only. Share and artifact content is the session itself: a tool output that echoes a token rides the live share as-is, protected by the read-auth gate (and by the artifact's encryption), not by filtering.
 
 ## Scope-of-action rules
 
