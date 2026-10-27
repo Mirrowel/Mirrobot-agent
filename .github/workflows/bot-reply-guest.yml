@@ -546,6 +546,7 @@ jobs:
           plugins-json-3: ${{ vars.OPENCODE_PLUGINS_JSON_3 }}
           plugins-json-4: ${{ vars.OPENCODE_PLUGINS_JSON_4 }}
           plugins-json-5: ${{ vars.OPENCODE_PLUGINS_JSON_5 }}
+          openshare-config-json: ${{ secrets.OPENSHARE_CONFIG_JSON }}
 
       - name: Add reaction to comment (lifecycle start)
         if: steps.validate.outputs.should_proceed == 'true' && steps.fast_eyes.outputs.posted != 'true'
@@ -584,6 +585,7 @@ jobs:
           cp .github/scripts/react.sh /tmp/react.sh
           cp .github/scripts/opencode-cleanup.sh /tmp/opencode-cleanup.sh
           cp .github/scripts/share-filter.sh /tmp/share-filter.sh
+          cp .github/scripts/export-session.py /tmp/export-session.py
           cp .github/scripts/split-diff.sh /tmp/split-diff.sh
           cp .github/scripts/minimized-nodes.sh /tmp/minimized-nodes.sh
           cp .github/scripts/bot-config.sh /tmp/bot-config.sh
@@ -851,6 +853,11 @@ jobs:
       - name: Analyze comment and respond
         if: steps.validate.outputs.should_proceed == 'true'
         env:
+          # OpenShare live sharing (plugin staged by bot-setup;
+          # urlFile/spool are runner-path-dependent, so they ride env,
+          # not the config secret).
+          OPENSHARE_URL_FILE: ${{ runner.temp }}/openshare-urls.txt
+          OPENSHARE_SPOOL_DIR: ${{ runner.temp }}/openshare-spool
           GH_TOKEN: ${{ steps.setup.outputs.token }}
           # gh defaults to the FOREIGN repo for this session (GH_REPO is the
           # gh CLI's own variable - legal to set; the platform restriction
@@ -883,6 +890,34 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Passive session export (encrypted artifact)
+        # OpenShare offline track: always runs, live sharing or not (live
+        # sharing is optional; the passive artifact is not). Best-effort:
+        # never fails the run - a visible warning is the failure signal.
+        if: always()
+        continue-on-error: true
+        env:
+          SHARE_LINK_PUBKEY: ${{ secrets.SHARE_LINK_PUBKEY }}
+          OPENSHARE_URL_FILE: ${{ runner.temp }}/openshare-urls.txt
+        run: |
+          set -eu
+          ARGS=()
+          if [ -s "${OPENSHARE_URL_FILE:-}" ]; then
+            ARGS+=(--live-url "$(head -n1 "$OPENSHARE_URL_FILE")")
+          fi
+          python3 /tmp/export-session.py --out-dir "${RUNNER_TEMP:-/tmp}" \
+            --run-id "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" "${ARGS[@]}"
+
+      - name: Upload session artifact
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: session-${{ github.run_id }}.enc
+          path: ${{ runner.temp }}/session-${{ github.run_id }}.enc
+          retention-days: 90
+          if-no-files-found: ignore
+
       - name: Share link summary
         if: always() && steps.validate.outputs.should_proceed == 'true'
         run: |
@@ -899,6 +934,9 @@ jobs:
                 echo "Context: $(cat "$RUNNER_TEMP/share-link.ctx")"
               fi
             } >> "$GITHUB_STEP_SUMMARY"
+            if [ -s "$TMP_DIR/session-meta.txt" ]; then
+              cat "$TMP_DIR/session-meta.txt"
+            fi
           fi
 
       - name: Lifecycle reaction (session success)

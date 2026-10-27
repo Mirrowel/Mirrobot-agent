@@ -391,6 +391,43 @@ fi
 section_end
 fi
 
+# OpenShare export-session v2 behavioral probe (helper; the multiline
+# heredoc must live in a function body, not inside $() - the MSYS parser
+# rejects multiline command substitution with heredocs).
+osh_v2_probe() { # exporter-path
+  local py=""
+  local cand
+  for cand in python3 python; do
+    if "$cand" -c 'import sys' >/dev/null 2>&1; then py="$cand"; break; fi
+  done
+  [ -z "$py" ] && return 0
+  "$py" - "$1" <<'PYEOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("exp", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+export = {"info": {"id": "ses_t"}, "messages": [
+    {"info": {"id": "m1", "role": "user", "time": {"created": 1},
+              "model": {"modelID": "m", "providerID": "p"}},
+     "parts": [{"type": "text", "text": "hi"}]},
+    {"info": {"id": "m2", "role": "assistant", "time": {"created": 2},
+              "modelID": "m", "providerID": "p", "agent": "build"},
+     "parts": [{"type": "text", "text": "yo"},
+               {"type": "tool", "tool": "bash", "id": "t1",
+                "state": {"status": "completed", "output": "ok"}}]},
+]}
+items = mod.export_to_data(export, "ses_t")
+msgs = [i["data"] for i in items if i["type"] == "message"]
+assert not [i for i in items if i["type"] == "part"], "part items must not exist in v2"
+assert msgs[0].get("text") == "hi", "user text must be embedded"
+assert msgs[1]["content"][0] == {"type": "text", "text": "yo"}, "text must be first content"
+assert any(c.get("type") == "tool" for c in msgs[1]["content"]), "tool content must be embedded"
+assert any(c.get("name") == "shell" for c in msgs[1]["content"]), "bash maps to shell"
+assert any(i["type"] == "model" for i in items), "model item must exist"
+print("ok")
+PYEOF
+}
+
 # ---- share-link filter contract (drift tripwire) ---------------------------
 SECTION_NAME='share-link filter contract (drift tripwire)'
 if [ "$PARALLEL" = 1 ]; then
@@ -445,7 +482,34 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "stats: $wf runs bare stats (no --days)"   no  "$(grep -q 'stats --days' "$WFF" && echo yes || echo no)"
   # Pause gate: the agent's brain skips visibly; rails (stub/gate) stay on.
   check "pause: $wf job gated on AGENT_PAUSED"     yes "$(grep -q "vars.AGENT_PAUSED != 'true'" "$WFF" && echo yes || echo no)"
+  # ---- OpenShare live-sharing + passive-artifact contract ----
+  check "openshare: $wf passes config secret"      yes "$(grep -q 'openshare-config-json: \${{ secrets.OPENSHARE_CONFIG_JSON }}' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf session urlFile env"       yes "$(grep -q 'OPENSHARE_URL_FILE: \${{ runner.temp }}/openshare-urls.txt' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf session spool env"         yes "$(grep -q 'OPENSHARE_SPOOL_DIR: \${{ runner.temp }}/openshare-spool' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf copies exporter to /tmp"   yes "$(grep -q 'cp .github/scripts/export-session.py /tmp/export-session.py' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf passive export step"       yes "$(grep -q 'Passive session export (encrypted artifact)' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf passive runs always()"     yes "$(grep -A6 'Passive session export' "$WFF" | grep -q 'if: always()' && echo yes || echo no)"
+  check "openshare: $wf passive never fails run"   yes "$(grep -A6 'Passive session export' "$WFF" | grep -q 'continue-on-error: true' && echo yes || echo no)"
+  check "openshare: $wf artifact upload wired"     yes "$(grep -q 'name: session-\${{ github.run_id }}.enc' "$WFF" && grep -q 'if-no-files-found: ignore' "$WFF" && echo yes || echo no)"
 done
+
+# ---- OpenShare bot-setup contract (fetch + adjacent config + masks) -------
+ACT="$SCRIPT_DIR/../actions/bot-setup/action.yml"
+check "openshare: action declares input"             yes "$(grep -q '  openshare-config-json:' "$ACT" && echo yes || echo no)"
+check "openshare: fetches released bundle"           yes "$(grep -q 'raw.githubusercontent.com/Mirrowel/OpenShare/master/share-plugin/ci/openshare.js' "$ACT" && echo yes || echo no)"
+check "openshare: fetch failure degrades (warning)"  yes "$(grep -B2 -A2 'bundle fetch failed' "$ACT" | grep -q '::warning' && echo yes || echo no)"
+check "openshare: config written adjacent to plugin" yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q '\$PLUGINS_DIR/openshare.config.json' && echo yes || echo no)"
+check "openshare: credential leaves add-masked"      yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q '::add-mask' && echo yes || echo no)"
+check "openshare: plugin registered idempotently"    yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q 'index(\$p)' && echo yes || echo no)"
+
+# ---- OpenShare export-session v2 contract (behavioral + structural) -------
+# The passive artifact must emit OpenShare contract v2 (content-embedded
+# messages, NO part items - the v2 viewer ignores parts) and must select
+# the newest ROOT session (a subagent child finishing last must never
+# become the export root).
+OSH_PROBE_OUT="$(osh_v2_probe "$SCRIPT_DIR/export-session.py" 2>&1)" || true
+check "openshare: exporter folds v1 into contract v2"  yes "$(printf '%s' "$OSH_PROBE_OUT" | grep -q '^ok$' && echo yes || echo no)"
+check "openshare: exporter picks newest ROOT session"  yes "$(grep -q 'WHERE parent_id IS NULL' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 
 # ---- share-filter credential redaction (behavioral, live shapes) ----------
 # The 2026-09-15 incident class: credential-shaped content in tool output
@@ -529,7 +593,34 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "stats: $wf runs bare stats (no --days)"   no  "$(grep -q 'stats --days' "$WFF" && echo yes || echo no)"
   # Pause gate: the agent's brain skips visibly; rails (stub/gate) stay on.
   check "pause: $wf job gated on AGENT_PAUSED"     yes "$(grep -q "vars.AGENT_PAUSED != 'true'" "$WFF" && echo yes || echo no)"
+  # ---- OpenShare live-sharing + passive-artifact contract ----
+  check "openshare: $wf passes config secret"      yes "$(grep -q 'openshare-config-json: \${{ secrets.OPENSHARE_CONFIG_JSON }}' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf session urlFile env"       yes "$(grep -q 'OPENSHARE_URL_FILE: \${{ runner.temp }}/openshare-urls.txt' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf session spool env"         yes "$(grep -q 'OPENSHARE_SPOOL_DIR: \${{ runner.temp }}/openshare-spool' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf copies exporter to /tmp"   yes "$(grep -q 'cp .github/scripts/export-session.py /tmp/export-session.py' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf passive export step"       yes "$(grep -q 'Passive session export (encrypted artifact)' "$WFF" && echo yes || echo no)"
+  check "openshare: $wf passive runs always()"     yes "$(grep -A6 'Passive session export' "$WFF" | grep -q 'if: always()' && echo yes || echo no)"
+  check "openshare: $wf passive never fails run"   yes "$(grep -A6 'Passive session export' "$WFF" | grep -q 'continue-on-error: true' && echo yes || echo no)"
+  check "openshare: $wf artifact upload wired"     yes "$(grep -q 'name: session-\${{ github.run_id }}.enc' "$WFF" && grep -q 'if-no-files-found: ignore' "$WFF" && echo yes || echo no)"
 done
+
+# ---- OpenShare bot-setup contract (fetch + adjacent config + masks) -------
+ACT="$SCRIPT_DIR/../actions/bot-setup/action.yml"
+check "openshare: action declares input"             yes "$(grep -q '  openshare-config-json:' "$ACT" && echo yes || echo no)"
+check "openshare: fetches released bundle"           yes "$(grep -q 'raw.githubusercontent.com/Mirrowel/OpenShare/master/share-plugin/ci/openshare.js' "$ACT" && echo yes || echo no)"
+check "openshare: fetch failure degrades (warning)"  yes "$(grep -B2 -A2 'bundle fetch failed' "$ACT" | grep -q '::warning' && echo yes || echo no)"
+check "openshare: config written adjacent to plugin" yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q '\$PLUGINS_DIR/openshare.config.json' && echo yes || echo no)"
+check "openshare: credential leaves add-masked"      yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q '::add-mask' && echo yes || echo no)"
+check "openshare: plugin registered idempotently"    yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q 'index(\$p)' && echo yes || echo no)"
+
+# ---- OpenShare export-session v2 contract (behavioral + structural) -------
+# The passive artifact must emit OpenShare contract v2 (content-embedded
+# messages, NO part items - the v2 viewer ignores parts) and must select
+# the newest ROOT session (a subagent child finishing last must never
+# become the export root).
+OSH_PROBE_OUT="$(osh_v2_probe "$SCRIPT_DIR/export-session.py" 2>&1)" || true
+check "openshare: exporter folds v1 into contract v2"  yes "$(printf '%s' "$OSH_PROBE_OUT" | grep -q '^ok$' && echo yes || echo no)"
+check "openshare: exporter picks newest ROOT session"  yes "$(grep -q 'WHERE parent_id IS NULL' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 
 # ---- share-filter credential redaction (behavioral, live shapes) ----------
 # The 2026-09-15 incident class: credential-shaped content in tool output

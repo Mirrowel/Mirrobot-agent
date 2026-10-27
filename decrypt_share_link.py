@@ -274,7 +274,11 @@ def msg_time(info: dict) -> int:
 
 
 def fold_data(data: list[dict]) -> dict:
-    """Data[] -> {session, models, messages: [{info, parts[]}]} (pure fold)."""
+    """Data[] -> {session, models, messages: [{info, parts[]}]} (pure fold).
+
+    Handles both v1 items (message/part) and OpenShare contract v2
+    (content-embedded messages folded into pseudo-parts so the minimal
+    fallback renderer keeps working without a dist)."""
     session = None
     models: list = []
     messages: dict = {}
@@ -285,7 +289,29 @@ def fold_data(data: list[dict]) -> dict:
         elif t == "model":
             models = d if isinstance(d, list) else [d]
         elif t == "message":
-            messages[d.get("id")] = {"info": d, "parts": []}
+            mid = d.get("id")
+            if d.get("type") in ("user", "assistant") and "role" not in d:
+                # v2: fold embedded content into pseudo-parts
+                parts = []
+                if d["type"] == "user" and isinstance(d.get("text"), str):
+                    parts.append({"type": "text", "text": d["text"]})
+                for c in d.get("content") or []:
+                    ct = c.get("type")
+                    if ct == "text":
+                        parts.append({"type": "text", "text": c.get("text") or ""})
+                    elif ct == "reasoning":
+                        parts.append({"type": "reasoning", "text": c.get("text") or ""})
+                    elif ct == "tool":
+                        st = dict(c.get("state") or {})
+                        st.setdefault("status", "pending")
+                        parts.append({"type": "tool", "tool": c.get("name"),
+                                      "state": st, "id": c.get("id")})
+                info = {"id": mid, "role": d["type"],
+                        "time": d.get("time") or {}, "model": d.get("model"),
+                        "cost": d.get("cost")}
+                messages[mid] = {"info": info, "parts": parts}
+            elif d.get("role") in ("user", "assistant"):
+                messages[mid] = {"info": d, "parts": []}
         elif t == "part":
             key = d.get("messageID")
             if key in messages:
@@ -389,7 +415,8 @@ function render() {
     const right = [];
     const model = info.model;
     if (model) right.push(esc(typeof model === 'string' ? model
-      : (model.modelID ? ((model.providerID || '') + '/' + model.modelID) : JSON.stringify(model))));
+      : (model.modelID ? ((model.providerID || '') + '/' + model.modelID)
+      : (model.id ? ((model.providerID || '') + '/' + model.id) : JSON.stringify(model)))));
     const ts = when(info.time);
     if (ts) right.push(esc(ts));
     if (role === 'assistant' && info.cost != null) {
@@ -435,16 +462,44 @@ def esc_html(s: str) -> str:
 # ----------------------------------------------------------------------------
 
 def find_viewer_dist(cfg: dict) -> Path | None:
-    """The vendored share viewer build (tools/share-viewer/dist). Searched:
-    config viewer_dist, next to this script, ~/.cache/mirrobot/viewer-dist."""
+    """The OpenShare viewer build. Searched: config viewer_dist, the
+    OpenShare checkout, the auto-fetched worker cache."""
     candidates = []
     if cfg.get("viewer_dist"):
         candidates.append(Path(cfg["viewer_dist"]))
-    candidates.append(Path(__file__).resolve().parent / "tools" / "share-viewer" / "dist")
-    candidates.append(Path.home() / ".cache" / "mirrobot" / "viewer-dist")
+    candidates.append(Path(r"C:\Projects\OC Plugins\openshare\share-viewer\dist"))
+    candidates.append(Path.home() / ".cache" / "openshare" / "viewer-dist")
     for c in candidates:
         if (c / "index.html").exists():
             return c
+    return None
+
+
+def fetch_worker_dist(worker_origin: str, cache: Path) -> Path | None:
+    """Download the deployed viewer (index.html + its /assets/*) from the
+    share worker into cache. The worker serves the exact dist the live
+    pages use, so the offline view always matches the deployed viewer."""
+    import re as _re
+    import urllib.request as _rq
+    try:
+        cache.mkdir(parents=True, exist_ok=True)
+        with _rq.urlopen(worker_origin.rstrip("/") + "/", timeout=60) as r:
+            index = r.read().decode("utf-8", errors="replace")
+        (cache / "index.html").write_text(index, encoding="utf-8", newline="\n")
+        seen = set(_re.findall(r"""(?:src|href)=["'](/assets/[^"']+)["']""", index))
+        seen.update(_re.findall(r"""["'](\/assets\/[A-Za-z0-9._/-]+\.(?:js|css|woff2|svg|png))["']""", index))
+        for rel in sorted(seen):
+            dest = cache / rel.lstrip("/")
+            if dest.exists():
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with _rq.urlopen(worker_origin.rstrip("/") + rel, timeout=120) as r:
+                dest.write_bytes(r.read())
+        if seen:
+            print(f"viewer dist fetched from worker: {len(seen)} assets -> {cache}")
+            return cache
+    except Exception as exc:
+        print(f"worker dist fetch failed: {exc}")
     return None
 
 
@@ -697,6 +752,11 @@ def handle_mrb2(m: re.Match, cfg: dict, open_browser: bool) -> bool:
     if kind == "meta":
         live = payload.get("url")
         artifact = payload.get("artifact")
+        # worker-origin viewer prefetch: offline serving then uses the exact
+        # dist the live pages use (auto-updates with the worker)
+        if live and "/s/" in live and not find_viewer_dist(cfg):
+            fetch_worker_dist(live.split("/s/")[0],
+                              Path.home() / ".cache" / "openshare" / "viewer-dist")
         if live:
             if open_browser:
                 try:

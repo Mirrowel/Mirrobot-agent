@@ -57,8 +57,8 @@
 **Admin-Side Tooling Layer:**
 - Purpose: Local (non-CI) utilities for the repository operator
 - Location: Repository root (`decrypt_share_link.py`, `minify_json_secret.py`)
-- Contains: Python scripts, share-link keygen/decrypt TUI, JSON→single-line secret minifier
-- Depends on: Python 3, `openssl` on PATH (decrypt tool), `gh` CLI (setup mode)
+- Contains: Python scripts, share-link keygen/decrypt TUI (OpenShare contract-v2 aware: decrypts session artifacts, serves the same viewer dist offline — found via the OpenShare checkout or auto-fetched from the worker; live URLs + read-auth creds ride the MRB2 meta blob), JSON→single-line secret minifier
+- Depends on: Python 3, `openssl` on PATH (decrypt tool), `gh` CLI (setup mode + artifact auto-fetch)
 - Used by: Humans only; nothing in CI imports these
 
 ## Data Flow
@@ -205,6 +205,8 @@
 **Secrets & masking:** Credential leaves inside `OPENCODE_CONFIG_JSON` (provider keys, MCP headers, credential-bearing URLs) — plus opencode's own `auth.json` (oauth refresh/access tokens, provider `key` entries) whenever it exists — are each `::add-mask::`ed at boot by bot-setup; the config is written `chmod 600` outside the workspace, and (together with any materialized plugin files (`OPENCODE_PLUGINS_JSON*` variables)) deleted seconds after opencode boots (once-at-boot semantics; `opencode-cleanup.sh` provides the waiter/now cleanup with an `if: always()` guarantee). Git auth never materializes a credential: bot-setup installs gh's credential helper (reads `GH_TOKEN` from the session environment on demand) and token-bearing fetches ride an in-process extraheader, so nothing credential-shaped lands in a URL, a config value, or printed output (never `.git/config`); `persist-credentials: false` on every token-bearing checkout.
 
 **No untrusted interpolation:** Untrusted text reaches shells only as environment variables; a pinned CI audit proves it. Dispatch inputs never carry requester content; targets re-fetch from the API by id.
+
+**OpenShare session sharing (live + passive):** bot-setup fetches the released OpenShare plugin bundle from the OpenShare repo (raw master, sha256 logged), stages it under `~/.mirrobot-plugins/` with the `OPENSHARE_CONFIG_JSON` secret adjacent (config-as-secret lifecycle: deleted after boot like the opencode config; credential leaves add-masked; read-auth creds additionally exported as env — the env path is the reliably gating one), and registers it in the plugin array. Session steps carry `OPENSHARE_URL_FILE`/`OPENSHARE_SPOOL_DIR` under runner temp; URLs never reach public logs. Every run also produces the passive artifact: `export-session.py` (OpenShare contract v2, newest ROOT session + family) -> gzip -> MRB2 -> `session-<runid>.enc` artifact + meta blob in the run summary. Removing the secret = pure offline mode (plugin dormant, artifacts continue).
 
 **Share-link hygiene:** Session share URLs are masked, never logged raw, and re-published RSA-OAEP-encrypted with public context (repo, PR, head SHA, review type, run, actor); the opencode model-header line is stripped from the stream and the model token masked; a shape-based redaction layer catches credential-shaped content no registered mask anticipated (GitHub token families, provider key prefixes such as `cr_`/`sk-`/`xai-`, JSON key/value credential pairs) and replaces it with `[REDACTED]` before it can reach the log or the share; only the admin-side private key (`decrypt_share_link.py`, key never leaves the admin machine) recovers them.
 

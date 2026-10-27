@@ -1,8 +1,0 @@
-{
-  "name": "@opencode-ai/core",
-  "version": "1.18.28",
-  "private": true,
-  "exports": {
-    "./util/*": "./src/util/*.ts"
-  }
-}

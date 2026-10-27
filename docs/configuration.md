@@ -271,6 +271,20 @@ Present account token → account mode; else App pair → app mode; else workflo
 ### `SHARE_LINK_PUBKEY` (optional)
 RSA **public** key (PEM) for encrypted session share links. Without it, share URLs are still captured and masked but not recoverable. One-command setup: `python decrypt_share_link.py setup` — generates the pair, sets the secret, keeps the private key locally. See [security.md](security.md#encrypted-share-links).
 
+### `OPENSHARE_CONFIG_JSON` (optional)
+Live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare): the complete OpenShare plugin config as one JSON object, e.g.
+
+```json
+{
+  "servers": { "https://<your-openshare-worker>": { "token": "osk_…", "active": true } },
+  "shareMode": "all",
+  "ttlDays": 90,
+  "authLogin": "…", "authPassword": "…"
+}
+```
+
+When set, bot-setup fetches the released OpenShare plugin bundle from the OpenShare repo, stages it under `~/.mirrobot-plugins/` with this config adjacent, and registers it in the opencode plugin array — every agent session then streams live to your worker (URLs never touch public logs; the run summary carries an encrypted link). The file is deleted right after boot, exactly like the opencode config. Absent = plugin dormant: no live sharing, but the passive encrypted session artifact is still produced on every run. Keep a local copy gitignored (`.github/plugins/openshare.ci.config.json` in this repo is the source of truth for the secret).
+
 ## Interaction cheatsheet
 
 | Want | Set |
@@ -284,4 +298,5 @@ RSA **public** key (PEM) for encrypted session share links. Without it, share UR
 | Stop just one part (e.g. reviews) | `AGENT_PAUSED_PARTS_JSON` |
 | Rename the bot | `BOT_IDENTITIES` + `BOT_TRIGGERS` |
 | Private plugin | `OPENCODE_PLUGINS_JSON` + `plugin` path in the config |
+| Live session shares | `OPENSHARE_CONFIG_JSON` (+ `SHARE_LINK_PUBKEY` for the offline artifact) |
 | Agent follows me into other repos | `FOREIGN_MENTIONS_ENABLED` + `FOREIGN_MENTIONS_USERS` + PAT scopes + the worker |

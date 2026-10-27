@@ -66,6 +66,7 @@ Non-code directories: `.cortexkit/`, `__pycache__/` are tooling/local state; `.f
 **`tools/`:**
 - Purpose: Cloudflare Workers deployed outside GitHub, each self-contained with its own README and `wrangler.toml`
 - Key files: `mention-worker/worker.js` (conditional-request notification polling, deny-only fail-open pre-filter, `repository_dispatch` relay), `cron-probe/worker.js` (a canary for the cron-trigger outage, delete when it starts firing)
+- Removed: `share-plugin/`, `share-worker/`, `share-viewer/` — OpenShare now lives in its own repo (`Mirrowel/OpenShare`, local clone `C:\Projects\OC Plugins\openshare`); the agent fetches the released plugin bundle at boot (bot-setup, raw master) and never vendors share code again
 
 **`docs/`:**
 - Purpose: The deep documentation: `getting-started.md`, `design.md` (principles, execution map, split-trust model, update doctrine), `configuration.md`, `customization.md`, `security.md`, `workflows/*.md` — plus the static landing page `index.html` (deployed to GitHub Pages by `excerpts-refresh.yml`, cards fed by `excerpts.json`)
