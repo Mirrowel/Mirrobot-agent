@@ -46,9 +46,14 @@ The `OPENCODE_CONFIG_JSON` secret is the most sensitive object in the pipeline, 
 4. The agent's permission profile separately denies reads of `~/.config` and the plugins dir.
 5. Git authentication flows through gh's credential helper (reading `GH_TOKEN` from the environment on demand) — no credential is ever embedded in a URL or config value (a global `url.<token>.insteadOf` rewrite was removed after it printed the PAT into a public share via `git remote -v`).
 
-## Encrypted share links
+## Encrypted session sharing
 
-Agent sessions run with `--share`, a URL exposing the full session (thoughts included). The output stream is piped through `share-filter.sh`: the raw URL is masked and never reaches the public log; instead an RSA-OAEP-encrypted form (`MRB1.<base64>`) is published inline, as an annotation, and in the run summary, bundled with public metadata (repo, PR, head SHA, run, actor). Only the private-key holder (you, locally, `decrypt_share_link.py`) can recover links. The public key is a secret (`SHARE_LINK_PUBKEY`), so PR content can't swap it. A second, shape-based layer redacts credential-shaped content from any output line before it can reach a log or share: GitHub token families, provider key prefixes (`cr_`, `sk-`, `xai-`, ...), and JSON key/value credential pairs — masked and replaced with `[REDACTED]` — so a leak needs both an unknown shape and a broken rule to land.
+Agent sessions are viewable two ways, both encrypted end-to-end against `SHARE_LINK_PUBKEY` (a secret, so PR content can't swap the key); only the private-key holder recovers anything (`decrypt_share_link.py`, locally).
+
+- **Passive (always on):** every run exports the finished session (including reasoning, plus subagent sessions) as a gzip + AES/RSA artifact (`MRB2`), uploaded as a private Actions artifact; the run summary carries a small encrypted meta blob with the context (repo, run, and the live URL when present). Nothing session-shaped is ever readable in logs.
+- **Live (optional, `OPENSHARE_CONFIG_JSON`):** sessions stream to the operator's [OpenShare](https://github.com/Mirrowel/OpenShare) worker as they run. Share URLs and the read-auth credentials never appear in public output — the plugin writes URLs to a runner-temp file, which only feeds the encrypted summary blob.
+
+Independent of both, `share-filter.sh` redacts credential-shaped content from any output line before it can reach a log or share: GitHub token families, provider key prefixes (`cr_`, `sk-`, `xai-`, ...), and JSON key/value credential pairs — masked and replaced with `[REDACTED]` — so a leak needs both an unknown shape and a broken rule to land.
 
 ## Scope-of-action rules
 

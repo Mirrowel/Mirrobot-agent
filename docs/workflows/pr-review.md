@@ -52,4 +52,4 @@ Pipeline: bot-setup → metadata fetch (fail-closed on bogus numbers before any 
 
 **When it goes red:** metadata fetch failures (bad number, fail-closed by design), agent session non-zero exit (real), footer verify failing to *repair* a malformed review (rare; the review itself usually landed). A skipped "Signal review" step on a stub decline is correct behavior.
 
-**Testing it:** open a junk PR (or comment `/mirrobot-review`), then push a commit with the `Agent Monitored` label to exercise the follow-up path. Watch the run's step summary for the share link + usage stats.
+**Testing it:** open a junk PR (or comment `/mirrobot-review`), then push a commit with the `Agent Monitored` label to exercise the follow-up path. Watch the run's step summary for the encrypted session blob (+ usage stats).

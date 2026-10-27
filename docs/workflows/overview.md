@@ -26,7 +26,7 @@ Several mechanics repeat across the agent workflows; documented once here, refer
 - **Bot setup** (composite action `.github/actions/bot-setup/`) resolves the identity (account PAT or App token), configures git, writes the OpenCode config, applies per-agent model overrides, materializes plugin files, registers credential-leaf masks, and installs opencode.
 - **Trusted artifacts** (prompts, scripts, the security brief) are copied to `/tmp` *before* any PR-head checkout. After a checkout, the workspace belongs to the PR; `/tmp` stays main's.
 - **The scrub** runs after every checkout (see [design.md](../design.md#the-trust-model-split-trust)).
-- **Share-link capture**: every agent session runs with `--share` and its output is piped through `share-filter.sh`: the raw URL is masked and re-published encrypted. See [security.md](../security.md#encrypted-share-links).
+- **Session sharing**: every agent run produces an encrypted session artifact (`MRB2`, private Actions artifact + summary blob); with the OpenShare secret set, sessions also stream live to the operator's worker. Output is piped through `share-filter.sh`, which redacts credential-shaped content and keeps share URLs out of public logs. See [security.md](../security.md#encrypted-session-sharing).
 - **Config lifecycle**: config + plugins are deleted seconds after opencode boots; an `if: always()` step guarantees removal on every exit path. Each run's step summary carries a bare `opencode stats` usage block.
 - **Reactions**: comments get 👀 → 🚀/😕 (three-stage); PR/issue bodies get 👀 only. The agent may add its own tasteful reactions.
 - **Pause switch**: the `AGENT_PAUSED` variable makes every agent workflow skip visibly (gray). The stub and gate keep running so merges stay blocked while paused.
