@@ -19,9 +19,11 @@
 #   SESSION_ARTIFACT_PUBKEY  repo secret (absent = passive-only run,
 #                            nothing to announce - exit immediately)
 #   OPENSHARE_URL_FILE       the plugin's urlFile (arg 1 overrides)
-#   GITHUB_STEP_SUMMARY      written when present (appends; the file
-#                            renders live while the job runs)
 # Arg 2: max wait seconds (default 3600).
+#
+# Output is the ::notice:: annotation ONLY (visible on the run page the
+# moment it fires). The end-of-run summary step owns the single canonical
+# summary block - no duplicate share blobs in the summary.
 set -euo pipefail
 
 URL_FILE="${1:-${OPENSHARE_URL_FILE:-}}"
@@ -57,16 +59,6 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
       rm -f "$pubfile"
       if [ -n "$blob" ]; then
         printf '::notice::title=Live share (encrypted - decrypt with decrypt_share_link.py)::MRB1.%s\n' "$blob"
-        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-          {
-            echo "### Live share (encrypted - decrypt with decrypt_share_link.py)"
-            echo
-            echo '```'
-            echo "MRB1.$blob"
-            echo '```'
-            echo
-          } >> "$GITHUB_STEP_SUMMARY"
-        fi
       fi
       exit 0
     fi

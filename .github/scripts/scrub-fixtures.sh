@@ -489,6 +489,7 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "share: $wf kills announcer post-session"   yes "$(grep -q 'kill "$ANNOUNCER"' "$WFF" && echo yes || echo no)"
   check "share: $wf session env has announce pubkey" yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY: \${{ secrets.SESSION_ARTIFACT_PUBKEY }}' "$WFF" && echo yes || echo no)"
 check "share: announcer never echoes a raw URL"    yes "$(grep -q 'printf.*\$url.*\$url' "$SCRIPT_DIR/live-share-announce.sh" && echo no || echo yes)"
+check "share: announcer stays notice-only"         yes "$(grep -q 'GITHUB_STEP_SUMMARY' "$SCRIPT_DIR/live-share-announce.sh" && echo no || echo yes)"
 check "share: announcer encrypts with the pubkey"  yes "$(grep -q 'pkeyutl -encrypt' "$SCRIPT_DIR/live-share-announce.sh" && grep -q 'SESSION_ARTIFACT_PUBKEY' "$SCRIPT_DIR/live-share-announce.sh" && echo yes || echo no)"
 
   # ---- per-agent models + plugins + config lifecycle (bot-setup contract) ----
@@ -625,6 +626,7 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "share: $wf kills announcer post-session"   yes "$(grep -q 'kill "$ANNOUNCER"' "$WFF" && echo yes || echo no)"
   check "share: $wf session env has announce pubkey" yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY: \${{ secrets.SESSION_ARTIFACT_PUBKEY }}' "$WFF" && echo yes || echo no)"
 check "share: announcer never echoes a raw URL"    yes "$(grep -q 'printf.*\$url.*\$url' "$SCRIPT_DIR/live-share-announce.sh" && echo no || echo yes)"
+check "share: announcer stays notice-only"         yes "$(grep -q 'GITHUB_STEP_SUMMARY' "$SCRIPT_DIR/live-share-announce.sh" && echo no || echo yes)"
 check "share: announcer encrypts with the pubkey"  yes "$(grep -q 'pkeyutl -encrypt' "$SCRIPT_DIR/live-share-announce.sh" && grep -q 'SESSION_ARTIFACT_PUBKEY' "$SCRIPT_DIR/live-share-announce.sh" && echo yes || echo no)"
 
   # ---- per-agent models + plugins + config lifecycle (bot-setup contract) ----
