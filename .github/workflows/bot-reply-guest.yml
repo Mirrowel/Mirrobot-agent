@@ -586,6 +586,7 @@ jobs:
           cp .github/scripts/react.sh /tmp/react.sh
           cp .github/scripts/opencode-cleanup.sh /tmp/opencode-cleanup.sh
           cp .github/scripts/share-filter.sh /tmp/share-filter.sh
+          cp .github/scripts/live-share-announce.sh /tmp/live-share-announce.sh
           cp .github/scripts/export-session.py /tmp/export-session.py
           cp .github/scripts/split-diff.sh /tmp/split-diff.sh
           cp .github/scripts/minimized-nodes.sh /tmp/minimized-nodes.sh
@@ -858,6 +859,7 @@ jobs:
           # urlFile/spool are runner-path-dependent, so they ride env,
           # not the config secret).
           OPENSHARE_URL_FILE: ${{ runner.temp }}/openshare-urls.txt
+          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
           OPENSHARE_SPOOL_DIR: ${{ runner.temp }}/openshare-spool
           GH_TOKEN: ${{ steps.setup.outputs.token }}
           # gh defaults to the FOREIGN repo for this session (GH_REPO is the
@@ -868,10 +870,12 @@ jobs:
           GH_REPO: ${{ env.TARGET_REPO }}
         run: |
           set -o pipefail
+          bash /tmp/live-share-announce.sh & ANNOUNCER=$!
           # Guest brief + guest manifest. Untrusted thread content reaches
           # the prompt ONLY through envsubst'd environment variables.
           { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $GUEST_SUMMONER_LINE $SCRUB_REMOVALS_SUMMARY' < /tmp/security-brief-guest.md; \
             bash /tmp/assemble-prompt.sh bot-reply-guest | envsubst "$GVARS"; } | opencode run - 2>&1 | bash /tmp/share-filter.sh
+          kill "$ANNOUNCER" 2>/dev/null || true
 
       - name: Post-run cleanup and usage stats
         if: always()

@@ -22,10 +22,21 @@ Two optional companions, each enabling one feature:
 
 | Also copy | Enables |
 |---|---|
-| `decrypt_share_link.py` | Decrypting the agent's encrypted session share links locally (without it, links are captured and masked but not recoverable) |
+| `decrypt_share_link.py` | Decrypting the agent's encrypted session artifacts locally: raw session exports + a self-contained snapshot page opened straight from disk (`file://`). Its `setup` mode also generates the keypair and sets the `SESSION_ARTIFACT_PUBKEY` secret. |
 | `tools/mention-worker/` | Cross-repo guest mode, the agent answering mentions in repos it's not installed in |
 
 > Forking the whole repository works too, but don't carry this repo's docs and plans into yours; you only need the paths above.
+
+## Step 0b, optional: live session sharing (OpenShare)
+
+Every agent run seals an encrypted session artifact — that part needs no setup beyond the `SESSION_ARTIFACT_PUBKEY` secret (`python decrypt_share_link.py setup` does it). To also watch sessions **live** while they run, on your own infrastructure:
+
+1. Deploy an [OpenShare](https://github.com/Mirrowel/OpenShare) worker (its repo has the deploy guide).
+2. Create your user + a scoped CI token on the worker (reaches only its own shares): with your full token, `POST /api/token {"kind":"scoped"}`.
+3. Copy `.github/plugins/openshare.ci.EXAMPLE.json` to `.github/plugins/openshare.ci.config.json` (gitignored), fill in your worker URL, the scoped token, and a viewer `authLogin`/`authPassword` (every share is login-gated).
+4. Seal it: `jq -c . .github/plugins/openshare.ci.config.json | gh secret set OPENSHARE_CONFIG_JSON -R <owner>/<repo>`.
+
+From then on, bot-setup fetches the released plugin bundle at boot (deleted again right after), each session streams to your worker, and the run page shows an encrypted live-share link mid-run (decrypt it with `decrypt_share_link.py`, click, watch). Details: [configuration.md](configuration.md#openshare_config_json-optional).
 
 ## Step 1, pick an identity
 
@@ -62,7 +73,7 @@ gh secret set ACCOUNT_GH_TOKEN     -R <owner>/<repo>   # paste when prompted
 Get-Content config.min.json | gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo>   # PowerShell
 ```
 
-Every optional secret (fast model, share-link key, and the full identity rules (PAT scope requirements, why the `workflow` scope is forbidden)) is documented in [configuration.md](configuration.md#secrets).
+Every optional secret (fast model, the `SESSION_ARTIFACT_PUBKEY` artifact key, `OPENSHARE_CONFIG_JSON` for live sharing, and the full identity rules (PAT scope requirements, why the `workflow` scope is forbidden)) is documented in [configuration.md](configuration.md#secrets).
 
 **Or skip the next step's lookup entirely:** run **Agent Bootstrap** once (`Actions → Agent Bootstrap → Run workflow`, needs repo write access). It creates every tuning variable with a safe default and prints the full secrets checklist into the run summary. It never overwrites anything, and its logs can't reveal what exists (see [workflows/agent-bootstrap.md](workflows/agent-bootstrap.md)).
 

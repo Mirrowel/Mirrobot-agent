@@ -44,4 +44,4 @@ Real failures: the dispatch contract step (bogus PR number, fail-closed), the ag
 
 ## Testing it
 
-Comment `/mirrobot-check` on a PR with an obvious inconsistency (say, a workflow edit with no README touch) and watch the WARNINGS path, then fix it and re-check for the incremental follow-up behavior.
+Comment `/mirrobot-check` on a PR with an obvious inconsistency (say, a workflow edit with no README touch) and watch the WARNINGS path, then fix it and re-check for the incremental follow-up behavior. The run's step summary also carries the encrypted session blob (decrypt with `decrypt_share_link.py`).

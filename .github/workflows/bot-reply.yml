@@ -966,6 +966,7 @@ jobs:
           cp .github/scripts/assemble-prompt.sh /tmp/assemble-prompt.sh
           cp .github/scripts/scrub-workspace.sh /tmp/scrub-workspace.sh
           cp .github/scripts/share-filter.sh /tmp/share-filter.sh
+          cp .github/scripts/live-share-announce.sh /tmp/live-share-announce.sh
           cp .github/scripts/export-session.py /tmp/export-session.py
           cp .github/scripts/fetch-roster.sh /tmp/fetch-roster.sh
           cp .github/scripts/bot-config.sh /tmp/bot-config.sh
@@ -1181,6 +1182,7 @@ jobs:
           # urlFile/spool are runner-path-dependent, so they ride env,
           # not the config secret).
           OPENSHARE_URL_FILE: ${{ runner.temp }}/openshare-urls.txt
+          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
           OPENSHARE_SPOOL_DIR: ${{ runner.temp }}/openshare-spool
           GITHUB_TOKEN: ${{ steps.setup.outputs.token }}
           THREAD_CONTEXT: ${{ env.THREAD_CONTEXT }}
@@ -1219,9 +1221,11 @@ jobs:
             VARS='$THREAD_CONTEXT $NEW_COMMENT_AUTHOR $NEW_COMMENT_BODY $TRIGGER_MESSAGE $THREAD_NUMBER $GITHUB_REPOSITORY $THREAD_AUTHOR $PR_HEAD_SHA $IS_FIRST_REVIEW $FULL_DIFF_PATH $INCREMENTAL_DIFF_PATH $LAST_REVIEWED_SHA $PR_NUMBER $PREVIOUS_BOT_REVIEWS $AGENT_REVIEW_HISTORY $REVIEW_KIT_SUMMARY $BOT_IDENTITY_LIST $BOT_IDENTITY_PRIMARY $DISCUSSION_NODE_ID $DISCUSSION_REPLY_TO_NODE $DISCUSSION_TITLE'
             # Prepend the security brief (with the verified requester and trust context lines);
             ( bash /tmp/opencode-cleanup.sh waiter ) &
+            bash /tmp/live-share-announce.sh & ANNOUNCER=$!
             set -o pipefail
             { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $TRUST_CONTEXT_ERA $TRUSTED_PEOPLE' < /tmp/security-brief.md; \
               bash /tmp/assemble-prompt.sh bot-reply | FULL_DIFF_PATH="$FULL_DIFF_PATH" PR_NUMBER="$THREAD_NUMBER" INCREMENTAL_DIFF_PATH="$INCREMENTAL_DIFF_PATH" LAST_REVIEWED_SHA="$LAST_REVIEWED_SHA" envsubst "$VARS"; } | opencode run - 2>&1 | bash /tmp/share-filter.sh
+              kill "$ANNOUNCER" 2>/dev/null || true
             bash /tmp/opencode-cleanup.sh now
 
       - name: Post-run cleanup and usage stats

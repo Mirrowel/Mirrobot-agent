@@ -37,6 +37,10 @@ awk -v boot_out="$BOOT_OUT" '
 BEGIN { booted = 0 }
 {
   if (!booted) { printf "" > boot_out; booted = 1 }
+  # OpenShare plugin boot banner - pure diagnostics in the public log.
+  # Dropped here; alarm/error [openshare] lines pass through (gate
+  # assurance rides on them).
+  if ($0 ~ /^\[openshare\] share mode: /) { next }
   # Model-header line ("> build <middot> <model>" / "> plan ...", possibly
   # ANSI-colored): the model identifier is config-derived and must not
   # surface in public logs. Mask the token wherever it appears, drop the

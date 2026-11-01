@@ -216,6 +216,7 @@ Must be exactly `true` to arm the mention poller. Everything guest-mode: [workfl
 Who may summon the agent *cross-repo* (unioned with home collaborators, owner included). Separate from `TRUSTED_AGENT_USERS`: cross-repo summoning is its own, stricter privilege; home trust does not travel.
 
 ### `GUEST_REPO_RULES`
+
 **Default:** absent (= guest mode allowed everywhere except the platform repo itself). **Type:** comma-separated ordered rules, `<owner/repo glob>:deny` or `:allow`.
 
 Which repositories guest mode may operate in — OpenCode-permission semantics: entries evaluate in order, **last match wins**, default **allow**. The repo this workflow runs in (the platform repo) is hard-wired deny: its local instance always owns it, and no rule can re-allow it. Denied repos are skipped *and* their notification threads acked and unsubscribed, so locally-handled threads never generate poller noise again. Globs use `*` within a segment; both sides are case-insensitive (GitHub slugs). Malformed entries are logged and ignored individually — never a total lockout. The worker prefilter and the in-repo gauntlet run identical semantics (parity is fixture-pinned).
@@ -230,6 +231,16 @@ gh variable set GUEST_REPO_RULES -R <owner>/<platform-repo> --body "*/*:deny, an
 # all your own repos local-only with one entry
 gh variable set GUEST_REPO_RULES -R <owner>/<platform-repo> --body "Owner/*:deny"
 ```
+
+### `OPENSHARE_PASSIVE`
+**Default:** `true` (seeded). **Type:** toggle.
+
+`false` disables the passive track entirely — no session export, no snapshot, no encrypted artifact at the end of the run. The passive artifact is the safety net for live sharing (and the only session record when live sharing is off); normally leave it on.
+
+### `OPENSHARE_BUNDLE_URL`
+**Default:** absent (= the released master line of the [OpenShare](https://github.com/Mirrowel/OpenShare) repo). **Type:** URL.
+
+Override for where the OpenShare plugin bundle **and** the passive snapshot tools are fetched from. Set it to the raw `dev`-branch bundle URL while dev is ahead of the released line; delete the variable to return to the self-updating master default. The passive export resolves its channel from the same ref (tag → exact release, dev → newest prerelease, master → newest stable).
 
 Migrate to this rule when you install the platform on another repo: add that repo to the deny list (or deny `Owner/*` once), or mentions there will be handled twice — once by the local instance, once by guest mode.
 
@@ -292,11 +303,9 @@ Shape highlights (see the EXAMPLE for every key):
 
 Use a **scoped** CI token (reaches only its own shares; mint with your user's full token via `POST /api/token {"kind":"scoped"}`) — see the [OpenShare CI docs](https://github.com/Mirrowel/OpenShare). The `meta` values interpolate from the runner env, so every share is labeled with repo/run/lane in the worker's admin listing.
 
-When set, bot-setup fetches the released OpenShare plugin bundle from the OpenShare repo, stages it under `~/.mirrobot-plugins/` with this config adjacent, and registers it in the opencode plugin array — every agent session then streams live to your worker. URLs never touch public logs; the run summary carries an encrypted blob with the share URL, its gate state, and the session artifact. The file is deleted right after boot, exactly like the opencode config. Absent = plugin dormant: no live sharing, but the passive encrypted session artifact is still produced on every run.
+When set, bot-setup fetches the released OpenShare plugin bundle from the OpenShare repo, stages it under `~/.mirrobot-plugins/` with this config adjacent, and registers it in the opencode plugin array — every agent session then streams live to your worker. URLs never touch public logs. **Mid-run**, a background watcher publishes the RSA-encrypted share link as a notice annotation and in the live step summary (`MRB1.<blob>`) the moment the plugin creates the share — decrypt with `decrypt_share_link.py`, click, watch the session while it runs. At run end, the passive artifact + an encrypted meta blob (share URL, gate state, artifact name) land as described in [security.md](security.md#encrypted-session-sharing). The config file is deleted right after boot, exactly like the opencode config. Absent = plugin dormant: no live sharing, but the passive encrypted session artifact is still produced on every run.
 
-**Variables:**
-- `OPENSHARE_BUNDLE_URL` — override where the plugin bundle (and the snapshot tools) are fetched from. Set this to the raw **dev**-branch URL while dev is ahead of the released master line, delete it to return to released master.
-- `OPENSHARE_PASSIVE` — set to `false` to disable the passive artifact entirely (export + snapshot + encrypted artifact). Absent or any other value = on. The passive track is the safety net for live sharing; leaving it on costs nothing public.
+Related variables: [`OPENSHARE_PASSIVE`](#openshare_passive) (opt out of the passive track) and [`OPENSHARE_BUNDLE_URL`](#openshare_bundle_url) (track the dev branch).
 
 **Rotation:** share viewer password = edit the gitignored config, re-run the `gh secret set` line above. Token = rotate via the OpenShare API, update the config, re-seal.
 

@@ -107,6 +107,8 @@ Cross-repo guest mode adds a third identity context: the *guest*, the same accou
 
 Every rule in this document that can rot is checked: `.github/scripts/scrub-fixtures.sh` (scrub semantics, routing matrix, workflow contracts, YAML strictness) and `.github/scripts/prompt-rule-fixtures.sh` (machine contracts: assembly render smoke, placeholder-vs-renderer completeness, workflow marker couplings). They run in CI on every change to `.github/**`. If you change behavior, change the check in the same commit; a failing suite after your edit is the system working. Prompt prose itself is deliberately unpinned — editing wording, rules, or formats never breaks CI.
 
+Every agent run also seals an encrypted session artifact (passive, always on) and, when configured, streams live via [OpenShare](https://github.com/Mirrowel/OpenShare) — the sharing lifecycle is part of the run pipeline, not an extra: [security.md](security.md#encrypted-session-sharing).
+
 ## Design axioms
 
 Short list of the "why" behind recurring decisions:

@@ -30,4 +30,4 @@ The agent session (real), or the issue re-fetch (deleted issue). Gray skip = pau
 
 ## Testing it
 
-Open an issue that duplicates an existing one; within a minute you should see 👀 and a triage comment linking the duplicate.
+Open an issue that duplicates an existing one; within a minute you should see 👀 and a triage comment linking the duplicate. The run's step summary also carries the encrypted session blob (decrypt with `decrypt_share_link.py`).

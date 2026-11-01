@@ -30,7 +30,7 @@ When dispatched by the Mention Poller, the same machinery runs pointed at a **fo
 
 - The target repo is cloned, its PR/issue context fetched, and the scrub runs in `--foreign` mode (no trusted anchors exist abroad, *all* auto-load content is removed and quarantined).
 - (Guest sessions moved to [bot-reply-guest.md](bot-reply-guest.md) with their own natively-guest prompt.)
-- Reactions, footers, share links all work abroad.
+- Reactions, footers, and the encrypted session artifact (plus live shares, when configured) all work abroad.
 
 Setup and the worker side: [mention-poller.md](mention-poller.md).
 

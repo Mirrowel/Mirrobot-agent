@@ -481,6 +481,15 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "share: filter has no dead capture path"   yes "$(grep -q 'opncd\|MRB1' "$SCRIPT_DIR/share-filter.sh" && echo no || echo yes)"
   check "share: filter keeps boot sentinel"        yes "$(grep -q 'oc-booted' "$SCRIPT_DIR/share-filter.sh" && echo yes || echo no)"
   check "share: $wf step sets pipefail"            yes "$(grep -B15 'opencode run -' "$WFF" | grep -q 'set -o pipefail' && echo yes || echo no)"
+  # Live-share announcer: the encrypted share URL must surface MID-RUN
+  # (notice + step summary, ciphertext only) so the operator can watch
+  # live; the watcher is killed when the session pipe ends.
+  check "share: $wf copies announcer to /tmp"       yes "$(grep -q 'cp .github/scripts/live-share-announce.sh /tmp/live-share-announce.sh' "$WFF" && echo yes || echo no)"
+  check "share: $wf starts announcer pre-session"   yes "$(grep -q 'bash /tmp/live-share-announce.sh & ANNOUNCER=' "$WFF" && echo yes || echo no)"
+  check "share: $wf kills announcer post-session"   yes "$(grep -q 'kill "$ANNOUNCER"' "$WFF" && echo yes || echo no)"
+  check "share: $wf session env has announce pubkey" yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY: \${{ secrets.SESSION_ARTIFACT_PUBKEY }}' "$WFF" && echo yes || echo no)"
+check "share: announcer never echoes a raw URL"    yes "$(grep -q 'printf.*\$url.*\$url' "$SCRIPT_DIR/live-share-announce.sh" && echo no || echo yes)"
+check "share: announcer encrypts with the pubkey"  yes "$(grep -q 'pkeyutl -encrypt' "$SCRIPT_DIR/live-share-announce.sh" && grep -q 'SESSION_ARTIFACT_PUBKEY' "$SCRIPT_DIR/live-share-announce.sh" && echo yes || echo no)"
 
   # ---- per-agent models + plugins + config lifecycle (bot-setup contract) ----
   check "models: $wf passes its agent-key"         yes "$(grep -q "agent-key: $AGENT_KEY" "$WFF" && echo yes || echo no)"
@@ -608,6 +617,15 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "share: filter has no dead capture path"   yes "$(grep -q 'opncd\|MRB1' "$SCRIPT_DIR/share-filter.sh" && echo no || echo yes)"
   check "share: filter keeps boot sentinel"        yes "$(grep -q 'oc-booted' "$SCRIPT_DIR/share-filter.sh" && echo yes || echo no)"
   check "share: $wf step sets pipefail"            yes "$(grep -B15 'opencode run -' "$WFF" | grep -q 'set -o pipefail' && echo yes || echo no)"
+  # Live-share announcer: the encrypted share URL must surface MID-RUN
+  # (notice + step summary, ciphertext only) so the operator can watch
+  # live; the watcher is killed when the session pipe ends.
+  check "share: $wf copies announcer to /tmp"       yes "$(grep -q 'cp .github/scripts/live-share-announce.sh /tmp/live-share-announce.sh' "$WFF" && echo yes || echo no)"
+  check "share: $wf starts announcer pre-session"   yes "$(grep -q 'bash /tmp/live-share-announce.sh & ANNOUNCER=' "$WFF" && echo yes || echo no)"
+  check "share: $wf kills announcer post-session"   yes "$(grep -q 'kill "$ANNOUNCER"' "$WFF" && echo yes || echo no)"
+  check "share: $wf session env has announce pubkey" yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY: \${{ secrets.SESSION_ARTIFACT_PUBKEY }}' "$WFF" && echo yes || echo no)"
+check "share: announcer never echoes a raw URL"    yes "$(grep -q 'printf.*\$url.*\$url' "$SCRIPT_DIR/live-share-announce.sh" && echo no || echo yes)"
+check "share: announcer encrypts with the pubkey"  yes "$(grep -q 'pkeyutl -encrypt' "$SCRIPT_DIR/live-share-announce.sh" && grep -q 'SESSION_ARTIFACT_PUBKEY' "$SCRIPT_DIR/live-share-announce.sh" && echo yes || echo no)"
 
   # ---- per-agent models + plugins + config lifecycle (bot-setup contract) ----
   check "models: $wf passes its agent-key"         yes "$(grep -q "agent-key: $AGENT_KEY" "$WFF" && echo yes || echo no)"
@@ -3178,14 +3196,18 @@ if [ "$PARALLEL" = 1 ]; then
   ( _P0=$PASS; _F0=$FAIL; section_begin "$SECTION_NAME"; if [ "$SECTION_ACTIVE" = 1 ]; then
 # Live-caught: opencode prints "> build <middot> <model>" on stderr in every
 # session; the model identifier is config-derived and must not reach public
-# logs. Runs the REAL filter against the byte-exact captured shape.
+# logs. Runs the REAL filter against the byte-exact captured shape. The
+# OpenShare boot banner is dropped (public-log noise) while [openshare]
+# alarm lines survive (gate assurance rides on them).
 SFIX="$(mktemp -d)"
-printf '\033[0m\r\n> build \302\267 glm-5.3\r\n\033[0m\r\nsome agent output line\r\n> quoted prose \302\267 with a middot\r\n> plan \302\267 a-very-long-model-name\r\n' > "$SFIX/stream"
-SESSION_ARTIFACT_PUBKEY="" URL_OUT="$SFIX/url" CTX_OUT="$SFIX/ctx" BOOT_OUT="$SFIX/boot" \
+printf '\033[0m\r\n> build \302\267 glm-5.3\r\n\033[0m\r\n[openshare] share mode: all (directory: /w worktree: /w)\r\n[openshare] ALARM: share ungated despite auth config\r\nsome agent output line\r\n> quoted prose \302\267 with a middot\r\n> plan \302\267 a-very-long-model-name\r\n' > "$SFIX/stream"
+SESSION_ARTIFACT_PUBKEY="" BOOT_OUT="$SFIX/boot" \
   bash "$SCRIPT_DIR/share-filter.sh" < "$SFIX/stream" > "$SFIX/out" 2>&1
 check "share: model header line removed"            no  "$(grep -q 'glm-5.3' "$SFIX/out" && echo yes || echo no)"
 check "share: plan-mode header removed"             no  "$(grep 'a-very-long-model-name' "$SFIX/out" | grep -qv add-mask && echo yes || echo no)"
 check "share: long model masked"                    yes "$(grep -q '::add-mask::a-very-long-model-name' "$SFIX/out" && echo yes || echo no)"
+check "share: openshare boot banner dropped"        no  "$(grep -q 'share mode: all' "$SFIX/out" && echo yes || echo no)"
+check "share: openshare alarm lines survive"        yes "$(grep -q 'ALARM: share ungated' "$SFIX/out" && echo yes || echo no)"
 check "share: blockquote prose survives"            yes "$(grep -q 'quoted prose' "$SFIX/out" && echo yes || echo no)"
 check "share: plain output passes through"          yes "$(grep -q 'some agent output line' "$SFIX/out" && echo yes || echo no)"
 rm -rf "$SFIX"
@@ -3199,14 +3221,18 @@ section_begin "$SECTION_NAME"
 if [ "$SECTION_ACTIVE" = 1 ]; then
 # Live-caught: opencode prints "> build <middot> <model>" on stderr in every
 # session; the model identifier is config-derived and must not reach public
-# logs. Runs the REAL filter against the byte-exact captured shape.
+# logs. Runs the REAL filter against the byte-exact captured shape. The
+# OpenShare boot banner is dropped (public-log noise) while [openshare]
+# alarm lines survive (gate assurance rides on them).
 SFIX="$(mktemp -d)"
-printf '\033[0m\r\n> build \302\267 glm-5.3\r\n\033[0m\r\nsome agent output line\r\n> quoted prose \302\267 with a middot\r\n> plan \302\267 a-very-long-model-name\r\n' > "$SFIX/stream"
-SESSION_ARTIFACT_PUBKEY="" URL_OUT="$SFIX/url" CTX_OUT="$SFIX/ctx" BOOT_OUT="$SFIX/boot" \
+printf '\033[0m\r\n> build \302\267 glm-5.3\r\n\033[0m\r\n[openshare] share mode: all (directory: /w worktree: /w)\r\n[openshare] ALARM: share ungated despite auth config\r\nsome agent output line\r\n> quoted prose \302\267 with a middot\r\n> plan \302\267 a-very-long-model-name\r\n' > "$SFIX/stream"
+SESSION_ARTIFACT_PUBKEY="" BOOT_OUT="$SFIX/boot" \
   bash "$SCRIPT_DIR/share-filter.sh" < "$SFIX/stream" > "$SFIX/out" 2>&1
 check "share: model header line removed"            no  "$(grep -q 'glm-5.3' "$SFIX/out" && echo yes || echo no)"
 check "share: plan-mode header removed"             no  "$(grep 'a-very-long-model-name' "$SFIX/out" | grep -qv add-mask && echo yes || echo no)"
 check "share: long model masked"                    yes "$(grep -q '::add-mask::a-very-long-model-name' "$SFIX/out" && echo yes || echo no)"
+check "share: openshare boot banner dropped"        no  "$(grep -q 'share mode: all' "$SFIX/out" && echo yes || echo no)"
+check "share: openshare alarm lines survive"        yes "$(grep -q 'ALARM: share ungated' "$SFIX/out" && echo yes || echo no)"
 check "share: blockquote prose survives"            yes "$(grep -q 'quoted prose' "$SFIX/out" && echo yes || echo no)"
 check "share: plain output passes through"          yes "$(grep -q 'some agent output line' "$SFIX/out" && echo yes || echo no)"
 rm -rf "$SFIX"

@@ -36,3 +36,5 @@ From a repo the bot is *not* installed in, mention the account (as an allowliste
 ## Cost note
 
 Guest sessions are full agent sessions against your provider. The allowlist is the throttle; keep `FOREIGN_MENTIONS_USERS` tight.
+
+Guest runs produce the same encrypted session artifact (and optional live share) as home runs — see [overview.md](overview.md) and [security.md](../security.md#encrypted-session-sharing).

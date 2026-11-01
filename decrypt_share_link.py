@@ -210,13 +210,59 @@ def gh_token(gh: str) -> str | None:
     return p.stdout.strip() if p.returncode == 0 and p.stdout.strip() else None
 
 
+def _ssl_context_with_fallback_cas() -> "ssl.SSLContext | None":
+    """Windows python often ships without usable CA roots; fall back to
+    well-known CA bundles on disk (Git for Windows, curl) when present."""
+    import ssl
+    candidates = [
+        Path(r"C:\Program Files\Git\mingw64\etc\ssl\certs\ca-bundle.crt"),
+        Path(r"C:\Program Files\Git\usr\ssl\certs\ca-bundle.crt"),
+        Path("/etc/ssl/certs/ca-certificates.crt"),
+        Path("/etc/pki/tls/certs/ca-bundle.crt"),
+    ]
+    for c in candidates:
+        if c.exists():
+            try:
+                return ssl.create_default_context(cafile=str(c))
+            except Exception:
+                continue
+    return None
+
+
+def _http_get(url: str, headers: dict, timeout: int = 120) -> bytes:
+    """GET with CA fallback; Authorization is NEVER forwarded across a
+    redirect (the artifact storage host rejects foreign bearer tokens -
+    live-caught 401)."""
+    import urllib.error
+    req = urllib.request.Request(url, headers=headers)
+    opener = urllib.request.build_opener(_NoAuthRedirect)
+    try:
+        with opener.open(req, timeout=timeout) as r:
+            return r.read()
+    except urllib.error.URLError as exc:
+        if "CERTIFICATE_VERIFY_FAILED" not in str(exc):
+            raise
+        ctx = _ssl_context_with_fallback_cas()
+        if not ctx:
+            raise
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+            return r.read()
+
+
+class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        clean = {k: v for k, v in req.headers.items()
+                 if k.lower() not in ("authorization", "user-agent")}
+        clean["user-agent"] = "mirrobot-decrypt/1.0"
+        new = urllib.request.Request(newurl, headers=clean, method="GET")
+        return new
+
+
 def api_get(url: str, token: str | None) -> bytes:
-    req = urllib.request.Request(url)
+    headers = {"user-agent": "mirrobot-decrypt/1.0"}
     if token:
-        req.add_header("authorization", f"Bearer {token}")
-    req.add_header("user-agent", "mirrobot-decrypt/1.0")
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return r.read()
+        headers["authorization"] = f"Bearer {token}"
+    return _http_get(url, headers)
 
 
 def fetch_artifact_enc(repo: str, run_id: str, name: str, token: str | None) -> bytes:

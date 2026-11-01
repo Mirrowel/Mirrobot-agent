@@ -570,6 +570,7 @@ jobs:
           cp .github/scripts/assemble-prompt.sh /tmp/assemble-prompt.sh
           cp .github/scripts/scrub-workspace.sh /tmp/scrub-workspace.sh
           cp .github/scripts/share-filter.sh /tmp/share-filter.sh
+          cp .github/scripts/live-share-announce.sh /tmp/live-share-announce.sh
           cp .github/scripts/export-session.py /tmp/export-session.py
           cp .github/scripts/fetch-roster.sh /tmp/fetch-roster.sh
           cp .github/scripts/bot-config.sh /tmp/bot-config.sh
@@ -876,6 +877,7 @@ jobs:
           # urlFile/spool are runner-path-dependent, so they ride env,
           # not the config secret).
           OPENSHARE_URL_FILE: ${{ runner.temp }}/openshare-urls.txt
+          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
           OPENSHARE_SPOOL_DIR: ${{ runner.temp }}/openshare-spool
           GITHUB_TOKEN: ${{ steps.setup.outputs.token }}
           # Agent permissions are owned by the OPENCODE_CONFIG_JSON secret
@@ -895,7 +897,9 @@ jobs:
           # cannot pin them for the whole run; the post-run step is the
           # belt for fast exits and killed waiters.
           ( bash /tmp/opencode-cleanup.sh waiter ) &
+          bash /tmp/live-share-announce.sh & ANNOUNCER=$!
           opencode run - < "$TMP_DIR/assembled_prompt.txt" 2>&1 | bash /tmp/share-filter.sh
+          kill "$ANNOUNCER" 2>/dev/null || true
           # Fast-exit belt (the step runs under -e; on failure the
           # always() post-run step below is the cleanup guarantee).
           bash /tmp/opencode-cleanup.sh now

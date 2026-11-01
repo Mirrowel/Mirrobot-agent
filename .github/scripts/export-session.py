@@ -375,6 +375,13 @@ def build_snapshot_offline(exports: dict[str, dict], workdir: Path) -> Path | No
 # main
 # ----------------------------------------------------------------------------
 
+def _short(ident: str) -> str:
+    """Log-safe short form: the share id IS the share URL slug - the raw
+    value never appears in plaintext output, only inside the encrypted
+    blob (and as a 6-char hint for eyeballing)."""
+    return ident[:6] + "…" if len(ident) > 6 else ident
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default="/tmp")
@@ -400,8 +407,14 @@ def main(argv: list[str]) -> int:
     live = shares[0] if shares else None
     login, password = auth_pair()
     if live is not None:
+        # the share id/url are capability locators: mask them job-wide and
+        # keep plaintext prints to the 6-char hint (step summaries are NOT
+        # covered by add-mask - live-caught)
+        for secretish in (live["id"], live["url"]):
+            if secretish and len(secretish) >= 8:
+                print(f"::add-mask::{secretish}")
         if live["gated"]:
-            print(f"share gate: login-gated (id {live['id'] or 'n/a'}, status {live['status'] or 'n/a'})")
+            print(f"share gate: login-gated (id {_short(live['id']) or 'n/a'}, status {live['status'] or 'n/a'})")
         elif login:
             msg = ("OpenShare share is NOT login-gated although read auth is configured "
                    "- check the worker's auth handling (gated=false)")
@@ -476,7 +489,7 @@ def main(argv: list[str]) -> int:
     meta_blob = mrb2_encrypt(meta_payload, pub)
 
     (out / "share-link.enc").write_text(meta_blob + "\n", encoding="utf-8")
-    live_desc = (f"live={live['id'] or live['url']} status={live['status'] or '?'} "
+    live_desc = (f"live={_short(live['id']) or live['url']} status={live['status'] or '?'} "
                  f"gated={'yes' if live['gated'] else 'no'}") if live else "live=none"
     (out / "share-link.ctx").write_text(
         f"{args.repo} run {args.run_id}: {live_desc}, snapshot={snapshot_src or 'none'}",

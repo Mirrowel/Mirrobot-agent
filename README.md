@@ -123,7 +123,7 @@ Two optional companions, each enabling one feature:
 
 | Also copy | Enables |
 |---|---|
-| `decrypt_share_link.py` | Decrypting the agent's encrypted session share links locally (without it, links are captured and masked but not recoverable) |
+| `decrypt_share_link.py` | Decrypting the agent's encrypted session artifacts locally: raw session exports + a self-contained snapshot page opened straight from disk. Its `setup` mode also generates the keypair and sets the `SESSION_ARTIFACT_PUBKEY` secret. Live sharing (optional, [OpenShare](https://github.com/Mirrowel/OpenShare)) is documented in [configuration.md](docs/configuration.md#openshare_config_json-optional). |
 | `tools/mention-worker/` | Cross-repo guest mode, the agent answering mentions in repos it's not installed in |
 
 ### 2. Pick an identity
