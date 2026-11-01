@@ -24,3 +24,4 @@ tools/share-viewer/dist/
 .github/plugins/openshare.ci.config.json
 .github/plugins/openshare.admin.json
 *.private-key.pem
+.github/plugins/openshare.proxy.config.json
