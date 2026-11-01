@@ -551,8 +551,11 @@ check "openshare: exporter offline tool fetch (ref)"   yes "$(grep -q 'TOOLS_OFF
 check "openshare: exporter dist from release asset"    yes "$(grep -q 'viewer-dist-' "$SCRIPT_DIR/export-session.py" && grep -q 'releases?per_page' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 check "openshare: exporter gate warning wired"         yes "$(grep -q '::warning::' "$SCRIPT_DIR/export-session.py" && grep -q 'NOT login-gated' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 check "openshare: exporter snapshot degrade note"      yes "$(grep -q 'raw exports intact' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
-check "openshare: decrypt tool writes file:// library" yes "$(test -f "$SCRIPT_DIR/../../decrypt_share_link.py" && grep -q 'snapshot.html' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"
-check "openshare: decrypt tool serve is gone"         yes "$(test -f "$SCRIPT_DIR/../../decrypt_share_link.py" && ! grep -q 'ensure_local_server' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"
+if [ -f "$SCRIPT_DIR/../../decrypt_share_link.py" ]; then
+  # the decrypt tool is agent-repo-only (consuming repos skip these pins)
+  check "openshare: decrypt tool writes file:// library" yes "$(grep -q 'snapshot.html' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"
+  check "openshare: decrypt tool serve is gone"         yes "$( ! grep -q 'ensure_local_server' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"
+fi
 
 # ---- share-filter credential redaction (behavioral, live shapes) ----------
 # The 2026-09-15 incident class: credential-shaped content in tool output
@@ -688,8 +691,11 @@ check "openshare: exporter offline tool fetch (ref)"   yes "$(grep -q 'TOOLS_OFF
 check "openshare: exporter dist from release asset"    yes "$(grep -q 'viewer-dist-' "$SCRIPT_DIR/export-session.py" && grep -q 'releases?per_page' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 check "openshare: exporter gate warning wired"         yes "$(grep -q '::warning::' "$SCRIPT_DIR/export-session.py" && grep -q 'NOT login-gated' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 check "openshare: exporter snapshot degrade note"      yes "$(grep -q 'raw exports intact' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
-check "openshare: decrypt tool writes file:// library" yes "$(test -f "$SCRIPT_DIR/../../decrypt_share_link.py" && grep -q 'snapshot.html' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"
-check "openshare: decrypt tool serve is gone"         yes "$(test -f "$SCRIPT_DIR/../../decrypt_share_link.py" && ! grep -q 'ensure_local_server' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"
+if [ -f "$SCRIPT_DIR/../../decrypt_share_link.py" ]; then
+  # the decrypt tool is agent-repo-only (consuming repos skip these pins)
+  check "openshare: decrypt tool writes file:// library" yes "$(grep -q 'snapshot.html' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"
+  check "openshare: decrypt tool serve is gone"         yes "$( ! grep -q 'ensure_local_server' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"
+fi
 
 # ---- share-filter credential redaction (behavioral, live shapes) ----------
 # The 2026-09-15 incident class: credential-shaped content in tool output
