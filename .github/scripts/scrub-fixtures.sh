@@ -474,10 +474,12 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   # comment marker (" #") - the workflow file goes invalid and every push
   # red-Xes with 0 jobs (live-caught on bot-reply). Values carrying # in
   # expressions must be quoted.
-  check "share: $wf SHARE_CTX values quoted (hash trap)" no "$(grep -E 'SHARE_CTX_[A-Z]+: [^\"'\"']' "$WFF" | grep -q '\$\{{' && echo yes || echo no)"
   check "share: $wf passes SESSION_ARTIFACT_PUBKEY env"  yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY: \${{ secrets.SESSION_ARTIFACT_PUBKEY }}' "$WFF" && echo yes || echo no)"
   check "share: $wf copies filter to /tmp"         yes "$(grep -q 'cp .github/scripts/share-filter.sh /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
   check "share: $wf has summary step"              yes "$(grep -q 'Share link summary' "$WFF" && echo yes || echo no)"
+  check "share: $wf no dead SHARE_CTX envs"        yes "$(grep -q 'SHARE_CTX' "$WFF" && echo no || echo yes)"
+  check "share: filter has no dead capture path"   yes "$(grep -q 'opncd\|MRB1' "$SCRIPT_DIR/share-filter.sh" && echo no || echo yes)"
+  check "share: filter keeps boot sentinel"        yes "$(grep -q 'oc-booted' "$SCRIPT_DIR/share-filter.sh" && echo yes || echo no)"
   check "share: $wf step sets pipefail"            yes "$(grep -B15 'opencode run -' "$WFF" | grep -q 'set -o pipefail' && echo yes || echo no)"
 
   # ---- per-agent models + plugins + config lifecycle (bot-setup contract) ----
@@ -599,10 +601,12 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   # comment marker (" #") - the workflow file goes invalid and every push
   # red-Xes with 0 jobs (live-caught on bot-reply). Values carrying # in
   # expressions must be quoted.
-  check "share: $wf SHARE_CTX values quoted (hash trap)" no "$(grep -E 'SHARE_CTX_[A-Z]+: [^\"'\"']' "$WFF" | grep -q '\$\{{' && echo yes || echo no)"
   check "share: $wf passes SESSION_ARTIFACT_PUBKEY env"  yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY: \${{ secrets.SESSION_ARTIFACT_PUBKEY }}' "$WFF" && echo yes || echo no)"
   check "share: $wf copies filter to /tmp"         yes "$(grep -q 'cp .github/scripts/share-filter.sh /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
   check "share: $wf has summary step"              yes "$(grep -q 'Share link summary' "$WFF" && echo yes || echo no)"
+  check "share: $wf no dead SHARE_CTX envs"        yes "$(grep -q 'SHARE_CTX' "$WFF" && echo no || echo yes)"
+  check "share: filter has no dead capture path"   yes "$(grep -q 'opncd\|MRB1' "$SCRIPT_DIR/share-filter.sh" && echo no || echo yes)"
+  check "share: filter keeps boot sentinel"        yes "$(grep -q 'oc-booted' "$SCRIPT_DIR/share-filter.sh" && echo yes || echo no)"
   check "share: $wf step sets pipefail"            yes "$(grep -B15 'opencode run -' "$WFF" | grep -q 'set -o pipefail' && echo yes || echo no)"
 
   # ---- per-agent models + plugins + config lifecycle (bot-setup contract) ----
@@ -1827,7 +1831,7 @@ if [ -f "$GUESTWF" ]; then
   check "guest lane: no API-only/no-checkout escape hatch" yes "$(grep -q 'no foreign tree in the workspace' "$GUESTWF" && echo no || echo yes)"
   check "guest lane: real scrub removal count exported"   yes "$(grep -q 'auto-load item(s) were removed' "$GUESTWF" && echo yes || echo no)"
   check "guest lane: GH_REPO targets the foreign repo"    yes "$( [ "$(grep -c 'GH_REPO: \${{ env.TARGET_REPO }}' "$GUESTWF")" -ge 2 ] && echo yes || echo no)"
-  check "guest lane: share-link encryption env present"   yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY' "$GUESTWF" && grep -q 'SHARE_CTX_THREAD' "$GUESTWF" && echo yes || echo no)"
+  check "guest lane: passive artifact env present"      yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY' "$GUESTWF" && grep -q 'OPENSHARE_URL_FILE' "$GUESTWF" && echo yes || echo no)"
   check "guest lane: issue-body eyes branch"              yes "$(grep -q 'issues/\${THREAD_NUMBER}/reactions' "$GUESTWF" && echo yes || echo no)"
   check "guest lane: PR linked issues + cross-refs"       yes "$(grep -q 'closingIssuesReferences' "$GUESTWF" && grep -q '<cross_references>' "$GUESTWF" && echo yes || echo no)"
 fi
@@ -1925,7 +1929,7 @@ if [ -f "$GUESTWF" ]; then
   check "guest lane: no API-only/no-checkout escape hatch" yes "$(grep -q 'no foreign tree in the workspace' "$GUESTWF" && echo no || echo yes)"
   check "guest lane: real scrub removal count exported"   yes "$(grep -q 'auto-load item(s) were removed' "$GUESTWF" && echo yes || echo no)"
   check "guest lane: GH_REPO targets the foreign repo"    yes "$( [ "$(grep -c 'GH_REPO: \${{ env.TARGET_REPO }}' "$GUESTWF")" -ge 2 ] && echo yes || echo no)"
-  check "guest lane: share-link encryption env present"   yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY' "$GUESTWF" && grep -q 'SHARE_CTX_THREAD' "$GUESTWF" && echo yes || echo no)"
+  check "guest lane: passive artifact env present"      yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY' "$GUESTWF" && grep -q 'OPENSHARE_URL_FILE' "$GUESTWF" && echo yes || echo no)"
   check "guest lane: issue-body eyes branch"              yes "$(grep -q 'issues/\${THREAD_NUMBER}/reactions' "$GUESTWF" && echo yes || echo no)"
   check "guest lane: PR linked issues + cross-refs"       yes "$(grep -q 'closingIssuesReferences' "$GUESTWF" && grep -q '<cross_references>' "$GUESTWF" && echo yes || echo no)"
 fi
@@ -2718,7 +2722,7 @@ check "rebase: walk targets the PR HEAD object, not HEAD" yes \
 check "rebase: recent commits listed from the PR head" yes \
   "$(grep -q 'git log --oneline -12 "$PR_HEAD_OBJ"' "$SCRIPT_DIR/../workflows/pr-review.yml" && echo yes || echo no)"
 check "rebase: share-context words the no-SHA case honestly" yes \
-  "$(grep -q 'rebased - full re-review' "$SCRIPT_DIR/../workflows/pr-review.yml" && echo yes || echo no)"
+  "$(grep -q 'history was rewritten' "$SCRIPT_DIR/../workflows/pr-review.yml" && echo yes || echo no)"
 
   fi
   echo "$((PASS - _P0)) $((FAIL - _F0))" > "$WORK/.pl-$SECTIONS_N.cnt"
@@ -2747,7 +2751,7 @@ check "rebase: walk targets the PR HEAD object, not HEAD" yes \
 check "rebase: recent commits listed from the PR head" yes \
   "$(grep -q 'git log --oneline -12 "$PR_HEAD_OBJ"' "$SCRIPT_DIR/../workflows/pr-review.yml" && echo yes || echo no)"
 check "rebase: share-context words the no-SHA case honestly" yes \
-  "$(grep -q 'rebased - full re-review' "$SCRIPT_DIR/../workflows/pr-review.yml" && echo yes || echo no)"
+  "$(grep -q 'history was rewritten' "$SCRIPT_DIR/../workflows/pr-review.yml" && echo yes || echo no)"
 
 fi
 section_end

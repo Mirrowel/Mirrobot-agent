@@ -304,11 +304,6 @@ jobs:
           # Optional public-account token for verified-lead actions abroad
           # (scope-of-action rules). Absent secret => empty => unavailable.
           ACCOUNT_GH_TOKEN: ${{ secrets.ACCOUNT_GH_TOKEN }}
-          # Share-link encryption (pub key from secret; private key stays
-          # with the admin - see decrypt_share_link.py).
-          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
-          SHARE_CTX_THREAD: "Issue #${{ env.ISSUE_NUMBER }}"
-          SHARE_CTX_DETAIL: issue triage
         run: |
             set -o pipefail
             # Only substitute the variables we intend; leave example $vars and secrets intact

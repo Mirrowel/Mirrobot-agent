@@ -885,13 +885,6 @@ jobs:
           # Optional public-account token for verified-lead actions abroad
           # (scope-of-action rules). Absent secret => empty => unavailable.
           ACCOUNT_GH_TOKEN: ${{ secrets.ACCOUNT_GH_TOKEN }}
-          # Share-link encryption (pub key from secret; private key stays
-          # with the admin - see decrypt_share_link.py). Context fields are
-          # public metadata that identify WHICH compliance run this is.
-          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
-          SHARE_CTX_THREAD: "PR #${{ inputs.pr_number }}"
-          SHARE_CTX_HEAD: ${{ steps.pr_info.outputs.head_sha }}
-          SHARE_CTX_DETAIL: compliance check (${{ env.REVIEW_TYPE }})
         run: |
           set -o pipefail
           TMP_DIR="${RUNNER_TEMP:-/tmp}"

@@ -866,13 +866,6 @@ jobs:
           # All shared prompt examples (gh issue comment N ...) then land in
           # the summoned repo unchanged; other repos need explicit --repo.
           GH_REPO: ${{ env.TARGET_REPO }}
-          # Share-link encryption (pub key from secret; private key stays
-          # with the admin - see decrypt_share_link.py). Context fields are
-          # public metadata identifying which session this is.
-          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
-          SHARE_CTX_THREAD: "${{ format('{0} #{1}', env.TARGET_REPO, env.THREAD_NUMBER) }}"
-          SHARE_CTX_HEAD: ${{ env.PR_HEAD_SHA || env.DEFAULT_SHA }}
-          SHARE_CTX_DETAIL: ${{ format('guest session ({0})', inputs.triggerKind || 'mention') }}
         run: |
           set -o pipefail
           # Guest brief + guest manifest. Untrusted thread content reaches
