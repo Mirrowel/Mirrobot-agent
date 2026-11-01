@@ -616,6 +616,7 @@ jobs:
           plugins-json-4: ${{ vars.OPENCODE_PLUGINS_JSON_4 }}
           plugins-json-5: ${{ vars.OPENCODE_PLUGINS_JSON_5 }}
           openshare-config-json: ${{ secrets.OPENSHARE_CONFIG_JSON }}
+          openshare-bundle-url: ${{ vars.OPENSESHARE_BUNDLE_URL || '' }}
 
       - name: Add reaction to comment (lifecycle start)
         # Eyes on the mention comment via the shared lifecycle script; the
@@ -1248,22 +1249,21 @@ jobs:
         # OpenShare offline track: always runs, live sharing or not (live
         # sharing is optional; the passive artifact is not). Best-effort:
         # never fails the run - a visible warning is the failure signal.
-        if: always()
+        if: always() && vars.OPENSESHARE_PASSIVE != 'false'
         continue-on-error: true
         env:
           SHARE_LINK_PUBKEY: ${{ secrets.SHARE_LINK_PUBKEY }}
           OPENSHARE_URL_FILE: ${{ runner.temp }}/openshare-urls.txt
+          OPENSESHARE_BUNDLE_URL: ${{ vars.OPENSESHARE_BUNDLE_URL || '' }}
+          OPENSHARE_CONFIG: ${{ secrets.OPENSHARE_CONFIG_JSON }}
         run: |
           set -eu
-          ARGS=()
-          if [ -s "${OPENSHARE_URL_FILE:-}" ]; then
-            ARGS+=(--live-url "$(head -n1 "$OPENSHARE_URL_FILE")")
-          fi
           python3 /tmp/export-session.py --out-dir "${RUNNER_TEMP:-/tmp}" \
-            --run-id "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" "${ARGS[@]}"
+            --run-id "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --url-file "${OPENSHARE_URL_FILE:-}"
 
       - name: Upload session artifact
-        if: always()
+        if: always() && vars.OPENSESHARE_PASSIVE != 'false'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -1273,7 +1273,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Share link summary
-        if: always()
+        if: always() && vars.OPENSESHARE_PASSIVE != 'false'
         run: |
           TMP_DIR="${RUNNER_TEMP:-/tmp}"
           if [ -s "$TMP_DIR/share-link.enc" ]; then

@@ -1,35 +1,31 @@
 #!/usr/bin/env python3
-"""export-session.py — Mirrobot session artifact builder (runs on the CI runner).
+"""Passive session export: family exports + offline-viewable snapshot,
+sealed into an MRB2 Actions artifact. Always-on counterpart to optional
+live sharing; never fails the run - a visible warning is the failure
+signal.
 
-Upstream opencode discontinued share links. This is the passive half of the
-replacement: after a headless `opencode run` completes, it
+Flow:
+  1. Resolve the newest ROOT session + its subagent family in the
+     opencode db; `opencode export` every member (native format).
+  2. Build a self-contained snapshot HTML:
+     - online: a live share exists (JSON lines in the OpenShare urlFile)
+       -> osh-snapshot.mjs pulls the snapshot from the worker;
+     - offline fallback: osh-snapshot-local.mjs builds it from the raw
+       exports with the viewer-dist release asset (no worker involved);
+     - degrade: raw exports only, snapshot null, note recorded.
+     Tools + dist come from the OpenShare repo at the ref the bundle URL
+     variable points at (absent = master). Never print secrets.
+  3. Seal {meta, exports, snapshot} with MRB2 (gzip + AES + RSA-OAEP)
+     -> session-<runid>.enc artifact + encrypted meta blob for the run
+     summary (share-link.enc + share-link.ctx + session-meta.txt).
 
-  1. finds the session the run just wrote (the runner is single-purpose:
-     newest session in the opencode SQLite DB),
-  2. exports it (`opencode export <id>` — official, DB-backed),
-  3. normalizes the v1 export shape {info, messages:[{info, parts[]}]} into
-     OpenShare contract-v2 items (content-embedded messages, the same items
-     the live plugin streams and the viewer renders — ONE data contract for
-     live and archived; v1 parts are folded into message content, mirroring
-     share-plugin/src/contract.ts normalizeV1Message),
-  4. gzips + encrypts it (AES-256-CBC payload, RSA-OAEP-wrapped key — the
-     same hybrid scheme and SHARE_LINK_PUBKEY as MRB1, new MRB2 wire
-     format), writing:
-       <out-dir>/session-<runid>.enc  — the artifact to upload
-       <out-dir>/session-meta.txt     — MRB2 metadata line + context line
-                                        for the run summary
+Env: SHARE_LINK_PUBKEY (repo secret), OPENSHARE_URL_FILE (plugin urlFile;
+JSON lines when the config sets urlFileFormat json - bare URLs also
+accepted), OPENSESHARE_BUNDLE_URL (repo variable, ref source),
+OPENSHARE_CONFIG (the config secret, parsed in-memory for the share
+read-auth pair; used for snapshot login, never logged).
 
-Usage:
-  export-session.py [--out-dir /tmp] [--run-id 123] [--repo OWNER/REPO]
-                    [--db ~/.local/share/opencode/opencode.db]
-                    [--live-url https://...] [--opencode <path>]
-
-Environment:
-  SHARE_LINK_PUBKEY  PEM public key (CI secret; required for encryption)
-  GITHUB_REPOSITORY  used for --repo fallback
-  GITHUB_RUN_ID      used for --run-id fallback
-
-Requires: python3 (stdlib only) + openssl + opencode on PATH.
+Requires: python3 (stdlib only) + openssl + opencode; node for snapshots.
 The artifact is decryptable by decrypt_share_link.py (MRB2).
 """
 
@@ -38,16 +34,27 @@ from __future__ import annotations
 import argparse
 import base64
 import gzip
+import io
 import json
 import os
+import re
 import secrets
 import sqlite3
 import subprocess
 import sys
 import shutil
+import tempfile
+import time
+import urllib.request
+import zipfile
 from pathlib import Path
 
 WIRE_PREFIX = "MRB2"
+OPENSHARE_REPO = "Mirrowel/OpenShare"
+DEFAULT_BUNDLE_URL = f"https://raw.githubusercontent.com/{OPENSHARE_REPO}/master/share-plugin/ci/openshare.js"
+TOOLS_ONLINE = ["tools/osh-snapshot.mjs", "tools/snapshot-builder.mjs"]
+TOOLS_OFFLINE = ["tools/osh-snapshot-local.mjs", "tools/snapshot-builder.mjs", "tools/osh-session.mjs"]
+UA = {"user-agent": "mirrobot-agent-passive/1.0"}
 
 
 # ----------------------------------------------------------------------------
@@ -113,7 +120,6 @@ def newest_session_id(db: Path) -> str:
     """Newest ROOT session (parentless). On the single-run runner db the
     newest session overall may be a subagent child that finished last —
     the family walk from a child never reaches the main session."""
-    import sqlite3
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
         row = con.execute(
@@ -147,221 +153,6 @@ def opencode_export(session_id: str, exe: str) -> dict:
         sys.exit(f"error: export JSON parse failed: {exc}")
 
 
-# ----------------------------------------------------------------------------
-# v1 export -> OpenShare contract-v2 items (ONE data contract: the same
-# content-embedded items the live plugin streams and the viewer renders;
-# ported from openshare tools/view-export.py, mirroring
-# share-plugin/src/contract.ts normalizeV1Message)
-# ----------------------------------------------------------------------------
-
-TOOL_NAME_MAP = {"bash": "shell", "task": "subagent"}
-INPUT_KEY_MAP = {"filePath": "path", "subagent_type": "agent"}
-
-
-def _tool_input(state: dict) -> dict:
-    out = {}
-    for k, v in (state.get("input") or {}).items():
-        out[INPUT_KEY_MAP.get(k, k)] = v
-    title = state.get("title")
-    if isinstance(title, str) and "description" not in out:
-        out["description"] = title
-    return out
-
-
-def _tool_metadata(state: dict) -> dict:
-    out = {}
-    for k, v in (state.get("metadata") or {}).items():
-        if k == "filediff":
-            out["files"] = [v]
-        elif k == "sessionId":
-            out["sessionID"] = v
-        else:
-            out[k] = v
-    return out
-
-
-def _tool_state(state: dict) -> dict:
-    status = str(state.get("status") or "pending")
-    if status == "pending":
-        raw = state.get("raw")
-        return {"status": "streaming",
-                "input": raw if isinstance(raw, str) else json.dumps(state.get("input") or {})}
-    if status == "running":
-        return {"status": "running", "input": _tool_input(state), "metadata": _tool_metadata(state)}
-    if status == "completed":
-        output = state.get("output")
-        text = output if isinstance(output, str) else ""
-        return {"status": "completed", "input": _tool_input(state),
-                "content": [{"type": "text", "text": text or " "}],
-                "metadata": _tool_metadata(state)}
-    err = state.get("error")
-    return {"status": "error", "input": _tool_input(state),
-            "error": {"type": "unknown",
-                      "message": err if isinstance(err, str) else "tool failed"},
-            "metadata": _tool_metadata(state)}
-
-
-def _normalize_file_part(p: dict):
-    url = p.get("url")
-    if not isinstance(url, str) or not url:
-        return None
-    inline = url.startswith("data:")
-    comma = url.find(",")
-    out = {"data": url[comma + 1:] if inline else url,
-           "mime": p.get("mime") if isinstance(p.get("mime"), str) else "application/octet-stream",
-           "source": {"type": "inline"} if inline else {"type": "uri", "uri": url}}
-    if isinstance(p.get("filename"), str):
-        out["name"] = p["filename"]
-    return out
-
-
-def normalize_v1_message(minfo: dict, parts: list):
-    """v1 {info, parts} -> v2 message dict, or ("refill", parentID, summary)
-    for the compaction summary assistant, or None."""
-    mid = minfo.get("id")
-    if not isinstance(mid, str):
-        return None
-    t = minfo.get("time") or {}
-    created = t.get("created") if isinstance(t.get("created"), (int, float)) else 0
-
-    if minfo.get("role") == "user":
-        compaction = next((p for p in parts if p.get("type") == "compaction"), None)
-        if compaction is not None:
-            return {"id": mid, "type": "compaction", "status": "completed",
-                    "reason": "manual" if compaction.get("auto") is False else "auto",
-                    "summary": "", "recent": "", "time": {"created": created}}
-        text = "\n".join(p["text"] for p in parts
-                         if p.get("type") == "text" and isinstance(p.get("text"), str))
-        message = {"id": mid, "type": "user", "time": {"created": created}, "text": text}
-        files = [f for f in (_normalize_file_part(p) for p in parts
-                             if p.get("type") == "file") if f is not None]
-        if files:
-            message["files"] = files
-        agents = [{"name": str(p["name"])} for p in parts
-                  if p.get("type") == "agent" and p.get("name")]
-        if agents:
-            message["agents"] = agents
-        meta = {}
-        if minfo.get("agent") is not None:
-            meta["agent"] = str(minfo["agent"])
-        model = minfo.get("model")
-        if isinstance(model, dict):
-            meta["model"] = {"id": str(model.get("modelID") or ""),
-                             "providerID": str(model.get("providerID") or "")}
-        message["metadata"] = meta
-        return message
-
-    if minfo.get("role") == "assistant":
-        if minfo.get("summary") is True and minfo.get("mode") == "compaction":
-            summary = "\n".join(p["text"] for p in parts
-                                if p.get("type") == "text" and isinstance(p.get("text"), str))
-            return ("refill", str(minfo.get("parentID") or ""), summary)
-
-        content = []
-        cost = minfo.get("cost") if isinstance(minfo.get("cost"), (int, float)) else 0
-        tokens = None
-        retry = None
-        for p in parts:
-            ptype = p.get("type")
-            if ptype == "text":
-                content.append({"type": "text", "text": str(p.get("text") or "")})
-            elif ptype == "reasoning":
-                rt = p.get("time") or {}
-                content.append({"type": "reasoning", "text": str(p.get("text") or ""),
-                                "time": {"created": rt.get("start"), "completed": rt.get("end")}})
-            elif ptype == "tool":
-                st = p.get("state") or {}
-                tt = st.get("time") or {}
-                tool = str(p.get("tool") or "unknown")
-                content.append({"type": "tool", "id": str(p.get("id") or ""),
-                                "name": TOOL_NAME_MAP.get(tool, tool),
-                                "state": _tool_state(st),
-                                "time": {"created": tt.get("start"), "completed": tt.get("end")}})
-            elif ptype == "retry":
-                err = p.get("error") or {}
-                retry = {"attempt": int(p.get("attempt") or 0),
-                         "at": (p.get("time") or {}).get("created") or 0,
-                         "error": {"type": "unknown",
-                                   "message": str(err.get("message") or err.get("name") or "retry")}}
-            elif ptype == "step-finish":
-                if isinstance(p.get("cost"), (int, float)):
-                    cost += p["cost"]
-                if isinstance(p.get("tokens"), dict):
-                    tokens = p["tokens"]
-
-        message = {"id": mid, "type": "assistant",
-                   "agent": str(minfo.get("agent") or "build"),
-                   "model": {"id": str(minfo.get("modelID") or ""),
-                             "providerID": str(minfo.get("providerID") or "")},
-                   "time": {"created": created,
-                            "streamed": t.get("started"),
-                            "completed": t.get("completed")},
-                   "content": content, "cost": cost}
-        if tokens is not None:
-            message["tokens"] = tokens
-        if isinstance(minfo.get("finish"), str):
-            message["finish"] = minfo["finish"]
-        err = minfo.get("error")
-        if isinstance(err, dict):
-            message["error"] = {"type": str(err.get("name") or "UnknownError"),
-                                "message": str(err.get("message") or "turn failed")}
-        if retry is not None:
-            message["retry"] = retry
-        return message
-    return None
-
-
-def export_to_data(export: dict, session_id: str) -> list[dict]:
-    """v1 {info, messages:[{info, parts[]}]} -> contract-v2 items
-    (content-embedded messages, model items; parts are folded in)."""
-    items: list[dict] = []
-    info = export.get("info")
-    if info:
-        items.append({"type": "session", "data": info})
-    normalized: list[dict] = []
-    refills: dict[str, str] = {}
-    for m in export.get("messages") or []:
-        minfo = m.get("info") or {}
-        result = normalize_v1_message(minfo, m.get("parts") or [])
-        if result is None:
-            continue
-        if isinstance(result, tuple):
-            _, parent_id, summary = result
-            if parent_id:
-                refills[parent_id] = summary
-            continue
-        if result["type"] == "user" and minfo.get("model"):
-            model = minfo["model"]
-            label = format_label(os.environ.get("SHARE_MODEL_LABEL", "$Provider/$Model"), model)
-            items.append({
-                "type": "model",
-                "sessionID": session_id,
-                "data": [{
-                    "id": model.get("modelID"),
-                    "providerID": model.get("providerID"),
-                    "name": label,
-                }],
-            })
-        normalized.append(result)
-    for message in normalized:
-        if message.get("type") == "compaction" and refills.get(message["id"]):
-            message["summary"] = refills[message["id"]]
-        items.append({"type": "message", "data": message})
-    return items
-
-
-def format_label(template: str, model: dict) -> str:
-    if template == "":
-        return ""
-    if not model:
-        return template
-    return (template
-            .replace("$Provider", model.get("providerID") or "")
-            .replace("$provider", model.get("providerID") or "")
-            .replace("$Model", model.get("modelID") or "")
-            .replace("$model", model.get("modelID") or ""))
-
-
 def session_family(db: Path, main_id: str) -> list[str]:
     """The main session plus every session in the db whose root ancestor is
     the main session (subagent children, recursively)."""
@@ -385,6 +176,202 @@ def session_family(db: Path, main_id: str) -> list[str]:
 
 
 # ----------------------------------------------------------------------------
+# urlFile (JSON lines preferred; bare URL lines accepted)
+# ----------------------------------------------------------------------------
+
+def parse_url_file(path: str | None) -> list[dict]:
+    """One entry per share: {id, url, status, gated} when JSON format,
+    {url} for legacy bare lines. Malformed lines are skipped loudly."""
+    if not path or not Path(path).exists():
+        return []
+    out: list[dict] = []
+    for n, line in enumerate(Path(path).read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("{"):
+            try:
+                obj = json.loads(line)
+                if isinstance(obj.get("url"), str) and obj["url"].startswith("http"):
+                    out.append({
+                        "id": str(obj.get("id") or ""),
+                        "url": obj["url"],
+                        "status": str(obj.get("status") or ""),
+                        "gated": bool(obj.get("gated", False)),
+                    })
+                    continue
+            except json.JSONDecodeError:
+                pass
+            print(f"note: urlFile line {n} is malformed JSON - skipped")
+        elif line.startswith("http"):
+            out.append({"id": "", "url": line, "status": "", "gated": False})
+    return out
+
+
+# ----------------------------------------------------------------------------
+# OpenShare tool + dist fetching (from the repo at the bundle ref)
+# ----------------------------------------------------------------------------
+
+def bundle_ref() -> str:
+    """The ref the bundle URL points at (OPENSESHARE_BUNDLE_URL variable;
+    absent = master, the released line)."""
+    url = os.environ.get("OPENSESHARE_BUNDLE_URL", "").strip() or DEFAULT_BUNDLE_URL
+    m = re.search(rf"/{OPENSHARE_REPO}/([^/]+)/share-plugin/", url)
+    return m.group(1) if m else "master"
+
+
+def fetch_raw(ref: str, repo_path: str, dest: Path) -> None:
+    url = f"https://raw.githubusercontent.com/{OPENSHARE_REPO}/{ref}/{repo_path}"
+    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
+        dest.write_bytes(r.read())
+    if not dest.stat().st_size:
+        raise RuntimeError(f"empty fetch: {repo_path}")
+
+
+def fetch_tools(ref: str, names: list[str], workdir: Path) -> None:
+    for repo_path in names:
+        dest = workdir / Path(repo_path).name
+        fetch_raw(ref, repo_path, dest)
+    # the CLIs resolve their sibling imports relative to their own file
+    (workdir / "node_modules").mkdir(exist_ok=True)
+
+
+def resolve_dist_zip_url(ref: str) -> str | None:
+    """viewer-dist release asset for the ref's channel: exact tag -> that
+    release; dev/other branch -> newest prerelease carrying the asset;
+    master -> newest stable. Refs with no release (docs-only) -> None."""
+    api = f"https://api.github.com/repos/{OPENSHARE_REPO}/releases?per_page=40"
+    with urllib.request.urlopen(urllib.request.Request(api, headers=UA), timeout=30) as r:
+        releases = json.load(r)
+
+    def asset(rel: dict) -> str | None:
+        for a in rel.get("assets", []):
+            if str(a.get("name", "")).startswith("viewer-dist-"):
+                return a.get("browser_download_url")
+        return None
+
+    if ref.startswith("v"):
+        for rel in releases:
+            if rel.get("tag_name") == ref:
+                return asset(rel)
+        return None
+    want_pre = ref not in ("master", "main")
+    for rel in releases:
+        if bool(rel.get("prerelease")) == want_pre and asset(rel):
+            return asset(rel)
+    for rel in releases:  # channel fallback: any release with the asset
+        if asset(rel):
+            return asset(rel)
+    return None
+
+
+def fetch_dist(ref: str, workdir: Path) -> Path | None:
+    url = resolve_dist_zip_url(ref)
+    if not url:
+        print(f"note: no viewer-dist release asset for ref '{ref}' - offline snapshot unavailable")
+        return None
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=120) as r:
+            data = r.read()
+        dist = workdir / "viewer-dist"
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            names = z.namelist()
+            # flat layout (root index.html) extracts as-is; a single
+            # wrapper directory is stripped
+            if any(n == "index.html" for n in names):
+                strip = 0
+            else:
+                top = {n.split("/")[0] for n in names if "/" in n}
+                strip = 1 if len(top) == 1 else 0
+            for n in names:
+                if n.endswith("/"):
+                    continue
+                parts = n.split("/")[strip:]
+                if not parts:
+                    continue
+                dest = dist.joinpath(*parts)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(z.read(n))
+        if not (dist / "index.html").exists():
+            raise RuntimeError("dist zip missing index.html")
+        return dist
+    except Exception as exc:  # noqa: BLE001 - degrade, never fail the run
+        print(f"note: viewer-dist fetch/extract failed ({exc}) - offline snapshot unavailable")
+        return None
+
+
+def auth_pair() -> tuple[str, str]:
+    """Read-auth pair from the config secret (in-memory only, never printed)."""
+    raw = os.environ.get("OPENSHARE_CONFIG", "").strip()
+    if not raw:
+        return "", ""
+    try:
+        cfg = json.loads(raw)
+        return str(cfg.get("authLogin") or ""), str(cfg.get("authPassword") or "")
+    except json.JSONDecodeError:
+        return "", ""
+
+
+def run_node(args: list[str], workdir: Path) -> subprocess.CompletedProcess:
+    node = shutil.which("node")
+    if not node:
+        raise RuntimeError("node not found on PATH")
+    return subprocess.run([node, *args], cwd=workdir, capture_output=True, timeout=420)
+
+
+def build_snapshot_online(share_url: str, login: str, password: str,
+                          workdir: Path) -> tuple[Path, str] | None:
+    """Snapshot pulled from the worker by osh-snapshot.mjs (the worker is
+    the asset source; no dist needed)."""
+    try:
+        fetch_tools(bundle_ref(), TOOLS_ONLINE, workdir)
+        cmd = [str(workdir / "osh-snapshot.mjs"), share_url, "-o", str(workdir / "snapshot.html"), "--json"]
+        if login and password:
+            # creds ride argv; the config leaves are add-masked at boot so
+            # they cannot appear in logs, and the tool never echoes them
+            cmd += ["--login", f"{login}:{password}"]
+        p = run_node(cmd, workdir)
+        if p.returncode != 0:
+            raise RuntimeError(f"exit {p.returncode}: {p.stderr.decode('utf-8', 'replace').strip()[:200]}")
+        out = workdir / "snapshot.html"
+        if not out.exists():
+            raise RuntimeError("tool wrote no snapshot")
+        detail = p.stdout.decode("utf-8", "replace").strip().splitlines()[-1] if p.stdout.strip() else ""
+        return out, detail
+    except Exception as exc:  # noqa: BLE001 - fall back to offline build
+        print(f"note: online snapshot failed ({exc}) - trying offline build")
+        return None
+
+
+def build_snapshot_offline(exports: dict[str, dict], workdir: Path) -> Path | None:
+    """Snapshot built locally from the raw exports: no worker, no share -
+    tools + viewer dist fetched from the OpenShare repo/release."""
+    try:
+        ref = bundle_ref()
+        dist = fetch_dist(ref, workdir)
+        if not dist:
+            return None
+        fetch_tools(ref, TOOLS_OFFLINE, workdir)
+        files = []
+        for sid, export in exports.items():
+            f = workdir / f"export-{sid}.json"
+            f.write_text(json.dumps(export, ensure_ascii=False), encoding="utf-8")
+            files.append(str(f))
+        cmd = [str(workdir / "osh-snapshot-local.mjs"), *files,
+               "--viewer", str(dist), "-o", str(workdir / "snapshot.html")]
+        p = run_node(cmd, workdir)
+        if p.returncode != 0:
+            raise RuntimeError(f"exit {p.returncode}: {p.stderr.decode('utf-8', 'replace').strip()[:200]}")
+        out = workdir / "snapshot.html"
+        if not out.exists():
+            raise RuntimeError("tool wrote no snapshot")
+        return out
+    except Exception as exc:  # noqa: BLE001 - degrade, never fail the run
+        print(f"note: offline snapshot failed ({exc}) - artifact carries raw exports only")
+        return None
+
+
+# ----------------------------------------------------------------------------
 # main
 # ----------------------------------------------------------------------------
 
@@ -394,50 +381,84 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--run-id", default=os.environ.get("GITHUB_RUN_ID", "local"))
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "unknown/repo"))
     ap.add_argument("--db", default=None)
-    ap.add_argument("--live-url", default=None,
-                    help="live share URL from the plugin (folded into the meta blob)")
+    ap.add_argument("--url-file", default=os.environ.get("OPENSHARE_URL_FILE"),
+                    help="OpenShare urlFile (JSON lines preferred); first share feeds the summary + online snapshot")
     ap.add_argument("--opencode", default=None)
     ap.add_argument("--session-id", default=None,
-                    help="export this session (default: newest in the db — correct for the "
+                    help="export this session (default: newest ROOT in the db — correct for the "
                          "single-run runner db; use explicitly on dev machines)")
     ap.add_argument("--plain", action="store_true",
-                    help="debug: also write the unencrypted normalized JSON")
+                    help="debug: also write the unencrypted payload JSON")
     args = ap.parse_args(argv[1:])
 
     pub = os.environ.get("SHARE_LINK_PUBKEY", "").strip()
     if not pub:
         sys.exit("error: SHARE_LINK_PUBKEY not set (repo secret)")
 
+    warnings: list[str] = []
+    shares = parse_url_file(args.url_file)
+    live = shares[0] if shares else None
+    login, password = auth_pair()
+    if live is not None:
+        if live["gated"]:
+            print(f"share gate: login-gated (id {live['id'] or 'n/a'}, status {live['status'] or 'n/a'})")
+        elif login:
+            msg = ("OpenShare share is NOT login-gated although read auth is configured "
+                   "- check the worker's auth handling (gated=false)")
+            warnings.append(msg)
+            print(f"::warning::{msg}")
+        else:
+            print("note: share is ungated (no read auth configured in the config secret)")
+
     db = find_db(args.db)
     sid = args.session_id or newest_session_id(db)
     family = session_family(db, sid)
-    print(f"session: {sid} (newest in {db}); family: {len(family)} session(s)")
+    if not family:
+        sys.exit(f"error: session family resolved empty for {sid} - refusing to ship an empty artifact")
+    print(f"session: {sid} (newest ROOT in {db}); family: {len(family)} session(s)")
 
-    data: list[dict] = []
-    n_msgs = 0
+    exports: dict[str, dict] = {}
     for fsid in family:
-        export = opencode_export(fsid, args.opencode)
-        fdata = export_to_data(export, fsid)
-        n_msgs += sum(1 for i in fdata if i["type"] == "message")
-        data.extend(fdata)
-    # sender-side display preferences (parity with the live plugin)
-    data.append({"type": "prefs", "data": {"openTasksInNewTab": True}})
-    print(f"normalized: {n_msgs} messages across {len(family)} session(s)")
+        exports[fsid] = opencode_export(fsid, args.opencode)
+    n_msgs = sum(1 for e in exports.values() for m in (e.get("messages") or []) if isinstance(m, dict))
+    print(f"exported: {n_msgs} messages across {len(family)} session(s)")
+
+    workdir = Path(tempfile.mkdtemp(prefix="osh-passive-"))
+    snapshot_html: str | None = None
+    snapshot_src = None
+    snapshot_note = None
+    if live is not None:
+        snap = build_snapshot_online(live["url"], login, password, workdir)
+        if snap:
+            snapshot_html = snap[0].read_text(encoding="utf-8", errors="replace")
+            snapshot_src = "online"
+    if snapshot_html is None:
+        snap2 = build_snapshot_offline(exports, workdir)
+        if snap2:
+            snapshot_html = snap2.read_text(encoding="utf-8", errors="replace")
+            snapshot_src = "offline"
+    if snapshot_src:
+        print(f"snapshot: {snapshot_src} ({len(snapshot_html)} bytes)")
+    elif not snapshot_note:
+        snapshot_note = "snapshot unavailable (see notes above); raw exports intact"
 
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    session_payload = json.dumps({
+    payload = {
+        "format": "osh-passive",
         "v": 2,
-        "kind": "session",
         "repo": args.repo,
         "run_id": str(args.run_id),
         "session_id": sid,
-        "ts": __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime()),
-        "data": data,
-    }, ensure_ascii=False).encode("utf-8")
-
-    blob = mrb2_encrypt(gzip.compress(session_payload), pub)
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        **({"live": live} if live else {"live": None}),
+        "snapshot": snapshot_src,
+        **({"snapshot_note": snapshot_note} if snapshot_note else {}),
+        "exports": exports,
+        "snapshot_html": snapshot_html,
+    }
+    blob = mrb2_encrypt(gzip.compress(json.dumps(payload, ensure_ascii=False).encode("utf-8")), pub)
     art = out / f"session-{args.run_id}.enc"
     art.write_text(blob + "\n", encoding="utf-8")
     print(f"artifact: {art} ({art.stat().st_size} bytes encrypted)")
@@ -449,23 +470,35 @@ def main(argv: list[str]) -> int:
         "run_id": str(args.run_id),
         "session_id": sid,
         "artifact": art.name,
-        **({"url": args.live_url} if args.live_url else {}),
+        **({"url": live["url"], "share_id": live["id"], "share_status": live["status"],
+            "share_gated": live["gated"], "snapshot": snapshot_src} if live else {}),
     }, ensure_ascii=False).encode("utf-8")
     meta_blob = mrb2_encrypt(meta_payload, pub)
-    meta = out / "session-meta.txt"
-    meta.write_text(
-        f"session artifact (MRB2, decrypt with decrypt_share_link.py):\n"
-        f"MRB2 encrypted: {meta_blob}\n"
-        f"artifact: {art.name}\n",
+
+    (out / "share-link.enc").write_text(meta_blob + "\n", encoding="utf-8")
+    live_desc = (f"live={live['id'] or live['url']} status={live['status'] or '?'} "
+                 f"gated={'yes' if live['gated'] else 'no'}") if live else "live=none"
+    (out / "share-link.ctx").write_text(
+        f"{args.repo} run {args.run_id}: {live_desc}, snapshot={snapshot_src or 'none'}",
         encoding="utf-8",
     )
+    meta = out / "session-meta.txt"
+    meta_lines = [
+        f"session artifact (MRB2, decrypt with decrypt_share_link.py):",
+        f"MRB2 encrypted: {meta_blob}",
+        f"artifact: {art.name}",
+        f"context: {live_desc}, snapshot={snapshot_src or 'none'}",
+    ]
+    meta_lines += [f"WARNING: {w}" for w in warnings]
+    meta.write_text("\n".join(meta_lines) + "\n", encoding="utf-8")
     print(f"meta: {meta}")
 
     if args.plain:
-        plain = out / f"session-{args.run_id}.data.json"
-        plain.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        plain = out / f"session-{args.run_id}.payload.json"
+        plain.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
         print(f"debug plain: {plain}")
 
+    shutil.rmtree(workdir, ignore_errors=True)
     return 0
 
 

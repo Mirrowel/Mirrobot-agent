@@ -269,21 +269,36 @@ Global `small_model`, used for session-title generation. Per-agent `"fast"` over
 Present account token → account mode; else App pair → app mode; else workflows fail with a clear error.
 
 ### `SHARE_LINK_PUBKEY` (optional)
-RSA **public** key (PEM) for encrypted session share links. Without it, share URLs are still captured and masked but not recoverable. One-command setup: `python decrypt_share_link.py setup` — generates the pair, sets the secret, keeps the private key locally. See [security.md](security.md#encrypted-share-links).
+RSA **public** key (PEM) for encrypted session share links. Without it, share URLs are still captured and masked but not recoverable. One-command setup: `python decrypt_share_link.py setup` — generates the pair, sets the secret, keeps the private key locally. See [security.md](security.md#encrypted-session-sharing).
 
 ### `OPENSHARE_CONFIG_JSON` (optional)
-Live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare): the complete OpenShare plugin config as one JSON object, e.g.
+Live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare): the complete OpenShare plugin config as one JSON object. `.github/plugins/openshare.ci.EXAMPLE.json` (committed) is the annotated template; the filled copy lives gitignored at `.github/plugins/openshare.ci.config.json` and is sealed into the secret:
+
+```bash
+jq -c . .github/plugins/openshare.ci.config.json | gh secret set OPENSHARE_CONFIG_JSON
+```
+
+Shape highlights (see the EXAMPLE for every key):
 
 ```json
 {
-  "servers": { "https://<your-openshare-worker>": { "token": "osk_…", "active": true } },
-  "shareMode": "all",
-  "ttlDays": 90,
-  "authLogin": "…", "authPassword": "…"
+  "servers": { "https://<your-openshare-worker>": { "token": "osk_…" } },
+  "authLogin": "…", "authPassword": "…",
+  "ttlHours": 2160, "shareMode": "all",
+  "urlFileFormat": "json",
+  "meta": { "repo": "${GITHUB_REPOSITORY}", "run": "${GITHUB_RUN_ID}", "lane": "${GITHUB_WORKFLOW}" }
 }
 ```
 
-When set, bot-setup fetches the released OpenShare plugin bundle from the OpenShare repo, stages it under `~/.mirrobot-plugins/` with this config adjacent, and registers it in the opencode plugin array — every agent session then streams live to your worker (URLs never touch public logs; the run summary carries an encrypted link). The file is deleted right after boot, exactly like the opencode config. Absent = plugin dormant: no live sharing, but the passive encrypted session artifact is still produced on every run. Keep a local copy gitignored (`.github/plugins/openshare.ci.config.json` in this repo is the source of truth for the secret).
+Use a **scoped** CI token (reaches only its own shares; mint with your user's full token via `POST /api/token {"kind":"scoped"}`) — see the [OpenShare CI docs](https://github.com/Mirrowel/OpenShare). The `meta` values interpolate from the runner env, so every share is labeled with repo/run/lane in the worker's admin listing.
+
+When set, bot-setup fetches the released OpenShare plugin bundle from the OpenShare repo, stages it under `~/.mirrobot-plugins/` with this config adjacent, and registers it in the opencode plugin array — every agent session then streams live to your worker. URLs never touch public logs; the run summary carries an encrypted blob with the share URL, its gate state, and the session artifact. The file is deleted right after boot, exactly like the opencode config. Absent = plugin dormant: no live sharing, but the passive encrypted session artifact is still produced on every run.
+
+**Variables:**
+- `OPENSESHARE_BUNDLE_URL` — override where the plugin bundle (and the snapshot tools) are fetched from. Set this to the raw **dev**-branch URL while dev is ahead of the released master line, delete it to return to released master.
+- `OPENSESHARE_PASSIVE` — set to `false` to disable the passive artifact entirely (export + snapshot + encrypted artifact). Absent or any other value = on. The passive track is the safety net for live sharing; leaving it on costs nothing public.
+
+**Rotation:** share viewer password = edit the gitignored config, re-run the `gh secret set` line above. Token = rotate via the OpenShare API, update the config, re-seal.
 
 ## Interaction cheatsheet
 

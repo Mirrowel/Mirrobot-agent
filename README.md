@@ -201,7 +201,7 @@ Details: [configuration](docs/configuration.md) · [renaming](docs/customization
 
 Full reference with worked examples lives in [docs/configuration.md](docs/configuration.md). Summary:
 
-**Secrets** (`Settings → … → Secrets`): the three above are the minimal set. Optional: `OPENCODE_API_KEY` (provider key when it's not inside your config), `OPENCODE_FAST_MODEL` (global `small_model`, session-title generation), `SHARE_LINK_PUBKEY` (encrypted session artifacts; `python decrypt_share_link.py setup` does everything), `OPENSHARE_CONFIG_JSON` (live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare) — the whole plugin config as one secret; see [configuration.md](docs/configuration.md#openshare_config_json-optional)).
+**Secrets** (`Settings → … → Secrets`): the three above are the minimal set. Optional: `OPENCODE_API_KEY` (provider key when it's not inside your config), `OPENCODE_FAST_MODEL` (global `small_model`, session-title generation), `SHARE_LINK_PUBKEY` (encrypted session artifacts; `python decrypt_share_link.py setup` does everything), `OPENSHARE_CONFIG_JSON` (live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare) — the whole plugin config as one secret, template at `.github/plugins/openshare.ci.EXAMPLE.json`; see [configuration.md](docs/configuration.md#openshare_config_json-optional)).
 
 **Variables** (`Settings → … → Variables`):
 

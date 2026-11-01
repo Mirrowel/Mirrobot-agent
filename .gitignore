@@ -22,3 +22,4 @@ tools/share-worker/.wrangler/
 tools/share-viewer/node_modules/
 tools/share-viewer/dist/
 .github/plugins/openshare.ci.config.json
+.github/plugins/openshare.admin.json
