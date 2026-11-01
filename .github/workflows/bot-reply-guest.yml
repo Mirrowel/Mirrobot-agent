@@ -80,7 +80,7 @@ jobs:
       CONTEXT_IGNORE_AUTHORS: ${{ vars.CONTEXT_IGNORE_AUTHORS || '' }}
       CONTEXT_FILTER_PATTERNS_JSON: ${{ vars.CONTEXT_FILTER_PATTERNS_JSON || '' }}
       CONTEXT_LIMITS_JSON: ${{ vars.CONTEXT_LIMITS_JSON || '' }}
-      PREVIOUS_BOT_REVIEWS_COUNT: ${{ vars.PREVIOUS_BOT_REVIEWS_COUNT || '1' }}
+      ELEVATED_REVIEWS_COUNT: ${{ vars.ELEVATED_REVIEWS_COUNT || '1' }}
       ACCOUNT_TOKEN_SET: ${{ secrets.ACCOUNT_GH_TOKEN != '' }}
 
     steps:
@@ -547,7 +547,7 @@ jobs:
           plugins-json-4: ${{ vars.OPENCODE_PLUGINS_JSON_4 }}
           plugins-json-5: ${{ vars.OPENCODE_PLUGINS_JSON_5 }}
           openshare-config-json: ${{ secrets.OPENSHARE_CONFIG_JSON }}
-          openshare-bundle-url: ${{ vars.OPENSESHARE_BUNDLE_URL || '' }}
+          openshare-bundle-url: ${{ vars.OPENSHARE_BUNDLE_URL || '' }}
 
       - name: Add reaction to comment (lifecycle start)
         if: steps.validate.outputs.should_proceed == 'true' && steps.fast_eyes.outputs.posted != 'true'
@@ -869,7 +869,7 @@ jobs:
           # Share-link encryption (pub key from secret; private key stays
           # with the admin - see decrypt_share_link.py). Context fields are
           # public metadata identifying which session this is.
-          SHARE_LINK_PUBKEY: ${{ secrets.SHARE_LINK_PUBKEY }}
+          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
           SHARE_CTX_THREAD: "${{ format('{0} #{1}', env.TARGET_REPO, env.THREAD_NUMBER) }}"
           SHARE_CTX_HEAD: ${{ env.PR_HEAD_SHA || env.DEFAULT_SHA }}
           SHARE_CTX_DETAIL: ${{ format('guest session ({0})', inputs.triggerKind || 'mention') }}
@@ -895,12 +895,12 @@ jobs:
         # OpenShare offline track: always runs, live sharing or not (live
         # sharing is optional; the passive artifact is not). Best-effort:
         # never fails the run - a visible warning is the failure signal.
-        if: always() && vars.OPENSESHARE_PASSIVE != 'false'
+        if: always() && vars.OPENSHARE_PASSIVE != 'false'
         continue-on-error: true
         env:
-          SHARE_LINK_PUBKEY: ${{ secrets.SHARE_LINK_PUBKEY }}
+          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
           OPENSHARE_URL_FILE: ${{ runner.temp }}/openshare-urls.txt
-          OPENSESHARE_BUNDLE_URL: ${{ vars.OPENSESHARE_BUNDLE_URL || '' }}
+          OPENSHARE_BUNDLE_URL: ${{ vars.OPENSHARE_BUNDLE_URL || '' }}
           OPENSHARE_CONFIG: ${{ secrets.OPENSHARE_CONFIG_JSON }}
         run: |
           set -eu
@@ -909,7 +909,7 @@ jobs:
             --url-file "${OPENSHARE_URL_FILE:-}"
 
       - name: Upload session artifact
-        if: always() && vars.OPENSESHARE_PASSIVE != 'false'
+        if: always() && vars.OPENSHARE_PASSIVE != 'false'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -919,7 +919,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Share link summary
-        if: always() && steps.validate.outputs.should_proceed == 'true' && vars.OPENSESHARE_PASSIVE != 'false'
+        if: always() && steps.validate.outputs.should_proceed == 'true' && vars.OPENSHARE_PASSIVE != 'false'
         run: |
           # The share filter writes the encrypted link + context into
           # RUNNER_TEMP (share-link.enc / .ctx); surface them in the step

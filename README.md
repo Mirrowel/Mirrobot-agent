@@ -201,7 +201,7 @@ Details: [configuration](docs/configuration.md) · [renaming](docs/customization
 
 Full reference with worked examples lives in [docs/configuration.md](docs/configuration.md). Summary:
 
-**Secrets** (`Settings → … → Secrets`): the three above are the minimal set. Optional: `OPENCODE_API_KEY` (provider key when it's not inside your config), `OPENCODE_FAST_MODEL` (global `small_model`, session-title generation), `SHARE_LINK_PUBKEY` (encrypted session artifacts; `python decrypt_share_link.py setup` does everything), `OPENSHARE_CONFIG_JSON` (live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare) — the whole plugin config as one secret, template at `.github/plugins/openshare.ci.EXAMPLE.json`; see [configuration.md](docs/configuration.md#openshare_config_json-optional)).
+**Secrets** (`Settings → … → Secrets`): the three above are the minimal set. Optional: `OPENCODE_API_KEY` (provider key when it's not inside your config), `OPENCODE_FAST_MODEL` (global `small_model`, session-title generation), `SESSION_ARTIFACT_PUBKEY` (encrypted session artifacts; `python decrypt_share_link.py setup` does everything), `OPENSHARE_CONFIG_JSON` (live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare) — the whole plugin config as one secret, template at `.github/plugins/openshare.ci.EXAMPLE.json`; see [configuration.md](docs/configuration.md#openshare_config_json-optional)).
 
 **Variables** (`Settings → … → Variables`):
 
@@ -217,7 +217,7 @@ Full reference with worked examples lives in [docs/configuration.md](docs/config
 | `CONTEXT_IGNORE_AUTHORS` | *(empty)* | Logins whose posts never enter agent context |
 | `CONTEXT_FILTER_PATTERNS_JSON` | baked AI-noise defaults | Regex patterns dropping matching posts; **replaces** the defaults |
 | `TRUSTED_AGENT_USERS` | *(empty)* | Extra friendly users beyond collaborators (collaborators already count) |
-| `PREVIOUS_BOT_REVIEWS_COUNT` | `1` | How many of the agent's own newest reviews are *elevated* (unfiltered memory). Older ones still appear, filtered, in the history block |
+| `ELEVATED_REVIEWS_COUNT` | `1` | How many of the agent's own newest reviews are *elevated* (unfiltered memory). Older ones still appear, filtered, in the history block |
 | `OPENCODE_PLUGINS_JSON` (+`_1`..`_5`) | *(empty)* | Plugin files without committing them, see [docs](docs/configuration.md) |
 | `FOREIGN_MENTIONS_ENABLED` / `FOREIGN_MENTIONS_USERS` | `false` / *(empty)* | Cross-repo guest mode, see below |
 

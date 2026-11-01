@@ -34,7 +34,7 @@ When dispatched by the Mention Poller, the same machinery runs pointed at a **fo
 
 Setup and the worker side: [mention-poller.md](mention-poller.md).
 
-**Knobs:** the env block in the workflow (noise filters, context budget, `PREVIOUS_BOT_REVIEWS_COUNT`); identity resolves at runtime via `bot-config.sh` and `AGENT_MODELS_JSON["bot-reply"]`. Cross-repo variables (`FOREIGN_MENTIONS_ENABLED`, `FOREIGN_MENTIONS_USERS`, `GUEST_REPO_RULES`) belong to the [guest lane](bot-reply-guest.md).
+**Knobs:** the env block in the workflow (noise filters, context budget, `ELEVATED_REVIEWS_COUNT`); identity resolves at runtime via `bot-config.sh` and `AGENT_MODELS_JSON["bot-reply"]`. Cross-repo variables (`FOREIGN_MENTIONS_ENABLED`, `FOREIGN_MENTIONS_USERS`, `GUEST_REPO_RULES`) belong to the [guest lane](bot-reply-guest.md).
 
 **When it goes red:** real failures are the agent session exiting non-zero, or the comment re-fetch failing (deleted comments, retried, then failed visibly). A gray skipped run means `AGENT_PAUSED=true` or a phantom push event (expected).
 

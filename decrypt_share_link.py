@@ -442,9 +442,9 @@ Manual steps (gh CLI not available or not in a repo):
          -out ~/.config/mirrobot/share-link.pem
   2. Export the public key:
        openssl pkey -in ~/.config/mirrobot/share-link.pem -pubout
-  3. Add it as the repo secret SHARE_LINK_PUBKEY:
+  3. Add it as the repo secret SESSION_ARTIFACT_PUBKEY:
        Settings -> Secrets and variables -> Actions -> New repository secret
-       (or:  gh secret set SHARE_LINK_PUBKEY --repo OWNER/REPO < pub.pem )
+       (or:  gh secret set SESSION_ARTIFACT_PUBKEY --repo OWNER/REPO < pub.pem )
 """
 
 
@@ -464,16 +464,16 @@ def cmd_setup() -> int:
     pub = subprocess.run(
         [openssl, "pkey", "-in", str(key), "-pubout"],
         capture_output=True, check=True).stdout.decode()
-    print("\npublic key (for the SHARE_LINK_PUBKEY repo secret):\n")
+    print("\npublic key (for the SESSION_ARTIFACT_PUBKEY repo secret):\n")
     print(pub)
     gh = find_gh()
     if gh:
         repo = gh_repo(gh)
         if repo:
-            push = input(f"push as secret SHARE_LINK_PUBKEY to {repo}? [y/N] ")
+            push = input(f"push as secret SESSION_ARTIFACT_PUBKEY to {repo}? [y/N] ")
             if push.strip().lower() == "y":
                 p = subprocess.run(
-                    [gh, "secret", "set", "SHARE_LINK_PUBKEY", "--repo", repo],
+                    [gh, "secret", "set", "SESSION_ARTIFACT_PUBKEY", "--repo", repo],
                     input=pub.encode())
                 print("secret set" if p.returncode == 0 else "secret set failed")
                 return 0 if p.returncode == 0 else 1

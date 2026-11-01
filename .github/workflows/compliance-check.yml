@@ -129,7 +129,7 @@ jobs:
       CONTEXT_FILTER_PATTERNS_JSON: ${{ vars.CONTEXT_FILTER_PATTERNS_JSON || '' }}
       # How many of THIS agent's newest PR reviews to elevate into the
       # dedicated context block (same machinery as PR Review). Default 1.
-      PREVIOUS_BOT_REVIEWS_COUNT: ${{ vars.PREVIOUS_BOT_REVIEWS_COUNT || '1' }}
+      ELEVATED_REVIEWS_COUNT: ${{ vars.ELEVATED_REVIEWS_COUNT || '1' }}
       # secrets.* is not evaluable in step-level if: conditionals - the
       # push-path validation of dispatch-only workflows (actions/runner#4001
       # phantom runs) rejects the file with "Unrecognized named-value:
@@ -406,7 +406,7 @@ jobs:
           plugins-json-4: ${{ vars.OPENCODE_PLUGINS_JSON_4 }}
           plugins-json-5: ${{ vars.OPENCODE_PLUGINS_JSON_5 }}
           openshare-config-json: ${{ secrets.OPENSHARE_CONFIG_JSON }}
-          openshare-bundle-url: ${{ vars.OPENSESHARE_BUNDLE_URL || '' }}
+          openshare-bundle-url: ${{ vars.OPENSHARE_BUNDLE_URL || '' }}
 
       # ======================================================================
       # PHASE 2: GATHER PR CONTEXT
@@ -888,7 +888,7 @@ jobs:
           # Share-link encryption (pub key from secret; private key stays
           # with the admin - see decrypt_share_link.py). Context fields are
           # public metadata that identify WHICH compliance run this is.
-          SHARE_LINK_PUBKEY: ${{ secrets.SHARE_LINK_PUBKEY }}
+          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
           SHARE_CTX_THREAD: "PR #${{ inputs.pr_number }}"
           SHARE_CTX_HEAD: ${{ steps.pr_info.outputs.head_sha }}
           SHARE_CTX_DETAIL: compliance check (${{ env.REVIEW_TYPE }})
@@ -925,12 +925,12 @@ jobs:
         # OpenShare offline track: always runs, live sharing or not (live
         # sharing is optional; the passive artifact is not). Best-effort:
         # never fails the run - a visible warning is the failure signal.
-        if: always() && vars.OPENSESHARE_PASSIVE != 'false'
+        if: always() && vars.OPENSHARE_PASSIVE != 'false'
         continue-on-error: true
         env:
-          SHARE_LINK_PUBKEY: ${{ secrets.SHARE_LINK_PUBKEY }}
+          SESSION_ARTIFACT_PUBKEY: ${{ secrets.SESSION_ARTIFACT_PUBKEY }}
           OPENSHARE_URL_FILE: ${{ runner.temp }}/openshare-urls.txt
-          OPENSESHARE_BUNDLE_URL: ${{ vars.OPENSESHARE_BUNDLE_URL || '' }}
+          OPENSHARE_BUNDLE_URL: ${{ vars.OPENSHARE_BUNDLE_URL || '' }}
           OPENSHARE_CONFIG: ${{ secrets.OPENSHARE_CONFIG_JSON }}
         run: |
           set -eu
@@ -939,7 +939,7 @@ jobs:
             --url-file "${OPENSHARE_URL_FILE:-}"
 
       - name: Upload session artifact
-        if: always() && vars.OPENSESHARE_PASSIVE != 'false'
+        if: always() && vars.OPENSHARE_PASSIVE != 'false'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -949,7 +949,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Share link summary
-        if: always() && vars.OPENSESHARE_PASSIVE != 'false'
+        if: always() && vars.OPENSHARE_PASSIVE != 'false'
         run: |
           TMP_DIR="${RUNNER_TEMP:-/tmp}"
           if [ -s "$TMP_DIR/share-link.enc" ]; then

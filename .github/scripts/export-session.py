@@ -19,9 +19,9 @@ Flow:
      -> session-<runid>.enc artifact + encrypted meta blob for the run
      summary (share-link.enc + share-link.ctx + session-meta.txt).
 
-Env: SHARE_LINK_PUBKEY (repo secret), OPENSHARE_URL_FILE (plugin urlFile;
+Env: SESSION_ARTIFACT_PUBKEY (repo secret), OPENSHARE_URL_FILE (plugin urlFile;
 JSON lines when the config sets urlFileFormat json - bare URLs also
-accepted), OPENSESHARE_BUNDLE_URL (repo variable, ref source),
+accepted), OPENSHARE_BUNDLE_URL (repo variable, ref source),
 OPENSHARE_CONFIG (the config secret, parsed in-memory for the share
 read-auth pair; used for snapshot login, never logged).
 
@@ -213,9 +213,9 @@ def parse_url_file(path: str | None) -> list[dict]:
 # ----------------------------------------------------------------------------
 
 def bundle_ref() -> str:
-    """The ref the bundle URL points at (OPENSESHARE_BUNDLE_URL variable;
+    """The ref the bundle URL points at (OPENSHARE_BUNDLE_URL variable;
     absent = master, the released line)."""
-    url = os.environ.get("OPENSESHARE_BUNDLE_URL", "").strip() or DEFAULT_BUNDLE_URL
+    url = os.environ.get("OPENSHARE_BUNDLE_URL", "").strip() or DEFAULT_BUNDLE_URL
     m = re.search(rf"/{OPENSHARE_REPO}/([^/]+)/share-plugin/", url)
     return m.group(1) if m else "master"
 
@@ -391,9 +391,9 @@ def main(argv: list[str]) -> int:
                     help="debug: also write the unencrypted payload JSON")
     args = ap.parse_args(argv[1:])
 
-    pub = os.environ.get("SHARE_LINK_PUBKEY", "").strip()
+    pub = os.environ.get("SESSION_ARTIFACT_PUBKEY", "").strip()
     if not pub:
-        sys.exit("error: SHARE_LINK_PUBKEY not set (repo secret)")
+        sys.exit("error: SESSION_ARTIFACT_PUBKEY not set (repo secret)")
 
     warnings: list[str] = []
     shares = parse_url_file(args.url_file)

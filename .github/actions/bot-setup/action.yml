@@ -61,7 +61,7 @@ inputs:
     required: false
     default: ''
   openshare-bundle-url:
-    description: 'Optional: override the URL the OpenShare bundle is fetched from (repo variable OPENSESHARE_BUNDLE_URL, e.g. raw .../OpenShare/dev/share-plugin/ci/openshare.js while dev is ahead of master). Empty = released master line.'
+    description: 'Optional: override the URL the OpenShare bundle is fetched from (repo variable OPENSHARE_BUNDLE_URL, e.g. raw .../OpenShare/dev/share-plugin/ci/openshare.js while dev is ahead of master). Empty = released master line.'
     required: false
     default: ''
 
@@ -479,13 +479,13 @@ runs:
         # Released single-file bundle from the OpenShare repo (master is
         # the released line; auto-updates on every OpenShare release). The
         # repo variable can point the fetch at another branch while it is
-        # ahead (OPENSESHARE_BUNDLE_URL); delete the variable to return to
+        # ahead (OPENSHARE_BUNDLE_URL); delete the variable to return to
         # the released master line. Fetch failure degrades to no live
         # sharing - never fails the run.
         PLUGINS_DIR="$HOME/.mirrobot-plugins"
         mkdir -p "$PLUGINS_DIR"; chmod 700 "$PLUGINS_DIR"
         BUNDLE="$PLUGINS_DIR/openshare.js"
-        BUNDLE_URL="${OPENSESHARE_BUNDLE_URL:-https://raw.githubusercontent.com/Mirrowel/OpenShare/master/share-plugin/ci/openshare.js}"
+        BUNDLE_URL="${OPENSHARE_BUNDLE_URL:-https://raw.githubusercontent.com/Mirrowel/OpenShare/master/share-plugin/ci/openshare.js}"
         if ! curl -fsSL --retry 3 --max-time 60 "$BUNDLE_URL" -o "$BUNDLE"; then
           echo "::warning::OpenShare bundle fetch failed - live sharing disabled for this run."
           exit 0

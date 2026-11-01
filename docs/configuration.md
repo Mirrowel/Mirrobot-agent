@@ -19,7 +19,7 @@ gh variable set AGENT_PAUSED -R <owner>/<repo> --body "true"
 | Lists whose elements can contain commas or quotes (regex) | JSON array | `CONTEXT_FILTER_PATTERNS_JSON` |
 | Maps (key to value, nested) | JSON object | `CONTEXT_LIMITS_JSON`, `AGENT_MODELS_JSON` |
 | Prefilled editable menus (flip, don't construct) | JSON object, seeded by Bootstrap | `AGENT_PAUSED_PARTS_JSON` |
-| Scalars | plain string | booleans like `AGENT_PAUSED`, integers like `PREVIOUS_BOT_REVIEWS_COUNT` |
+| Scalars | plain string | booleans like `AGENT_PAUSED`, integers like `ELEVATED_REVIEWS_COUNT` |
 
 A `_JSON` suffix appears only on variables that actually are JSON.
 
@@ -109,7 +109,7 @@ Everything is *up to*, newest-first, deduped. **Filter before cap, everywhere:**
 
 **Diff size is handled differently:** diffs are never truncated. Diff files larger than `DIFF_SPLIT_BYTES` (workflow `env:` knob, default `1000000` = ~1MB) are split into navigable part files with an index at the original path; the prompts teach the agent to read the index and open only relevant parts.
 
-**Two knobs that sound alike, one distinction:** `own-reviews` (here) is how many of the agent's own reviews are *fetched at all*, the always-include safeguard. `PREVIOUS_BOT_REVIEWS_COUNT` is how many of those render *unfiltered* (the elevated block). Fetch more, elevate fewer.
+**Two knobs that sound alike, one distinction:** `own-reviews` (here) is how many of the agent's own reviews are *fetched at all*, the always-include safeguard. `ELEVATED_REVIEWS_COUNT` is how many of those render *unfiltered* (the elevated block). Fetch more, elevate fewer.
 
 ### `AGENT_MODELS_JSON`
 **Default:** empty template (seeded). **Type:** per-agent model overrides.
@@ -200,7 +200,7 @@ Any match on a post's **body** drops that post from thread context. Setting the 
 
 Regex metacharacters work; backslashes double as JSON escapes. Malformed JSON falls back to the defaults with a workflow warning.
 
-### `PREVIOUS_BOT_REVIEWS_COUNT`
+### `ELEVATED_REVIEWS_COUNT`
 **Default:** `1` (seeded). **Type:** integer.
 
 How many of the agent's own **newest** PR reviews are *elevated*, included unfiltered (only resolved/outdated markers are bypassed; hidden content stays hidden even here). This is the agent's working memory of its latest findings. Older own reviews are **not lost**: they still appear in the filtered history block (resolved/outdated/hidden threads dropped). Raise to `3` on long-lived PRs with many rounds for deeper unfiltered memory of its own feedback.
@@ -268,8 +268,8 @@ Global `small_model`, used for session-title generation. Per-agent `"fast"` over
 
 Present account token → account mode; else App pair → app mode; else workflows fail with a clear error.
 
-### `SHARE_LINK_PUBKEY` (optional)
-RSA **public** key (PEM) for encrypted session share links. Without it, share URLs are still captured and masked but not recoverable. One-command setup: `python decrypt_share_link.py setup` — generates the pair, sets the secret, keeps the private key locally. See [security.md](security.md#encrypted-session-sharing).
+### `SESSION_ARTIFACT_PUBKEY` (optional)
+RSA **public** key (PEM) sealing every passive session artifact and summary blob (hybrid `MRB2`: AES-256 payload, RSA-OAEP-wrapped key). Without it, the passive track cannot produce encrypted artifacts. One-command setup: `python decrypt_share_link.py setup` — generates the pair, sets the secret, keeps the private key locally. See [security.md](security.md#encrypted-session-sharing).
 
 ### `OPENSHARE_CONFIG_JSON` (optional)
 Live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare): the complete OpenShare plugin config as one JSON object. `.github/plugins/openshare.ci.EXAMPLE.json` (committed) is the annotated template; the filled copy lives gitignored at `.github/plugins/openshare.ci.config.json` and is sealed into the secret:
@@ -295,8 +295,8 @@ Use a **scoped** CI token (reaches only its own shares; mint with your user's fu
 When set, bot-setup fetches the released OpenShare plugin bundle from the OpenShare repo, stages it under `~/.mirrobot-plugins/` with this config adjacent, and registers it in the opencode plugin array — every agent session then streams live to your worker. URLs never touch public logs; the run summary carries an encrypted blob with the share URL, its gate state, and the session artifact. The file is deleted right after boot, exactly like the opencode config. Absent = plugin dormant: no live sharing, but the passive encrypted session artifact is still produced on every run.
 
 **Variables:**
-- `OPENSESHARE_BUNDLE_URL` — override where the plugin bundle (and the snapshot tools) are fetched from. Set this to the raw **dev**-branch URL while dev is ahead of the released master line, delete it to return to released master.
-- `OPENSESHARE_PASSIVE` — set to `false` to disable the passive artifact entirely (export + snapshot + encrypted artifact). Absent or any other value = on. The passive track is the safety net for live sharing; leaving it on costs nothing public.
+- `OPENSHARE_BUNDLE_URL` — override where the plugin bundle (and the snapshot tools) are fetched from. Set this to the raw **dev**-branch URL while dev is ahead of the released master line, delete it to return to released master.
+- `OPENSHARE_PASSIVE` — set to `false` to disable the passive artifact entirely (export + snapshot + encrypted artifact). Absent or any other value = on. The passive track is the safety net for live sharing; leaving it on costs nothing public.
 
 **Rotation:** share viewer password = edit the gitignored config, re-run the `gh secret set` line above. Token = rotate via the OpenShare API, update the config, re-seal.
 
@@ -313,5 +313,5 @@ When set, bot-setup fetches the released OpenShare plugin bundle from the OpenSh
 | Stop just one part (e.g. reviews) | `AGENT_PAUSED_PARTS_JSON` |
 | Rename the bot | `BOT_IDENTITIES` + `BOT_TRIGGERS` |
 | Private plugin | `OPENCODE_PLUGINS_JSON` + `plugin` path in the config |
-| Live session shares | `OPENSHARE_CONFIG_JSON` (+ `SHARE_LINK_PUBKEY` for the offline artifact) |
+| Live session shares | `OPENSHARE_CONFIG_JSON` (+ `SESSION_ARTIFACT_PUBKEY` for the offline artifact) |
 | Agent follows me into other repos | `FOREIGN_MENTIONS_ENABLED` + `FOREIGN_MENTIONS_USERS` + PAT scopes + the worker |

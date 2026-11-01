@@ -18,7 +18,7 @@
 #   (the calling step must set `set -o pipefail` to preserve the exit code)
 #
 # Env:
-#   SHARE_LINK_PUBKEY   PEM public key (repo secret SHARE_LINK_PUBKEY).
+#   SESSION_ARTIFACT_PUBKEY   PEM public key (repo secret SESSION_ARTIFACT_PUBKEY).
 #                       Optional - when unset/invalid the URL is still
 #                      captured and masked, just not encrypted.
 #   SHARE_CTX_THREAD    e.g. "PR #162" / "Issue #9"           (optional)
@@ -138,9 +138,9 @@ fi
 CTX="$(cat "$CTX_OUT" 2>/dev/null || true)"
 
 PUBKEY_FILE=""
-if [ -n "${SHARE_LINK_PUBKEY:-}" ]; then
+if [ -n "${SESSION_ARTIFACT_PUBKEY:-}" ]; then
   PUBKEY_FILE="$TMP/share-link.pub.pem"
-  printf '%s\n' "$SHARE_LINK_PUBKEY" > "$PUBKEY_FILE"
+  printf '%s\n' "$SESSION_ARTIFACT_PUBKEY" > "$PUBKEY_FILE"
 fi
 
 encrypt_url() {  # $1=url $2=pubkey-file -> base64 blob on stdout
@@ -170,9 +170,9 @@ if [ -n "$BLOB" ]; then
   printf '::notice::title=Mirrobot share link (encrypted)::MRB1.%s\n' "$BLOB"
   printf 'MRB1.%s\n' "$BLOB" > "$ENC_OUT"
 else
-  echo "~ [share link captured - NOT encrypted: no valid SHARE_LINK_PUBKEY secret]"
+  echo "~ [share link captured - NOT encrypted: no valid SESSION_ARTIFACT_PUBKEY secret]"
   printf '%s\n' "$CTX"
-  echo "::notice::title=Mirrobot share link::captured and masked; set the SHARE_LINK_PUBKEY secret to enable encryption"
+  echo "::notice::title=Mirrobot share link::captured and masked; set the SESSION_ARTIFACT_PUBKEY secret to enable encryption"
   printf '(masked)\n' > "$ENC_OUT"
 fi
 printf '%s\n' "$CTX" > "$CTX_OUT"
