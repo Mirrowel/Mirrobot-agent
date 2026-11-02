@@ -262,7 +262,7 @@ gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < my-config.min.json    # b
 Get-Content my-config.min.json | gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo>   # PowerShell
 ```
 
-Runtime lifecycle: written `chmod 600`, every credential leaf inside it (provider API keys, MCP header values, credential-bearing URLs) registered with `::add-mask::` so no later step can echo one, then **deleted seconds after opencode boots** (opencode reads the config once at startup; the fixture suite verifies deletion mid-session is safe). bot-setup warns when the secret's permission block drifts from the committed example. The warning is informational; the secret always wins.
+Runtime lifecycle: written `chmod 600`, every credential leaf inside it (provider API keys, MCP header values, credential-bearing URLs) registered with `::add-mask::` so no later step can echo one, then **deleted seconds after opencode boots** (opencode reads the config once at startup; the fixture suite verifies deletion mid-session is safe). bot-setup warns when the secret's permission block drifts from the committed example. The comparison is **effective-verdict based** (`permission-drift.py` in the bot-setup action): opencode evaluates ordered rules last-match-wins, so a deny that exists as a key but is shadowed by a later allow counts as loosened, and a rewritten glob that still covers the example's space counts as intact. Your additions, stricter flips, and reordered-but-equivalent sections stay silent. The warning is count-only (run logs are public) and informational; the secret always wins.
 
 ### `OPENCODE_API_KEY` (optional)
 API key for the main model's provider, injected as `provider.<main>.options.apiKey`. Redundant when the key lives inside your config (recommended).
