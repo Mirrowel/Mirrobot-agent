@@ -530,13 +530,19 @@ runs:
         echo "version=$("$bin" --version 2>/dev/null | head -n 1 | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
 
     # opencode installs its plugin SDK (@opencode-ai/plugin and about 28
-    # dependencies) into its config directory on every cold boot, and loads no
-    # plugin until that finishes: 20 to 70 seconds on a fresh runner, for a
-    # package none of this agent's plugins imports. A copy from the previous
-    # run makes opencode skip it. Only the SDK's own three paths are cached,
-    # never the config file or plugins, and the key carries the opencode
-    # version, so each new release pays the install once. The cache is an
-    # optimization: when it fails, the run is exactly what it was before.
+    # dependencies) into every config directory before it loads the first
+    # plugin. On a GitHub runner that is two directories: the global config
+    # directory, and the install directory (~/.opencode), which opencode also
+    # counts as a project config directory because the workspace lies under
+    # the home directory. Each install takes about 5 seconds on a fresh
+    # runner (20 to 70 when the package registry is slow), and the agent's
+    # plugins import none of it. A copy from the previous run makes opencode
+    # skip both. The same entry keeps opencode's model catalog (models.json,
+    # public data), which spares a small download. Cached: only the SDK's own
+    # three paths in each directory and that file, never a config file or a
+    # plugin. The key carries the opencode version, so each new release pays
+    # the install once. The cache is an optimization: when it fails, the run
+    # is exactly what it was before.
     - name: Restore the plugin SDK from the previous run
       id: plugin_sdk
       continue-on-error: true
@@ -546,7 +552,11 @@ runs:
           ~/.config/opencode/node_modules
           ~/.config/opencode/package.json
           ~/.config/opencode/package-lock.json
-        key: opencode-plugin-sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.opencode_version.outputs.version }}
+          ~/.opencode/node_modules
+          ~/.opencode/package.json
+          ~/.opencode/package-lock.json
+          ~/.cache/opencode/models.json
+        key: opencode-plugin-sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.opencode_version.outputs.version }}-v2
 
     # Deliberately after the opencode install and the SDK restore. The runner
     # has two cores, and a job started before them stretches from about 4
@@ -610,8 +620,8 @@ runs:
       shell: bash
       run: python3 "${GITHUB_ACTION_PATH}/install-packs.py" wait
 
-    # The wait step above is where a missing SDK gets installed; keep that
-    # copy only when there was none to restore.
+    # The wait step above is where a missing copy gets installed; keep the
+    # copies only when there was none to restore.
     - name: Keep the plugin SDK for the next run
       if: steps.plugin_sdk.outputs.cache-hit != 'true' && steps.opencode_version.outputs.version != ''
       continue-on-error: true
@@ -621,4 +631,8 @@ runs:
           ~/.config/opencode/node_modules
           ~/.config/opencode/package.json
           ~/.config/opencode/package-lock.json
+          ~/.opencode/node_modules
+          ~/.opencode/package.json
+          ~/.opencode/package-lock.json
+          ~/.cache/opencode/models.json
         key: ${{ steps.plugin_sdk.outputs.cache-primary-key }}

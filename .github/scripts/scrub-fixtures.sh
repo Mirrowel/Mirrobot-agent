@@ -46,23 +46,25 @@ sdk_section() {
   # The cache holds the plugin SDK opencode installs on a cold boot (20-70 s on
   # a fresh runner) so a warm run skips it. A fork's pull_request run can
   # restore caches saved on the default branch, so nothing that can carry a
-  # credential may ever be cached: only the SDK's own three paths, never the
-  # config file, auth.json or a plugin directory. The boot report that waits
-  # for the SDK runs before the scrub, so its one opencode call must ignore
-  # workspace config and send the skill listing (every skill's full text,
-  # possibly private) to an unlinked file; only names are printed.
+  # credential may ever be cached: only the SDK's own three paths in each of
+  # the two directories opencode installs it into, never the config file,
+  # auth.json, a plugin directory or the opencode binary. The boot report
+  # that waits for the SDK runs before the scrub, so its one opencode call
+  # must ignore workspace config and send the skill listing (every skill's
+  # full text, possibly private) to an unlinked file; only names are printed.
   local restore save both expected
   restore="$(sdk_step 'Restore the plugin SDK')"
   save="$(sdk_step 'Keep the plugin SDK')"
   both="$(printf '%s\n%s\n' "$restore" "$save")"
-  expected="~/.config/opencode/node_modules ~/.config/opencode/package-lock.json ~/.config/opencode/package.json"
+  expected="~/.cache/opencode/models.json ~/.config/opencode/node_modules ~/.config/opencode/package-lock.json ~/.config/opencode/package.json ~/.opencode/node_modules ~/.opencode/package-lock.json ~/.opencode/package.json"
   check "sdk cache: restore and save steps present" "2" "$([ -n "$restore" ] && [ -n "$save" ] && echo 2 || echo 0)"
-  check "sdk cache: restore caches exactly the SDK's three paths" "$expected" "$(printf '%s\n' "$restore" | tr -d '\r' | grep '~/.config/opencode/' | sort -u | xargs)"
-  check "sdk cache: save caches exactly the SDK's three paths"    "$expected" "$(printf '%s\n' "$save" | tr -d '\r' | grep '~/.config/opencode/' | sort -u | xargs)"
-  check "sdk cache: no config file, auth file or plugin directory in either step" no "$(printf '%s\n' "$both" | grep -Eq 'opencode\.json|auth\.json|plugins' && echo yes || echo no)"
+  check "sdk cache: restore caches exactly the SDK paths in both directories and the model catalog" "$expected" "$(printf '%s\n' "$restore" | tr -d '\r' | grep -E '~/\.(config|cache|opencode)/' | LC_ALL=C sort -u | xargs)"
+  check "sdk cache: save caches exactly the SDK paths in both directories and the model catalog"    "$expected" "$(printf '%s\n' "$save" | tr -d '\r' | grep -E '~/\.(config|cache|opencode)/' | LC_ALL=C sort -u | xargs)"
+  check "sdk cache: no config file, auth file, plugin directory or opencode binary in either step" no "$(printf '%s\n' "$both" | grep -Eq 'opencode\.json|auth\.json|plugins|\.opencode/bin' && echo yes || echo no)"
   check "sdk cache: both steps tolerate a cache service failure" "2" "$(printf '%s\n' "$both" | grep -c 'continue-on-error: true')"
   check "sdk cache: restore and save use the same cache action major" yes "$([ "$(printf '%s\n' "$restore" | grep -o 'actions/cache/restore@v[0-9]*')" != "" ] && [ "$(printf '%s\n' "$restore" | grep -o '@v[0-9]*')" = "$(printf '%s\n' "$save" | grep -o '@v[0-9]*')" ] && echo yes || echo no)"
   check "sdk cache: save runs only when nothing was restored"     yes "$(printf '%s\n' "$save" | grep -Eq "cache-hit != 'true'" && echo yes || echo no)"
+  check "sdk cache: the key carries the opencode version"         yes "$(printf '%s\n' "$restore" | grep -Eq 'key: .*steps\.opencode_version\.outputs\.version' && echo yes || echo no)"
   check "sdk cache: install, restore, extensions, wait, save in that order" yes "$(awk '/^    - name: /{n=$0} /Restore the plugin SDK/{r=NR} /Wait for the opencode install/{i=NR} /Wait for pack extensions/{w=NR} /Keep the plugin SDK/{s=NR} /^    - name: Start pack extensions/{x=NR} END{print (i<r && r<x && x<w && w<s) ? "yes" : "no"}' "$ACTION")"
   check "report: exactly one opencode call" "1" "$(grep -c '\[binary, "debug", "skill"' "$PACKS")"
   check "report: that call ignores workspace config" yes "$(awk '/\[binary, "debug", "skill"/{f=1} f{print} f&&/timeout=/{f=0}' "$PACKS" | grep -q 'env=env' && grep -q 'OPENCODE_DISABLE_PROJECT_CONFIG="1"' "$PACKS" && echo yes || echo no)"

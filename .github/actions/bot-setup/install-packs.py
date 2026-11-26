@@ -610,8 +610,9 @@ def opencode_report(binary):
     # One boot answers both: with plugins loaded, its stderr carries plugin errors and its
     # stdout the skill listing. Project config is switched off so this boot never reads
     # anything from the workspace, which can still be an unscrubbed checkout at this point.
-    # Loading plugins waits for the plugin SDK opencode installs into its config directory
-    # on a cold boot (20 to 70 seconds on a fresh runner).
+    # Loading plugins waits for the plugin SDK opencode installs into each of its config
+    # directories before the first one loads (about 5 seconds per directory on a fresh
+    # runner, 20 to 70 when the package registry is slow).
     env = dict(os.environ, OPENCODE_DISABLE_PROJECT_CONFIG="1")
     with tempfile.TemporaryFile() as buffer:
         # opencode can exit before a large stdout pipe has drained (the listing was cut at
