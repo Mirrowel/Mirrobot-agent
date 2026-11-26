@@ -9,10 +9,10 @@ The batteries. CI enforcement of every machine contract the rest of these docs d
 
 1. **`scrub-fixtures.sh`** (~330 checks):
    - a fixture repository (branches: stale, evil, evil-merge, sync-content, sync-rollback, dev, autoload variants) with the actual scrub script run against each — built once per content key and snapshotted into the local template cache (see below);
-   - the full taint matrix: direct modify → alarm, modify-then-revert → alarm, evil merge → alarm, stale base → explained note, platform-sync content → explained, rollback-below-fork → alarm;
+   - the full taint matrix: direct modify → alarm, modify-then-revert → alarm, evil merge → alarm, stale base → explained note, platform-sync content → explained, rollback-below-fork → alarm, auto-load tampering → the same alarm (one mechanic for `.github` and everything an agent auto-loads);
    - the split-trust autoload matrix: dev-tip doctrine kept silently, dev-intermediate kept with era note, pre-fork rollback removed + quarantined, hostile skills/configs removed, trusted siblings kept, out-of-repo symlink targets never staged into quarantine;
    - graceful degradation: a bare clone with `dev` stripped simulates a deployment without a dev (notice, never fail-closed);
-   - workflow contracts: pipefail, pause gates, config-lifecycle waiters, stats discipline (no `--models`), plugin wiring, deny-subset drift scope, bootstrap state-silence, share-filter sentinel, the YAML `#`-comment trap class, the stub-dispatch tripwires;
+   - workflow contracts: pipefail, pause gates, config-lifecycle waiters, stats discipline (no `--models`), plugin wiring, content-pack wiring and installer contracts, the permission corpus (`permission-check.py`), deny-subset drift scope, bootstrap state-silence, share-filter sentinel, the YAML `#`-comment trap class, the stub-dispatch tripwires;
    - routing matrix, roster transforms, permission matrices (bash/read/edit/write deny patterns, ordered last-match-wins);
    - strict YAML (duplicate-key-rejecting loader) over every workflow and action file.
 2. **`prompt-rule-fixtures.sh`** (~75 checks) — **machine contracts only**:

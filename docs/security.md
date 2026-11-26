@@ -20,7 +20,7 @@ Before any agent boots, every checkout is scrubbed (`.github/scripts/scrub-works
 | Surface | Trusted from | Why |
 |---|---|---|
 | Auto-load files (`AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.opencode/`, harness rule files, skill dirs) | **main ∪ dev** (your integration branches, the `AUTOLOAD_BRANCHES` list in the scrub), each branch floored at its merge-base with the PR | This content describes the code it ships with, it legitimately evolves on the integration branch before merging up |
-| `.github/` platform files | **main only** (taint alarm, never removal) | Platform wiring executes from main; no other branch vouches for it |
+| `.github/` platform files | **main only** (taint alarm, never removal; tampered auto-load content raises the same alarm) | Platform wiring executes from main; no other branch vouches for it |
 
 Accepted states: bytes a trust branch shipped at-or-after its floor (the fork state included). Rejected: anything older (a deliberate rollback (resurrecting content a trust branch already abandoned) or novel bytes no trust branch ever had). Removed files are **quarantined** to `/tmp/scrub-quarantine/` (resolved content, in-repo targets only): readable as data, never auto-loaded as instructions. Kept-but-not-current states carry an era note so the agent treats them as dated context.
 
@@ -28,7 +28,7 @@ Symlinks compare by **resolved** content (an unchanged link string over a mutate
 
 ## The taint alarm
 
-Any `.github/` change on a PR's side of the merge-base (detected as a **union** of branch-history commits and the net tree diff (so modify-then-revert nets and evil merges both catch)) is surfaced to the agent at maximum scrutiny, never hidden. Content provably synced from post-fork main states (blob-match against main's own history) downgrades to an explained note that still names the merge consequence. Commit subjects never enter the trust channel (they're attacker prose).
+Any change on a PR's side of the merge-base to a **protected path** is surfaced to the agent at maximum scrutiny, never hidden. Protected paths are `.github/` (the agent system itself) and every auto-load surface (instruction files, `.opencode/`, `.agents/`, `.claude/`, the other harness directories, the root `opencode.json`). One detection pass, a **union** of branch-history commits and the net tree diff (so modify-then-revert nets and evil merges both catch), and one classification. A `.github` file provably synced from post-fork main states (blob-match against main's own history), or an auto-load file the scrub kept because a trust branch ships it, downgrades to an explained note that still names the merge consequence. Everything else is an alert: `.github` changes stay visible in the diff, and untrusted auto-load content is removed and quarantined first, then listed in the alert's details. A PR that adds a skill, edits `AGENTS.md` or ships an `.opencode/plugins` file gets the same alert as one that touches workflows. Commit subjects never enter the trust channel (they're attacker prose).
 
 ## Execution privilege
 
@@ -42,9 +42,23 @@ The `OPENCODE_CONFIG_JSON` secret is the most sensitive object in the pipeline, 
 
 1. Every credential leaf inside it (provider API keys, MCP headers, credential-bearing URLs) is registered with `::add-mask::` at boot — and the same sweep covers opencode's own `auth.json` (oauth refresh/access tokens, provider keys) wherever it exists; no later step can echo one unmasked.
 2. OpenCode reads the config exactly once at startup (the fixture suite verifies deletion mid-session is safe).
-3. The config **and** any materialized plugin files are deleted seconds after boot (a sentinel on the first output line proves boot finished; a hard timeout bounds the window; an `if: always()` step backstops every exit path).
-4. The agent's permission profile separately denies reads of `~/.config` and the plugins dir.
+3. The config **and** the staged OpenShare files are deleted seconds after boot (a sentinel on the first output line proves boot finished; a hard timeout bounds the window; an `if: always()` step backstops every exit path).
+4. The agent's permission profile separately denies reads of `~/.config`, the session database and the git internals.
 5. Git authentication flows through gh's credential helper (reading `GH_TOKEN` from the environment on demand) — no credential is ever embedded in a URL or config value (a global `url.<token>.insteadOf` rewrite was removed after it printed the PAT into a public share via `git remote -v`).
+
+## Content packs
+
+Skills, plugins, agents, commands and boot-time extensions come from the sources listed in the `CONTENT_PACKS` variable: operator-chosen, and outside every repository's tree. What keeps a pack from becoming a side door:
+
+- **Repository sources** are fetched shallow at a ref, with the pack token as an in-memory git credential and the global git config (credential helpers included) ignored.
+- **Archive sources** extract regular files only: path traversal, absolute paths and links are refused, extraction is capped by file count and total size, and a single wrapping folder is unwrapped.
+- **Only the documented paths install**; everything else in a pack is ignored.
+- **A pack cannot change `permission`.** Its `opencode.json` is a fragment merged under the config secret: objects merge, arrays union, the config wins on scalars.
+- **Upstream skills are verified.** A lock entry with no committed folder is fetched at the recorded commit and compared against the recorded tree SHA; a mismatch, or a link inside the folder, fails that skill.
+- **Extensions run without credentials.** `extensions/<name>/install.sh` starts in a background step whose environment holds no secrets, before the config exists.
+- **The log is an index**: pack name, commit and file counts. The variable's value and the token are masked.
+
+Pack plugins live in opencode's plugin directory for the run, which the agent's profile denies reading. Content a repository itself auto-loads from its tree (`.opencode/`, `.agents/skills/`, `AGENTS.md`) passes the same trust check as every other auto-load file: kept when identical to a state `main` or `dev` ships, removed, quarantined and flagged otherwise.
 
 ## Encrypted session sharing
 
@@ -67,9 +81,9 @@ The agent's write boundaries (prompt-enforced, brief-carried):
 
 ## What the agent can never do
 
-Permission-level (not prompt-level; these can't be talked around): push workflow changes (no `workflow` scope/PAT rejection + edit denies), read the token env or config paths, execute uninspected PR code as itself, fetch with `webfetch`, load repository-defined skills, or dispatch arbitrary workflows. The full profile ships in `permissions.example.json`.
+Permission-level (not prompt-level; these can't be talked around): push workflow changes (no `workflow` scope/PAT rejection + edit denies), read the token env, the config directory or the session database, execute uninspected PR code as itself, fetch with `webfetch`, or dispatch arbitrary workflows. The full profile ships in `permissions.example.json`, an ordered denylist: a catch-all opens the shell, targeted denies close it again, and a corpus of ordinary commands and deny vectors (`permission-check.py`) keeps every edit honest in CI.
 
-Prompt-level hard refusals back the profile where the token technically could: the agent never touches repository secrets or Actions variables in any repo (variables are the platform's own control plane, identities, triggers, pause switches, plugin sources), and **a permission denial is treated as a signal** (working around one means knowingly doing what the operator forbade). Known limit: substring rules are advisory whenever an interpreter is allowed (this deployment allows python for its Python repos; that is a per-repo tradeoff, see [customization](customization.md#adapting-the-platform-to-your-repo)). The profile closes the cheap paths; the refusal rules and the deny-is-a-signal doctrine carry the rest.
+Prompt-level hard refusals back the profile where the token technically could: the agent never touches repository secrets or Actions variables in any repo (variables are the platform's own control plane: identities, triggers, pause switches, content packs), and **a permission denial is treated as a signal** (working around one means knowingly doing what the operator forbade). `echo`, `curl` and `wget` are allowed, so the brief carries the matching rules: credentials in the environment are never printed, written or sent; a download is never piped into a shell, an interpreter or an installer; a URL never comes from PR or comment text. Known limit: substring rules are advisory whenever an interpreter is allowed (the stock profile allows python and node), and a start-of-line deny is sidestepped by prefixing another command. The profile closes the cheap paths and makes the model think twice; the refusal rules and the deny-is-a-signal doctrine carry the rest.
 
 ## Known, accepted residuals
 

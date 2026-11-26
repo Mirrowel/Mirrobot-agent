@@ -14,7 +14,7 @@ gh variable set AGENT_PAUSED -R <owner>/<repo> --body "true"
 
 | Data shape | Format | Examples |
 |---|---|---|
-| Lists of simple tokens (logins, stems) | comma-separated | `BOT_IDENTITIES`, `BOT_TRIGGERS`, `TRUSTED_AGENT_USERS`, `FOREIGN_MENTIONS_USERS`, `CONTEXT_IGNORE_AUTHORS` |
+| Lists of simple tokens (logins, stems) | comma-separated | `BOT_IDENTITIES`, `BOT_TRIGGERS`, `TRUSTED_AGENT_USERS`, `FOREIGN_MENTIONS_USERS`, `CONTEXT_IGNORE_AUTHORS`, `CONTENT_PACKS` |
 | Ordered allow-deny rule lists | comma-separated `glob:verdict` (last match wins) | `GUEST_REPO_RULES` |
 | Lists whose elements can contain commas or quotes (regex) | JSON array | `CONTEXT_FILTER_PATTERNS_JSON` |
 | Maps (key to value, nested) | JSON object | `CONTEXT_LIMITS_JSON`, `AGENT_MODELS_JSON` |
@@ -132,48 +132,45 @@ Rules:
 
 *When to use it:* one heavyweight reviewer + cheap triage is the classic split; also cost control after watching the per-run usage summaries.
 
-### `OPENCODE_PLUGINS_JSON` (+ `_1` … `_5`)
-**Default:** `{}` (seeded). **Type:** plugin files, without committing them.
+### `CONTENT_PACKS`
+**Default:** absent (the agent runs with opencode's built-ins only). **Type:** comma-separated content pack sources.
 
-```json
-{ "myplugin/myplugin.js": "<the file's entire content, JSON-escaped>" }
-```
+Where the agent's skills, plugins, agents, commands and boot-time extensions come from. Each entry is one **content pack**. Later entries win when two packs ship the same file.
 
-Build the value without hand-escaping. Any of these produce the identical envelope (`gh variable set` reads the value from stdin — no body flag needed). Pick by what your machine already has, in this order:
-
-**Windows — PowerShell 7+ (pwsh; the preinstalled 5.1 mangles non-ASCII when piping to gh):**
-```powershell
-@{'myplugin/myplugin.js'=Get-Content -Raw myplugin.js}|ConvertTo-Json -Compress|gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
-```
-
-**macOS / Linux, or anywhere with jq**:
 ```bash
-jq -cRs --arg k 'myplugin/myplugin.js' '{$k: .}' myplugin.js | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
-```
-Several files in one variable (a multi-file plugin; jq 1.6+):
-```bash
-jq -cn --rawfile a path/a.js --rawfile b path/b.js '{("myplugin/a.js"):$a,("myplugin/b.js"):$b}' | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
+gh variable set CONTENT_PACKS -R <owner>/<repo> --body "Mirrowel/agent-pack@main, https://files.example.com/my-private-pack.zip"
 ```
 
-**python** (any OS; `python3` on a clean macOS):
-```bash
-python -c "import json,pathlib;print(json.dumps({'myplugin/myplugin.js':pathlib.Path('myplugin.js').read_text(encoding='utf-8')}))" | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
-```
+| Source form | How it is acquired |
+|---|---|
+| `owner/repo` or `owner/repo@ref` | shallow git fetch at that ref (the default branch when omitted) |
+| `https://...` pointing at a zip or tar.gz | downloaded and extracted; a single wrapping folder is fine |
 
-**node** (any OS):
-```bash
-node -e "const fs=require('fs');process.stdout.write(JSON.stringify({'myplugin/myplugin.js':fs.readFileSync('myplugin.js','utf8')}))" | gh variable set OPENCODE_PLUGINS_JSON -R <owner>/<repo>
-```
+**What a pack may contain.** Anything else in it is ignored:
 
-Then reference the materialized path in your `OPENCODE_CONFIG_JSON` secret's `plugin` array. Files land under `$HOME/.mirrobot-plugins/` — on GitHub-hosted runners that is `/home/runner/.mirrobot-plugins/myplugin/myplugin.js`:
+| Path in the pack | What happens |
+|---|---|
+| `.agents/skills/<name>/` | Copied to `~/.agents/skills/`. opencode discovers the skills from there |
+| `.agents/.skill-lock.json` | Entries with no committed folder are fetched from their upstream repository at the recorded commit and verified against the recorded tree SHA. A committed copy always wins |
+| `plugins/<file>` | Placed in `~/.config/opencode/plugins/`, where opencode loads it with no config entry |
+| `agents/`, `commands/` | Placed in `~/.config/opencode/agents/` and `commands/` |
+| `extensions/<name>/install.sh` | Run in the background at boot, overlapping the rest of setup. Use it to install a CLI the skills need |
+| `opencode.json` | A config **fragment**. Objects merge under your `OPENCODE_CONFIG_JSON`, arrays union, your config wins on scalars, and a `permission` key is refused |
 
-```json
-"plugin": ["/home/runner/.mirrobot-plugins/myplugin/myplugin.js"]
-```
+One mechanism covers both audiences: a public repository for what you share, and a private archive for what you do not (a private plugin, for example). No plugin file needs a variable.
 
-Each variable may hold one plugin or several entries; `_1`..`_5` hold more. All merge; the same path in two variables is a hard error (a config mistake, always). Files land `chmod 600` outside the workspace, are permission-denied to the agent, and are **deleted seconds after opencode boots** (same lifecycle as the config). Relative paths only (no `/`, `..`, or spaces; unsafe paths fail the run). Remove the `plugin` entry when you remove a plugin: referencing a path nothing materializes is a boot error.
+A repository's own `.opencode/`, `.agents/skills/` and `AGENTS.md` need no pack: they load natively and pass through the same trust check as before (see [security.md](security.md#the-scrub-split-trust)).
 
-*When to use it:* private provider plugins (the router that must not be committed), anything opencode loads from a path.
+What keeps a pack from becoming a side door:
+
+- Archives are extracted with path traversal, absolute paths and links refused, and a cap on file count and total size.
+- A pack can never change the permission profile.
+- Extension installs run in a step that holds no credentials.
+- The log is an index: pack name, commit, file counts. The variable's value and the token are masked.
+
+*When to use it:* give every repository's agent the same skills and tools without copying them into each repository, and keep private plugins out of git.
+
+**Private sources.** A private repository or a link that needs authentication uses the `CONTENT_PACK_TOKEN` secret. To make a private archive, zip the pack folder and host it anywhere that serves a direct download.
 
 ### `TRUSTED_AGENT_USERS`
 **Default:** absent (= empty). **Type:** comma-separated logins.
@@ -252,7 +249,7 @@ Migrate to this rule when you install the platform on another repo: add that rep
 Main model, `provider/model` (e.g. `anthropic/claude-sonnet-4`). Overrides any `model` key in your config; per-agent overrides (above) beat this.
 
 ### `OPENCODE_CONFIG_JSON`
-Your complete [OpenCode config](https://opencode.ai/docs/config), minified to one line: providers (with models and API keys), `small_model`, agents, MCP servers, the `plugin` array, and the `permission` profile. Start from the committed template `.github/actions/bot-setup/permissions.example.json`: it's a full-config example with a placeholder provider, an MCP entry, a plugin reference, and the recommended permission block.
+Your complete [OpenCode config](https://opencode.ai/docs/config), minified to one line: providers (with models and API keys), `small_model`, agents, MCP servers, the `plugin` array, and the `permission` profile. Start from the committed template `.github/actions/bot-setup/permissions.example.json`: it's a full-config example with a placeholder provider, an MCP entry, and the recommended permission block (an ordered denylist, see [customization.md](customization.md#the-permission-profile)). Plugins that live in a content pack need no entry in it.
 
 ```bash
 python minify_json_secret.py my-config.json   # RFC 8259-strict minifier
@@ -267,8 +264,8 @@ Runtime lifecycle: written `chmod 600`, every credential leaf inside it (provide
 ### `OPENCODE_API_KEY` (optional)
 API key for the main model's provider, injected as `provider.<main>.options.apiKey`. Redundant when the key lives inside your config (recommended).
 
-### `OPENCODE_FAST_MODEL` (optional)
-Global `small_model`, used for session-title generation. Per-agent `"fast"` overrides beat this.
+### `CONTENT_PACK_TOKEN` (optional)
+Token for private content pack sources in [`CONTENT_PACKS`](#content_packs): sent as the git credential for a private repository, or as a Bearer header for a link. It never appears in a URL, a log line or the agent's environment. Unset means public sources only.
 
 ### Identity pair, exactly one of:
 
@@ -321,6 +318,7 @@ Related variables: [`OPENSHARE_PASSIVE`](#openshare_passive) (opt out of the pas
 | Stop everything safely | `AGENT_PAUSED=true` |
 | Stop just one part (e.g. reviews) | `AGENT_PAUSED_PARTS_JSON` |
 | Rename the bot | `BOT_IDENTITIES` + `BOT_TRIGGERS` |
-| Private plugin | `OPENCODE_PLUGINS_JSON` + `plugin` path in the config |
+| Give the agent skills, plugins or a CLI | `CONTENT_PACKS` |
+| Private plugin | a private content pack: archive link in `CONTENT_PACKS` + `CONTENT_PACK_TOKEN` |
 | Live session shares | `OPENSHARE_CONFIG_JSON` (+ `SESSION_ARTIFACT_PUBKEY` for the offline artifact) |
 | Agent follows me into other repos | `FOREIGN_MENTIONS_ENABLED` + `FOREIGN_MENTIONS_USERS` + PAT scopes + the worker |

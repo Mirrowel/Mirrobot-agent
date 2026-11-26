@@ -65,7 +65,7 @@ The agent loads content from the repository it's pointed at. Some of that conten
 | Surface | Trusted from | Rule |
 |---|---|---|
 | **Auto-load files**: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, harness rule files, `.claude/`, `.agents/`, `.opencode/`, `.cursor/`, `.windsurf/`, `.devin/` | **main ∪ your integration branch** (the `AUTOLOAD_BRANCHES` list) | A file survives only when its bytes match a state a trust branch shipped **at-or-after that branch's fork point** with the PR (each branch gets its own floor). |
-| **`.github/` platform files** | **main only** | Never removed (the reviewer must see them), but any branch-side change is a taint alarm at maximum scrutiny; content provably synced from post-fork main states downgrades to an explained note. |
+| **`.github/` platform files** | **main only** | Never removed (the reviewer must see them), but any branch-side change is a taint alarm at maximum scrutiny; content provably synced from post-fork main states downgrades to an explained note. A branch-side change to auto-load content (an added skill, an edited `AGENTS.md`) raises the same alarm, after the scrub has removed it. |
 
 Why the split: auto-load content *describes the code it ships with*: when you evolve your repo's conventions on dev, the AGENTS.md that documents those conventions evolves with it, and it must be trusted there before it merges up. Platform wiring has no such coupling, it executes from main, so main alone vouches for it.
 

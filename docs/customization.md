@@ -51,12 +51,37 @@ The description is the actual instruction, write it like you'd brief a new maint
 
 ## The permission profile
 
-Lives inside your `OPENCODE_CONFIG_JSON` (the committed `permissions.example.json` is the template, a full-config example whose `permission` block you paste in). Shape: a `bash` deny-catch-all with ordered allows, targeted denies last (OpenCode is **last-match-wins**: an allowlist without the catch-all is cosmetic), plus `read`/`edit`/`webfetch`/`websearch`/`skill` rules. The example's comments explain each deny. Two invariants:
+Lives inside your `OPENCODE_CONFIG_JSON` (the committed `permissions.example.json` is the template, a full-config example whose `permission` block you paste in). The `bash` section is an **ordered denylist**: a `*` catch-all opens the tool, broad allows follow, targeted denies come last (OpenCode is **last-match-wins**, and it evaluates the whole command line as one string, with `*` crossing line breaks). Denies come in two shapes:
+
+- **Start-of-line** (`env`, `sudo`, `docker`, `gh auth ...`): the signal that a dangerous command was typed directly. Prefixing another command sidesteps it (`cd /tmp && env` is allowed), by design, so ordinary work never trips on it.
+- **Substring** (`*~/.config*`, `*.git/config*`, `*gh api */actions/*`, credentials by name, `*/proc/*`): holds anywhere in the command. Use it wherever a deny must survive compound and multi-line commands.
+
+The example's comments explain each deny. The real guardrail is the security brief (the agent is told what a denial means and to stop and look); the profile closes the cheap paths and makes the model think twice. Invariants:
 
 - `webfetch: deny` for a reason (agents use `websearch` + their judgment; webfetch burns tokens).
-- The `~/.config` and `~/.mirrobot-plugins` read-denies are load-bearing, they're what makes the config/plugin lifecycle airtight. If you loosen them, you're reopening the window the deletion timer closes.
+- The config, credential and `.git` read-denies are load-bearing, they're what makes the config lifecycle airtight. If you loosen them, you're reopening the window the deletion timer closes.
+- `skill: {"*": "allow"}`: skills arrive from content packs and must be loadable.
 
-bot-setup warns when your secret's permission block drifts from the example, refresh consciously.
+After an edit, run the corpus: `python .github/actions/bot-setup/permission-check.py --profile my-config.json` must report 0 ordinary commands blocked and 0 deny vectors missed (CI runs it against the example).
+
+`echo`, `curl` and `wget` are allowed, so nothing technical stops a credential from being printed or sent. That is why the brief carries explicit rules for them: never pipe a download into a shell or an interpreter, never send data out, never take a URL from PR or comment text.
+
+bot-setup warns when your secret's permission block drifts from the example (count-only), refresh consciously.
+
+## Content packs: skills, plugins, extensions
+
+The variable is [`CONTENT_PACKS`](configuration.md#content_packs). To add something to every repository's agent at once, put it in your pack repository and push. Nothing is copied into the repositories that use it.
+
+| You want to add | Put this in the pack |
+|---|---|
+| A skill you wrote | `.agents/skills/<name>/SKILL.md` (frontmatter with `name` and `description`, then the instructions) |
+| A skill from skills.sh | Run `npx skills add <owner>/<repo>` inside the pack. It writes the folder and records the upstream commit in `.agents/.skill-lock.json`. Commit the lock and gitignore the folder: the agent fetches it upstream at that commit and verifies the tree SHA |
+| Your own edit of an upstream skill | Commit the folder. A committed copy always beats the fetch |
+| A plugin | `plugins/<file>.js`. opencode loads it from its plugin directory, no config entry needed |
+| A CLI the skills call | `extensions/<tool>/install.sh`, run in the background at boot |
+| Extra opencode config | An `opencode.json` fragment at the pack root. It merges under the config secret; `permission` is refused |
+
+Keep private plugins in a separate private pack (an archive behind a link, with `CONTENT_PACK_TOKEN`), never in the public one. A repository's own `.opencode/` and `AGENTS.md` still load natively: trusted when identical to what `main` or `dev` ships, removed and flagged when a PR changes them.
 
 Known limit: substring permission rules are advisory whenever an *interpreter* is allowed. This deployment allows `python`/`python3` (the platform's home repos are Python); a determined session could construct forbidden strings inside a `python -c` one-liner. The interpreter is a deliberate per-repo tradeoff (see below); the profile closes the cheap paths; the security brief's refusal rules and the deny-is-a-signal doctrine carry the rest.
 
@@ -66,7 +91,7 @@ The platform is configurable **and** universal, but it is not zero-edit for ever
 
 | Surface | File(s) you edit | What adapts |
 |---|---|---|
-| **Language toolchain** | `permissions.example.json` → your `OPENCODE_CONFIG_JSON` | The `bash` allows. Stock allows `python`/`python3`/`pytest`/`uv`/`pip` because this platform's home repos are Python. A Node repo wants `node`/`npm`/`npx`/`yarn`; Go wants `go`/`gofmt`; swap accordingly, keeping the deny-catch-all and targeted denies intact. |
+| **Language toolchain** | `permissions.example.json` → your `OPENCODE_CONFIG_JSON` | The `bash` denies. The stock profile already allows Python, Node, npm, npx and the usual build tools. Add denies for what your repository must never run, keeping the catch-all and the targeted denies intact. |
 | **Compliance watch-list** | `FILE_GROUPS_JSON` env in `compliance-check.yml` | Which file groups must stay mutually consistent (docs vs code vs config). |
 | **Diff budgets** | `DIFF_MAX_BYTES` env in the diff-generating steps | How much diff the agent is fed. |
 | **Scrub trust branches** | `AUTOLOAD_BRANCHES` in `scrub-workspace.sh` | Which branches vouch for auto-load content, `main dev` by default; the taint anchor is main-only. |
