@@ -23,7 +23,7 @@ One page per workflow. Each page covers: what triggers it, where it executes fro
 
 Several mechanics repeat across the agent workflows; documented once here, referenced everywhere:
 
-- **Bot setup** (composite action `.github/actions/bot-setup/`) resolves the identity (account PAT or App token), configures git, writes the OpenCode config, applies per-agent model overrides, materializes plugin files, registers credential-leaf masks, and installs opencode.
+- **Bot setup** (composite action `.github/actions/bot-setup/`) resolves the identity (account PAT or App token), configures git, writes the OpenCode config, applies per-agent model overrides, registers credential-leaf masks, installs the content packs and opencode, restores opencode's plugin SDK from the runner cache (so a warm run skips the 20 to 70 second first-boot install), and ends with a boot report: plugin errors and the names of the discovered skills.
 - **Trusted artifacts** (prompts, scripts, the security brief) are copied to `/tmp` *before* any PR-head checkout. After a checkout, the workspace belongs to the PR; `/tmp` stays main's.
 - **The scrub** runs after every checkout (see [design.md](../design.md#the-trust-model-split-trust)).
 - **Session sharing**: every agent run produces an encrypted session artifact (`MRB2`, private Actions artifact + summary blob); with the OpenShare secret set, sessions also stream live to the operator's worker. Output is piped through `share-filter.sh`, which redacts credential-shaped content and keeps share URLs out of public logs. See [security.md](../security.md#encrypted-session-sharing).

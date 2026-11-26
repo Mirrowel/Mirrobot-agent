@@ -498,6 +498,33 @@ runs:
       shell: bash
       run: curl -fsSL https://opencode.ai/install | bash
 
+    - name: Read the opencode version
+      id: opencode_version
+      shell: bash
+      run: |
+        bin="$(command -v opencode || true)"
+        [ -n "$bin" ] || bin="$HOME/.opencode/bin/opencode"
+        echo "version=$("$bin" --version 2>/dev/null | head -n 1 | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
+    # opencode installs its plugin SDK (@opencode-ai/plugin and about 28
+    # dependencies) into its config directory on every cold boot, and loads no
+    # plugin until that finishes: 20 to 70 seconds on a fresh runner, for a
+    # package none of this agent's plugins imports. A copy from the previous
+    # run makes opencode skip it. Only the SDK's own three paths are cached,
+    # never the config file or plugins, and the key carries the opencode
+    # version, so each new release pays the install once. The cache is an
+    # optimization: when it fails, the run is exactly what it was before.
+    - name: Restore the plugin SDK from the previous run
+      id: plugin_sdk
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          ~/.config/opencode/node_modules
+          ~/.config/opencode/package.json
+          ~/.config/opencode/package-lock.json
+        key: opencode-plugin-sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.opencode_version.outputs.version }}
+
     - name: Ensure opencode directory exists
       shell: bash
       run: mkdir -p /home/runner/.local/share/opencode/project
@@ -505,3 +532,16 @@ runs:
     - name: Wait for pack extensions and report
       shell: bash
       run: python3 "${GITHUB_ACTION_PATH}/install-packs.py" wait
+
+    # The wait step above is where a missing SDK gets installed; keep that
+    # copy only when there was none to restore.
+    - name: Keep the plugin SDK for the next run
+      if: steps.plugin_sdk.outputs.cache-hit != 'true' && steps.opencode_version.outputs.version != ''
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: |
+          ~/.config/opencode/node_modules
+          ~/.config/opencode/package.json
+          ~/.config/opencode/package-lock.json
+        key: ${{ steps.plugin_sdk.outputs.cache-primary-key }}

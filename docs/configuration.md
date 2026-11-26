@@ -167,6 +167,7 @@ What keeps a pack from becoming a side door:
 - A pack can never change the permission profile.
 - Extension installs run in a step that holds no credentials.
 - The log is an index: pack name, commit, file counts. The private list and the token are secrets, which GitHub masks everywhere; a repository variable would be printed in clear (see [security.md](security.md#content-packs)).
+- The setup log ends with `skills discovered by opencode (N): <names>`: proof that the pack's skills loaded. It lists names, never skill content.
 
 *When to use it:* give every repository's agent the same skills and tools without copying them into each repository, and keep private plugins out of git.
 

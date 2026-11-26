@@ -579,42 +579,37 @@ def relay_extension(job):
 
 
 def opencode_report():
-    """Print any plugin load error and the skills opencode discovers, so the log shows whether the content is usable."""
-    # Loading plugins waits for the plugin SDK that opencode installs into its config directory
-    # on a cold boot (20 to 70 seconds on a fresh runner), so the plugin check goes first and the
-    # skills listing runs on the warm boot after it.
-    checked = False
-    try:
-        boot = subprocess.run(["opencode", "debug", "skill", "--print-logs", "--log-level", "ERROR"], capture_output=True,
-                              text=True, timeout=240)
-        problems = [line for line in boot.stderr.splitlines() if "plugin" in line.lower()]
-        checked = True
-    except (OSError, subprocess.TimeoutExpired) as error:
-        say(f"plugin load check did not finish: {type(error).__name__}", "warning")
-        problems = []
-    for line in problems:
-        say(f"plugin error: {line[-300:]}", "warning")
-    if checked and not problems:
-        say("plugin load check: no errors")
-    # The listing (about 200 KB) goes to a file: opencode can exit before a large stdout pipe has
-    # drained, which cut the listing at 128 KiB on a Linux runner; file writes complete first.
+    """Print any plugin load error and the names of the skills opencode discovers."""
+    # One boot answers both: with plugins loaded, its stderr carries plugin errors and its
+    # stdout the skill listing. Project config is switched off so this boot never reads
+    # anything from the workspace, which can still be an unscrubbed checkout at this point.
+    # Loading plugins waits for the plugin SDK opencode installs into its config directory
+    # on a cold boot (20 to 70 seconds on a fresh runner).
+    env = dict(os.environ, OPENCODE_DISABLE_PROJECT_CONFIG="1")
     with tempfile.TemporaryFile() as buffer:
+        # opencode can exit before a large stdout pipe has drained (the listing was cut at
+        # 128 KiB on a Linux runner), so it writes to an unlinked temp file instead. The
+        # listing carries every skill's full text, which may be private: only names leave it.
         try:
-            listing = subprocess.run(["opencode", "debug", "skill", "--pure"], stdout=buffer, stderr=subprocess.PIPE,
-                                     timeout=120)
+            boot = subprocess.run(["opencode", "debug", "skill", "--print-logs", "--log-level", "ERROR"], stdout=buffer,
+                                  stderr=subprocess.PIPE, env=env, timeout=240)
         except (OSError, subprocess.TimeoutExpired) as error:
-            say(f"could not list discovered skills: {type(error).__name__}", "warning")
+            say(f"content check did not finish: {type(error).__name__}", "warning")
             return
         buffer.seek(0)
-        output = buffer.read()
+        listing = buffer.read()
+    problems = [line for line in boot.stderr.decode("utf-8", errors="replace").splitlines() if "plugin" in line.lower()]
+    for line in problems:
+        say(f"plugin error: {line[-300:]}", "warning")
+    if not problems:
+        say("plugin load check: no errors")
     try:
-        names = sorted(str(item.get("name")) for item in json.loads(output.decode("utf-8", errors="replace")))
+        names = sorted(str(item.get("name")) for item in json.loads(listing.decode("utf-8", errors="replace")))
     except (ValueError, AttributeError) as error:
-        say(f"could not list discovered skills: opencode exited with {listing.returncode} and wrote {len(output)} bytes,"
+        say(f"could not list discovered skills: opencode exited with {boot.returncode} and wrote {len(listing)} bytes,"
             f" which is not the expected listing ({type(error).__name__})", "warning")
         return
-    if names:
-        say(f"skills discovered by opencode ({len(names)}): {', '.join(names)}")
+    say(f"skills discovered by opencode ({len(names)}): {', '.join(names)}")
 
 
 def cmd_wait(args):

@@ -41,6 +41,34 @@ PASS=0; FAIL=0
 
 check() { if [ "$2" = "$3" ]; then echo "PASS: $1"; PASS=$((PASS+1)); else echo "FAIL: $1"; echo "  want=[$2]"; echo "  got =[$3]"; FAIL=$((FAIL+1)); fi; }
 
+sdk_step() { awk -v n="$1" 'index($0, "    - name: " n) { f=1; print; next } f && /^    - name: / { f=0 } f' "$ACTION"; }
+sdk_section() {
+  # The cache holds the plugin SDK opencode installs on a cold boot (20-70 s on
+  # a fresh runner) so a warm run skips it. A fork's pull_request run can
+  # restore caches saved on the default branch, so nothing that can carry a
+  # credential may ever be cached: only the SDK's own three paths, never the
+  # config file, auth.json or a plugin directory. The boot report that waits
+  # for the SDK runs before the scrub, so its one opencode call must ignore
+  # workspace config and send the skill listing (every skill's full text,
+  # possibly private) to an unlinked file; only names are printed.
+  local restore save both expected
+  restore="$(sdk_step 'Restore the plugin SDK')"
+  save="$(sdk_step 'Keep the plugin SDK')"
+  both="$(printf '%s\n%s\n' "$restore" "$save")"
+  expected="~/.config/opencode/node_modules ~/.config/opencode/package-lock.json ~/.config/opencode/package.json"
+  check "sdk cache: restore and save steps present" "2" "$([ -n "$restore" ] && [ -n "$save" ] && echo 2 || echo 0)"
+  check "sdk cache: restore caches exactly the SDK's three paths" "$expected" "$(printf '%s\n' "$restore" | tr -d '\r' | grep '~/.config/opencode/' | sort -u | xargs)"
+  check "sdk cache: save caches exactly the SDK's three paths"    "$expected" "$(printf '%s\n' "$save" | tr -d '\r' | grep '~/.config/opencode/' | sort -u | xargs)"
+  check "sdk cache: no config file, auth file or plugin directory in either step" no "$(printf '%s\n' "$both" | grep -Eq 'opencode\.json|auth\.json|plugins' && echo yes || echo no)"
+  check "sdk cache: both steps tolerate a cache service failure" "2" "$(printf '%s\n' "$both" | grep -c 'continue-on-error: true')"
+  check "sdk cache: restore and save use the same cache action major" yes "$([ "$(printf '%s\n' "$restore" | grep -o 'actions/cache/restore@v[0-9]*')" != "" ] && [ "$(printf '%s\n' "$restore" | grep -o '@v[0-9]*')" = "$(printf '%s\n' "$save" | grep -o '@v[0-9]*')" ] && echo yes || echo no)"
+  check "sdk cache: save runs only when nothing was restored"     yes "$(printf '%s\n' "$save" | grep -Eq "cache-hit != 'true'" && echo yes || echo no)"
+  check "sdk cache: restore after the opencode install, save after the wait" yes "$(awk '/^    - name: /{n=$0} /Restore the plugin SDK/{r=NR} /Install opencode/{i=NR} /Wait for pack extensions/{w=NR} /Keep the plugin SDK/{s=NR} END{print (i<r && r<w && w<s) ? "yes" : "no"}' "$ACTION")"
+  check "report: exactly one opencode call" "1" "$(grep -c '"opencode", "debug", "skill"' "$PACKS")"
+  check "report: that call ignores workspace config" yes "$(awk '/"opencode", "debug", "skill"/{f=1} f{print} f&&/timeout=/{f=0}' "$PACKS" | grep -q 'env=env' && grep -q 'OPENCODE_DISABLE_PROJECT_CONFIG="1"' "$PACKS" && echo yes || echo no)"
+  check "report: the listing goes to an unlinked file, never a pipe" yes "$(awk '/"opencode", "debug", "skill"/{f=1} f{print} f&&/timeout=/{f=0}' "$PACKS" | grep -q 'stdout=buffer' && echo yes || echo no)"
+}
+
 
 # ---- section selectors (dev-loop speed; CI runs everything) -----------------
 # Usage: scrub-fixtures.sh [--only <substr>] [--quick] [--list] [--timing]
@@ -3437,6 +3465,23 @@ if [ "$SECTION_ACTIVE" = 1 ]; then
 check "disc: bot-reply resolves owning anchor (replies carry parent)" yes "$(grep -q 'anchor: \$c.id' "$SCRIPT_DIR/../workflows/bot-reply.yml" && echo yes || echo no)"
 check "disc: anchor export uses trig_anchor"        yes "$(grep -q 'DISCUSSION_REPLY_TO_NODE=${trig_anchor}' "$SCRIPT_DIR/../workflows/bot-reply.yml" && echo yes || echo no)"
 
+fi
+section_end
+fi
+
+# ---- plugin SDK cache + boot report contract (bot-setup) --------------------
+SECTION_NAME='plugin SDK cache + boot report contract (bot-setup)'
+if [ "$PARALLEL" = 1 ]; then
+  ( _P0=$PASS; _F0=$FAIL; section_begin "$SECTION_NAME"; if [ "$SECTION_ACTIVE" = 1 ]; then
+sdk_section
+  fi
+  echo "$((PASS - _P0)) $((FAIL - _F0))" > "$WORK/.pl-$SECTIONS_N.cnt"
+  ) >> "$WORK/.pl-$SECTIONS_N.log" 2>&1 &
+  SECTIONS_N=$((SECTIONS_N + 1))
+else
+section_begin "$SECTION_NAME"
+if [ "$SECTION_ACTIVE" = 1 ]; then
+sdk_section
 fi
 section_end
 fi
