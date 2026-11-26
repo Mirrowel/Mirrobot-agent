@@ -25,9 +25,10 @@ log in clear.
 
 Subcommands, in the order bot-setup runs them:
     fetch          download every source into $RUNNER_TEMP/mirrobot-packs
+    start-skills   launch the upstream skill fetch in the background
     merge-config   merge `opencode.json` fragments into the generated config
     install        copy allowlisted content into the opencode homes
-    start          launch extensions and the upstream skill fetch in the background
+    start          launch extensions in the background
     wait           wait for the background jobs, relay their results, report
 """
 import argparse
@@ -368,17 +369,23 @@ def launch(name, label, argv, cwd):
     return {"name": name, "label": label, "pid": child.pid, "log": str(log), "status": str(status)}
 
 
-def cmd_start(args):
-    """Launch every pack extension and the upstream skill fetch in the background."""
+def cmd_start_skills(args):
+    """Launch the upstream skill fetch in the background; the extensions follow in `start`."""
     jobs = []
+    plan = json.loads((STATE / "skills.json").read_text()) if (STATE / "skills.json").is_file() else {}
+    if any(item["from"] == "upstream" for item in plan.values()):
+        jobs.append(launch("upstream-skills", "upstream skills", [sys.executable, str(Path(__file__).resolve()), "fetch-skills"], os.getcwd()))
+    save_json("jobs.json", jobs)
+
+
+def cmd_start(args):
+    """Launch every pack extension in the background and add it to the job list the wait step reads."""
+    jobs = json.loads((STATE / "jobs.json").read_text()) if (STATE / "jobs.json").is_file() else []
     for pack in load_manifest():
         extensions = Path(pack["root"]) / "extensions"
         for script in sorted(extensions.glob("*/install.sh")):
             name = f"pack{pack['index']}-{script.parent.name}"
             jobs.append(launch(name, f"{script.parent.name} (pack {pack['index']})", ["bash", str(script)], script.parent))
-    plan = json.loads((STATE / "skills.json").read_text()) if (STATE / "skills.json").is_file() else {}
-    if any(item["from"] == "upstream" for item in plan.values()):
-        jobs.append(launch("upstream-skills", "upstream skills", [sys.executable, str(Path(__file__).resolve()), "fetch-skills"], os.getcwd()))
     save_json("jobs.json", jobs)
     say(f"content: started {len(jobs)} background job(s)")
 
@@ -578,7 +585,16 @@ def relay_extension(job):
             say(f"    {line}")
 
 
-def opencode_report():
+def opencode_binary():
+    """Return the opencode executable, found without relying on PATH; None when it is not installed."""
+    found = shutil.which("opencode")
+    if found:
+        return found
+    fallback = Path.home() / ".opencode" / "bin" / "opencode"
+    return str(fallback) if fallback.is_file() else None
+
+
+def opencode_report(binary):
     """Print any plugin load error and the names of the skills opencode discovers."""
     # One boot answers both: with plugins loaded, its stderr carries plugin errors and its
     # stdout the skill listing. Project config is switched off so this boot never reads
@@ -591,7 +607,7 @@ def opencode_report():
         # 128 KiB on a Linux runner), so it writes to an unlinked temp file instead. The
         # listing carries every skill's full text, which may be private: only names leave it.
         try:
-            boot = subprocess.run(["opencode", "debug", "skill", "--print-logs", "--log-level", "ERROR"], stdout=buffer,
+            boot = subprocess.run([binary, "debug", "skill", "--print-logs", "--log-level", "ERROR"], stdout=buffer,
                                   stderr=subprocess.PIPE, env=env, timeout=240)
         except (OSError, subprocess.TimeoutExpired) as error:
             say(f"content check did not finish: {type(error).__name__}", "warning")
@@ -633,8 +649,12 @@ def cmd_wait(args):
                         say(line)
         else:
             relay_extension(job)
-    if shutil.which("opencode"):
-        opencode_report()
+    binary = opencode_binary()
+    if binary:
+        opencode_report(binary)
+    else:
+        # Never a silent skip: a green setup with no content check must say so.
+        say("opencode is not installed, so the content check was skipped (no plugin check, no skill names)", "warning")
 
 
 def main(argv=None):
@@ -645,12 +665,13 @@ def main(argv=None):
     listed = [os.environ.get(name, "") for name in ("CONTENT_PACKS", "PRIVATE_CONTENT_PACKS")]
     fetch.add_argument("--packs", default=", ".join(value for value in listed if value.strip()))
     fetch.set_defaults(func=cmd_fetch)
-    sub.add_parser("start", help="launch extensions and the upstream skill fetch in the background").set_defaults(func=cmd_start)
+    sub.add_parser("start-skills", help="launch the upstream skill fetch in the background").set_defaults(func=cmd_start_skills)
     sub.add_parser("install", help="copy allowlisted content into the opencode homes").set_defaults(func=cmd_install)
     merge = sub.add_parser("merge-config", help="merge opencode.json fragments into a config file")
     merge.add_argument("config")
     merge.set_defaults(func=cmd_merge_config)
     sub.add_parser("fetch-skills", help="fetch upstream skills (background job)").set_defaults(func=cmd_fetch_skills)
+    sub.add_parser("start", help="launch extensions in the background").set_defaults(func=cmd_start)
     wait = sub.add_parser("wait", help="wait for background jobs and report")
     wait.add_argument("--timeout", type=int, default=300)
     wait.set_defaults(func=cmd_wait)

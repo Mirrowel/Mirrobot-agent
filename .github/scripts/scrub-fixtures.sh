@@ -64,9 +64,18 @@ sdk_section() {
   check "sdk cache: restore and save use the same cache action major" yes "$([ "$(printf '%s\n' "$restore" | grep -o 'actions/cache/restore@v[0-9]*')" != "" ] && [ "$(printf '%s\n' "$restore" | grep -o '@v[0-9]*')" = "$(printf '%s\n' "$save" | grep -o '@v[0-9]*')" ] && echo yes || echo no)"
   check "sdk cache: save runs only when nothing was restored"     yes "$(printf '%s\n' "$save" | grep -Eq "cache-hit != 'true'" && echo yes || echo no)"
   check "sdk cache: install, restore, extensions, wait, save in that order" yes "$(awk '/^    - name: /{n=$0} /Restore the plugin SDK/{r=NR} /Wait for the opencode install/{i=NR} /Wait for pack extensions/{w=NR} /Keep the plugin SDK/{s=NR} /^    - name: Start pack extensions/{x=NR} END{print (i<r && r<x && x<w && w<s) ? "yes" : "no"}' "$ACTION")"
-  check "report: exactly one opencode call" "1" "$(grep -c '"opencode", "debug", "skill"' "$PACKS")"
-  check "report: that call ignores workspace config" yes "$(awk '/"opencode", "debug", "skill"/{f=1} f{print} f&&/timeout=/{f=0}' "$PACKS" | grep -q 'env=env' && grep -q 'OPENCODE_DISABLE_PROJECT_CONFIG="1"' "$PACKS" && echo yes || echo no)"
-  check "report: the listing goes to an unlinked file, never a pipe" yes "$(awk '/"opencode", "debug", "skill"/{f=1} f{print} f&&/timeout=/{f=0}' "$PACKS" | grep -q 'stdout=buffer' && echo yes || echo no)"
+  check "report: exactly one opencode call" "1" "$(grep -c '\[binary, "debug", "skill"' "$PACKS")"
+  check "report: that call ignores workspace config" yes "$(awk '/\[binary, "debug", "skill"/{f=1} f{print} f&&/timeout=/{f=0}' "$PACKS" | grep -q 'env=env' && grep -q 'OPENCODE_DISABLE_PROJECT_CONFIG="1"' "$PACKS" && echo yes || echo no)"
+  check "report: the listing goes to an unlinked file, never a pipe" yes "$(awk '/\[binary, "debug", "skill"/{f=1} f{print} f&&/timeout=/{f=0}' "$PACKS" | grep -q 'stdout=buffer' && echo yes || echo no)"
+  # The installer makes `opencode` reachable only by appending to $GITHUB_PATH,
+  # which the runner reads when the launching step ends: lost from the
+  # background, which left opencode off PATH for every later step and made
+  # the report skip itself in silence.
+  check "opencode: the wait step exports the install directory to GITHUB_PATH" yes "$(sdk_step 'Wait for the opencode install' | grep -q 'GITHUB_PATH' && echo yes || echo no)"
+  check "opencode: the background installer cannot write GITHUB_PATH late"     yes "$(sdk_step 'Start the opencode install in the background' | grep -q 'GITHUB_PATH=/dev/null' && echo yes || echo no)"
+  check "report: finds opencode without PATH"                                  yes "$(grep -q '\.opencode" / "bin" / "opencode"' "$PACKS" && echo yes || echo no)"
+  check "report: a missing opencode is a warning, never a silent skip"         yes "$(grep -q 'content check was skipped' "$PACKS" && echo yes || echo no)"
+  check "packs: skill fetch starts beside the installer, extensions after the restore" yes "$(awk '/name: Fetch content packs/{f=NR} /name: Start the upstream skill fetch/{s=NR} /name: Restore the plugin SDK/{r=NR} /^    - name: Start pack extensions/{x=NR} /name: Wait for pack extensions and report/{w=NR} END{print (f && s && r && x && w && f < s && s < r && r < x && x < w) ? "yes" : "no"}' "$ACTION")"
 }
 
 

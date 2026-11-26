@@ -159,6 +159,8 @@ gh variable set CONTENT_PACKS -R <owner>/<repo> --body "Mirrowel/agent-pack@main
 
 One mechanism covers both audiences: a public repository for what you share, and a private archive for what you do not (a private plugin, for example). No plugin file needs a variable.
 
+**Extensions run in the background.** Later steps see the files an extension creates, but not lines it appends to `$GITHUB_PATH` or `$GITHUB_ENV`: the runner reads those files when the launching step ends. A CLI therefore belongs where PATH already points (a global npm or pip install), not in a directory the script exports.
+
 A repository's own `.opencode/`, `.agents/skills/` and `AGENTS.md` need no pack: they load natively and pass through the same trust check as before (see [security.md](security.md#the-scrub-split-trust)).
 
 What keeps a pack from becoming a side door:

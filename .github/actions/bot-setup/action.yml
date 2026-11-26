@@ -211,13 +211,23 @@ runs:
 
     # The installer runs in the background from here and is waited for below,
     # so its download overlaps the config and content steps. It needs no
-    # credentials: the installer is a public script.
+    # credentials: the installer is a public script. Its GITHUB_PATH file is
+    # pointed at /dev/null on purpose: the runner reads that file when the
+    # launching step ends, so a write from the background is lost, and the
+    # wait step below exports the install directory itself.
     - name: Start the opencode install in the background
       shell: bash
       run: |
         rm -f "$RUNNER_TEMP/opencode-install.done"
-        nohup setsid bash -c 'set -o pipefail; curl -fsSL https://opencode.ai/install | bash; echo "$?" > "$0"' "$RUNNER_TEMP/opencode-install.done" > "$RUNNER_TEMP/opencode-install.log" 2>&1 < /dev/null &
+        GITHUB_PATH=/dev/null nohup setsid bash -c 'set -o pipefail; curl -fsSL https://opencode.ai/install | bash; echo "$?" > "$0"' "$RUNNER_TEMP/opencode-install.done" > "$RUNNER_TEMP/opencode-install.log" 2>&1 < /dev/null &
         echo "opencode installer started in the background."
+
+    # The upstream skill fetch is plain git and file copying, about 4 seconds
+    # alone. It starts here, beside the installer, and is normally done by
+    # the time the extensions start; see the step that starts them.
+    - name: Start the upstream skill fetch in the background
+      shell: bash
+      run: python3 "${GITHUB_ACTION_PATH}/install-packs.py" start-skills
 
     - name: Generate OpenCode Configuration
       shell: bash
@@ -500,10 +510,16 @@ runs:
         done_file="$RUNNER_TEMP/opencode-install.done"
         for _ in $(seq 1 1500); do [ -f "$done_file" ] && break; sleep 0.2; done
         if [ ! -f "$done_file" ] || [ "$(cat "$done_file")" != "0" ]; then
-          echo "::error::The opencode installer did not finish cleanly. Last lines of its log:"
-          tail -n 30 "$RUNNER_TEMP/opencode-install.log"
-          command -v opencode >/dev/null 2>&1 || exit 1
+          if [ -x "$HOME/.opencode/bin/opencode" ]; then
+            echo "The opencode installer reported a failure, but the binary is present; continuing."
+          else
+            echo "::error::The opencode installer did not finish. Last lines of its log:"
+            tail -n 30 "$RUNNER_TEMP/opencode-install.log"
+            exit 1
+          fi
         fi
+        # The installer's own PATH export is lost when it runs in the background.
+        echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
 
     - name: Read the opencode version
       id: opencode_version
@@ -534,9 +550,11 @@ runs:
 
     # Deliberately after the opencode install and the SDK restore. The runner
     # has two cores, and a job started before them stretches from about 4
-    # seconds to about 13 while it competes with them. Started here, the
-    # extension installs and the upstream skill fetch run beside nothing but
-    # the report boot. This step's environment holds no credentials by design.
+    # seconds to about 13 while it competes with them. Extensions launch
+    # browsers and package installs, which suffer most from that: the Chrome
+    # launch check of the agent-browser extension takes under 2 seconds on
+    # an idle runner and 7 to 10 beside the skill fetch. This step's
+    # environment holds no credentials by design.
     - name: Start pack extensions
       shell: bash
       run: python3 "${GITHUB_ACTION_PATH}/install-packs.py" start
