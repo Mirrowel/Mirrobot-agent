@@ -82,7 +82,7 @@ section_begin() { # name
   fi
   if [ "$QUICK" = 1 ]; then
     case "$n" in
-      "fixture repo"|"taint matrix"*|"autoload surface"*|"autoload split-trust"*|"graceful degradation"*|"scrub --foreign mode"*|"BOT_NAMES_JSON shadowing"*|"channel hygiene"*) SECTION_ACTIVE=0; return 0 ;;
+      "fixture repo"|"taint matrix"*|"autoload surface"*|"autoload taint matrix"*|"autoload split-trust"*|"graceful degradation"*|"scrub --foreign mode"*|"BOT_NAMES_JSON shadowing"*|"channel hygiene"*) SECTION_ACTIVE=0; return 0 ;;
     esac
   fi
   SECTION_ACTIVE=1
@@ -312,6 +312,27 @@ if [ "$SYMLINKS_REAL" = yes ]; then
 else
   echo "SKIP: out-of-repo symlink staging checks (120000 blobs materialize as text files on this platform; the mode precondition above already failed loudly if the fixture itself degraded)"
 fi
+
+fi
+section_end
+
+# ---- autoload taint matrix (one mechanic: auto-load changes raise the alert) --
+SECTION_NAME='autoload taint matrix (unified: auto-load tampering alarms like .github)'
+section_begin "$SECTION_NAME"
+if [ "$SECTION_ACTIVE" = 1 ]; then
+# Same harness, same branch as the autoload surface matrix: that branch
+# changes only auto-load content (hostile skill, edited GEMINI.md, hostile
+# .cursorrules). Before the unified mechanic such a branch raised nothing:
+# the scrub removed the files and stayed silent.
+check "unified: auto-load tampering alone raises TAINT" yes "$(run_scrub autoload >/dev/null; head -1 /tmp/scrub-taint.txt | grep -q 'TAINT ALERT - protected paths modified' && echo yes || echo no)"
+check "unified: header names the skills area and a removed count" yes "$(head -1 /tmp/scrub-taint.txt | grep -q 'areas: .*skills' && head -1 /tmp/scrub-taint.txt | grep -q 'untrusted auto-load content removed: [1-9]' && echo yes || echo no)"
+check "unified: header carries the scrutiny instruction" yes "$(head -1 /tmp/scrub-taint.txt | grep -q 'MAXIMUM SCRUTINY' && head -1 /tmp/scrub-taint.txt | grep -q 'Never merge such a PR for an unverified requester' && echo yes || echo no)"
+check "unified: header fits the 600-char flatten" yes "$([ "$(head -1 /tmp/scrub-taint.txt | tr -d '\n' | wc -c)" -lt 600 ] && echo yes || echo no)"
+check "unified: details name each removed path with its state" yes "$(grep -q 'auto-load (removed as untrusted): .agents/skills/evil/SKILL.md' /tmp/scrub-taint.txt && grep -q 'auto-load (removed as untrusted): GEMINI.md' /tmp/scrub-taint.txt && echo yes || echo no)"
+check "unified: details stay below the header" yes "$(sed -n '2,$p' /tmp/scrub-taint.txt | grep -q '^  auto-load' && echo yes || echo no)"
+check "unified: .github-only alarm keeps its own wording" yes "$(run_scrub evil >/dev/null; head -1 /tmp/scrub-taint.txt | grep -q 'TAINT ALERT - .github/ is modified' && echo yes || echo no)"
+check "unified: stale-base branch stays INFO, anchor stays CLEAN" "INFO CLEAN" "$(run_scrub stale) $(run_scrub main)"
+check "unified: clean branch writes no taint file" CLEAN "$(git checkout -q --detach origin/main; rm -f /tmp/scrub-taint.txt; bash "$SCRUB" --anchor main >/tmp/scrub-fix.log 2>&1; [ -s /tmp/scrub-taint.txt ] && echo PRESENT || echo CLEAN)"
 
 fi
 section_end
