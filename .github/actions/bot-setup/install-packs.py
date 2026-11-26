@@ -366,7 +366,7 @@ def launch(name, label, argv, cwd):
     child = subprocess.Popen([shutil.which("bash") or "/bin/bash", "-c", script, "_", str(log), str(status), *argv], cwd=cwd,
                              env=extension_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=True)
-    return {"name": name, "label": label, "pid": child.pid, "log": str(log), "status": str(status)}
+    return {"name": name, "label": label, "pid": child.pid, "log": str(log), "status": str(status), "started": time.time()}
 
 
 def cmd_start_skills(args):
@@ -430,31 +430,42 @@ def resolve_by_tree(entry, work, env):
 
 
 def fetch_skill_group(url, entries, work_root):
-    """Fetch one upstream repository and materialize each skill folder listed in `entries`; return per-skill (name, lines)."""
+    """Fetch one upstream repository and materialize each skill folder listed in `entries`; return per-skill (name, lines), each commit group preceded by its duration."""
     out = []
     groups = {}
     for entry in entries:
         groups.setdefault(entry.get("commit") or "", []).append(entry)
+    source = "/".join(url.rstrip("/").removesuffix(".git").split("/")[-2:])
     for commit, group in groups.items():
-        work = work_root / hashlib.sha256((url + commit).encode()).hexdigest()[:12]
-        remove_tree(work)
-        try:
-            env = git_env(None)
-            work.mkdir(parents=True)
-            git(["init", "-q"], work, env)
-            git(["remote", "add", "origin", url], work, env)
-            depth = ["--depth", "1"] if commit else []
-            git(["fetch", "-q", *depth, "--filter=blob:none", "origin", *([commit] if commit else [])], work, env)
-        except FetchError as error:
-            return [(entry["name"], [f"::warning::skill {entry['name']} was not fetched: {error}"]) for entry in group]
-        for entry in group:
-            resolved = commit or resolve_by_tree(entry, work, env)
-            if not resolved:
-                out.append((entry["name"], [f"::warning::skill {entry['name']} was not fetched: no upstream commit matches the lock's tree SHA "
-                                            "(run npx skills update to record a commit for it)"]))
-                continue
-            out.append((entry["name"], materialize_skill(entry, resolved, work, work_root)))
+        began = time.monotonic()
+        lines = upstream_commit(url, commit, group, work_root)
+        out.append(("", [f"skills from {source}: {len(group)} in {time.monotonic() - began:.1f}s"]))
+        out.extend(lines)
     return out
+
+
+def upstream_commit(url, commit, group, work_root):
+    """Fetch one upstream repository at `commit` and materialize the skills in `group`; return per-skill (name, lines)."""
+    lines = []
+    work = work_root / hashlib.sha256((url + commit).encode()).hexdigest()[:12]
+    remove_tree(work)
+    try:
+        env = git_env(None)
+        work.mkdir(parents=True)
+        git(["init", "-q"], work, env)
+        git(["remote", "add", "origin", url], work, env)
+        depth = ["--depth", "1"] if commit else []
+        git(["fetch", "-q", *depth, "--filter=blob:none", "origin", *([commit] if commit else [])], work, env)
+    except FetchError as error:
+        return [(entry["name"], [f"::warning::skill {entry['name']} was not fetched: {error}"]) for entry in group]
+    for entry in group:
+        resolved = commit or resolve_by_tree(entry, work, env)
+        if not resolved:
+            lines.append((entry["name"], [f"::warning::skill {entry['name']} was not fetched: no upstream commit matches the lock's tree SHA "
+                                          "(run npx skills update to record a commit for it)"]))
+            continue
+        lines.append((entry["name"], materialize_skill(entry, resolved, work, work_root)))
+    return lines
 
 
 def materialize_skill(entry, resolved, work, work_root):
@@ -649,6 +660,9 @@ def cmd_wait(args):
                         say(line)
         else:
             relay_extension(job)
+        # How long the wait was held by each job: the log shows what setup waited for.
+        if Path(job["status"]).is_file():
+            say(f"content: background job '{job['label']}' finished in {os.path.getmtime(job['status']) - job.get('started', time.time()):.1f}s")
     binary = opencode_binary()
     if binary:
         opencode_report(binary)
