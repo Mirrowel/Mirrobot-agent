@@ -42,6 +42,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -578,26 +579,42 @@ def relay_extension(job):
 
 
 def opencode_report():
-    """Print the skills opencode discovers and any plugin load error, so the log shows whether the content is usable."""
+    """Print any plugin load error and the skills opencode discovers, so the log shows whether the content is usable."""
+    # Loading plugins waits for the plugin SDK that opencode installs into its config directory
+    # on a cold boot (20 to 70 seconds on a fresh runner), so the plugin check goes first and the
+    # skills listing runs on the warm boot after it.
+    checked = False
     try:
-        listing = subprocess.run(["opencode", "debug", "skill", "--pure"], capture_output=True, text=True, timeout=120)
+        boot = subprocess.run(["opencode", "debug", "skill", "--print-logs", "--log-level", "ERROR"], capture_output=True,
+                              text=True, timeout=240)
+        problems = [line for line in boot.stderr.splitlines() if "plugin" in line.lower()]
+        checked = True
     except (OSError, subprocess.TimeoutExpired) as error:
-        say(f"could not list discovered skills: {type(error).__name__}", "warning")
-        return
-    try:
-        names = sorted(str(item.get("name")) for item in json.loads(listing.stdout))
-    except ValueError:
-        say("could not list discovered skills: opencode debug skill printed no JSON", "warning")
-        names = []
-    if names:
-        say(f"skills discovered by opencode ({len(names)}): {', '.join(names)}")
-    boot = subprocess.run(["opencode", "debug", "skill", "--print-logs", "--log-level", "ERROR"], capture_output=True,
-                          text=True, timeout=120)
-    problems = [line for line in boot.stderr.splitlines() if "plugin" in line.lower()]
+        say(f"plugin load check did not finish: {type(error).__name__}", "warning")
+        problems = []
     for line in problems:
         say(f"plugin error: {line[-300:]}", "warning")
-    if not problems:
+    if checked and not problems:
         say("plugin load check: no errors")
+    # The listing (about 200 KB) goes to a file: opencode can exit before a large stdout pipe has
+    # drained, which cut the listing at 128 KiB on a Linux runner; file writes complete first.
+    with tempfile.TemporaryFile() as buffer:
+        try:
+            listing = subprocess.run(["opencode", "debug", "skill", "--pure"], stdout=buffer, stderr=subprocess.PIPE,
+                                     timeout=120)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            say(f"could not list discovered skills: {type(error).__name__}", "warning")
+            return
+        buffer.seek(0)
+        output = buffer.read()
+    try:
+        names = sorted(str(item.get("name")) for item in json.loads(output.decode("utf-8", errors="replace")))
+    except (ValueError, AttributeError) as error:
+        say(f"could not list discovered skills: opencode exited with {listing.returncode} and wrote {len(output)} bytes,"
+            f" which is not the expected listing ({type(error).__name__})", "warning")
+        return
+    if names:
+        say(f"skills discovered by opencode ({len(names)}): {', '.join(names)}")
 
 
 def cmd_wait(args):
