@@ -535,17 +535,12 @@ jobs:
           bot-private-key: ${{ secrets.BOT_PRIVATE_KEY }}
           opencode-api-key: ${{ secrets.OPENCODE_API_KEY }}
           opencode-model: ${{ secrets.OPENCODE_MODEL }}
-          opencode-fast-model: ${{ secrets.OPENCODE_FAST_MODEL }}
           opencode-config-json: ${{ secrets.OPENCODE_CONFIG_JSON }}
           # Guest sessions share the bot-reply model key (AGENT_MODELS_JSON).
           agent-key: bot-reply
           agent-models-json: ${{ vars.AGENT_MODELS_JSON }}
-          plugins-json: ${{ vars.OPENCODE_PLUGINS_JSON }}
-          plugins-json-1: ${{ vars.OPENCODE_PLUGINS_JSON_1 }}
-          plugins-json-2: ${{ vars.OPENCODE_PLUGINS_JSON_2 }}
-          plugins-json-3: ${{ vars.OPENCODE_PLUGINS_JSON_3 }}
-          plugins-json-4: ${{ vars.OPENCODE_PLUGINS_JSON_4 }}
-          plugins-json-5: ${{ vars.OPENCODE_PLUGINS_JSON_5 }}
+          content-packs: ${{ vars.CONTENT_PACKS }}
+          content-pack-token: ${{ secrets.CONTENT_PACK_TOKEN }}
           openshare-config-json: ${{ secrets.OPENSHARE_CONFIG_JSON }}
           openshare-bundle-url: ${{ vars.OPENSHARE_BUNDLE_URL || '' }}
 

@@ -1,5 +1,5 @@
 name: 'Bot Setup'
-description: 'Performs all common setup steps for bot workflows, including token selection, git config, and dependency installation. Dual identity mode: uses the bot ACCOUNT token when provided (account mode), falling back to the GitHub App installation token (app mode). Agent permissions are owned by the OPENCODE_CONFIG_JSON secret (see permissions.example.json); this action does not inject or export any permission configuration.'
+description: 'Performs all common setup steps for bot workflows, including token selection, git config, and dependency installation. Dual identity mode: uses the bot ACCOUNT token when provided (account mode), falling back to the GitHub App installation token (app mode). Agent permissions are owned by the OPENCODE_CONFIG_JSON secret (see permissions.example.json); this action does not inject or export any permission configuration, and content packs cannot change it either.'
 
 inputs:
   account-token:
@@ -20,42 +20,25 @@ inputs:
   opencode-model:
     description: 'The main model to use, in provider/model format (e.g., openai/gpt-4o). Optional when OPENCODE_CONFIG_JSON carries its own "model" field; one of the two is required.'
     required: false
-  opencode-fast-model:
-    description: 'Optional: The fast model for smaller tasks.'
-    required: false
   opencode-config-json:
     description: 'Optional: A complete minified opencode.json used as the base config before model and API key overrides.'
     required: false
+  content-packs:
+    description: 'Optional: contents of the CONTENT_PACKS repo variable. Flat comma list of content pack sources: owner/repo[@ref] (GitHub repository, shallow-fetched) or https://... (zip or tar.gz). Later entries win. A pack may hold .agents/skills/, plugins/, agents/, commands/, extensions/<name>/install.sh and an opencode.json fragment; everything else is ignored. Unset = no packs.'
+    required: false
+    default: ''
+  content-pack-token:
+    description: 'Optional: token for private pack sources (repository or link). Used as a git credential or Bearer header; never placed in a URL or printed.'
+    required: false
+    default: ''
   agent-key:
-    description: 'Optional: per-agent key (e.g. pr-review, bot-reply) resolved against the AGENT_MODELS_JSON variable to override opencode-model/opencode-fast-model for this agent. Missing key or empty model string falls back to the global inputs.'
+    description: 'Optional: per-agent key (e.g. pr-review, bot-reply) resolved against the AGENT_MODELS_JSON variable to override the global model for this agent. Missing key or empty model string falls back to the global inputs.'
     required: false
     default: ''
   agent-models-json:
     description: 'Optional: contents of the AGENT_MODELS_JSON repo variable: {"<agent-key>": {"model": "provider/model", "fast": "provider/model"}}. Malformed JSON fails loudly; empty/missing keys fall back silently.'
     required: false
     default: ''
-  plugins-json:
-    description: 'Optional: contents of the OPENCODE_PLUGINS_JSON repo variable: {"<relative-path>": "<file content>"} materialized under $HOME/.mirrobot-plugins/ (on GitHub-hosted runners /home/runner/.mirrobot-plugins/) for referencing from the config secret plugin array.'
-    required: false
-    default: ''
-  plugins-json-1:
-    description: 'Optional: contents of OPENCODE_PLUGINS_JSON_1. Numbered variables let each plugin live in its own variable; all are merged (path collisions are a hard error). Supported through _5.'
-    required: false
-    default: ''
-  plugins-json-2:
-    description: 'Optional: contents of OPENCODE_PLUGINS_JSON_2.'
-    required: false
-    default: ''
-  plugins-json-3:
-    description: 'Optional: contents of OPENCODE_PLUGINS_JSON_3.'
-    required: false
-    default: ''
-  plugins-json-4:
-    description: 'Optional: contents of OPENCODE_PLUGINS_JSON_4.'
-    required: false
-    default: ''
-  plugins-json-5:
-    description: 'Optional: contents of OPENCODE_PLUGINS_JSON_5.'
   openshare-config-json:
     description: 'Optional: contents of the OPENSHARE_CONFIG_JSON secret. When set: the released OpenShare single-file plugin is fetched from the OpenShare repo (sha256 logged), staged under ~/.mirrobot-plugins/ with this config adjacent, and registered in the opencode plugin array. Live session sharing; absent = plugin dormant (passive artifacts still produced). The whole dir is deleted after boot like the opencode config.'
     required: false
@@ -211,11 +194,23 @@ runs:
         # credential-shaped in any URL, config value, or printed output.
         git config --global credential.https://github.com.helper '!gh auth git-credential'
 
+    - name: Fetch content packs
+      shell: bash
+      env:
+        CONTENT_PACKS: ${{ inputs.content-packs }}
+        PACK_TOKEN: ${{ inputs.content-pack-token }}
+      run: python3 "${GITHUB_ACTION_PATH}/install-packs.py" fetch
+
+    # Runs before everything else that follows so extension installs overlap
+    # the rest of boot; this step's environment holds no credentials by design.
+    - name: Start pack extensions
+      shell: bash
+      run: python3 "${GITHUB_ACTION_PATH}/install-packs.py" start
+
     - name: Generate OpenCode Configuration
       shell: bash
       env:
         MAIN_MODEL: ${{ inputs.opencode-model }}
-        FAST_MODEL: ${{ inputs.opencode-fast-model }}
         DEFAULT_API_KEY: ${{ inputs.opencode-api-key }}
         AGENT_KEY: ${{ inputs.agent-key }}
         AGENT_MODELS_JSON: ${{ inputs.agent-models-json }}
@@ -347,71 +342,23 @@ runs:
         # --- FINALIZATION ---
         jq -e . <<< "$CONFIG" > ~/.config/opencode/opencode.json
         chmod 600 ~/.config/opencode/opencode.json
+        # A content pack may carry an opencode.json fragment; it merges under
+        # the config just written (arrays union, base wins, permission never).
+        python3 "${GITHUB_ACTION_PATH}/install-packs.py" merge-config "$HOME/.config/opencode/opencode.json"
         # echo "--- Generated OpenCode Configuration ---"
         # jq . ~/.config/opencode/opencode.json
         # echo "----------------------------------------"
         echo "Successfully generated OpenCode configuration."
 
-    - name: Materialize plugins and mask credential leaves
+    - name: Install content packs and mask credential leaves
       shell: bash
-      env:
-        PLUGINS_JSON: ${{ inputs.plugins-json }}
-        PLUGINS_JSON_1: ${{ inputs.plugins-json-1 }}
-        PLUGINS_JSON_2: ${{ inputs.plugins-json-2 }}
-        PLUGINS_JSON_3: ${{ inputs.plugins-json-3 }}
-        PLUGINS_JSON_4: ${{ inputs.plugins-json-4 }}
-        PLUGINS_JSON_5: ${{ inputs.plugins-json-5 }}
       run: |
         set -e
-        # --- PLUGINS (OPENCODE_PLUGINS_JSON + numbered _1.._5 -> ~/.mirrobot-plugins/) ---
-        # Operator-owned code files referenced BY the config secret's plugin
-        # array via absolute path (/home/runner/.mirrobot-plugins/<path>).
-        # Numbered variables let each plugin live in its own variable; all
-        # maps merge (path collisions across variables are a hard error -
-        # two plugins claiming one path is always a config mistake).
-        # Reading this directory is permission-denied in the example profile
-        # and the workflows delete it after opencode boots (config and
-        # plugins are read once at startup). Plugin SOURCE is add-masked:
-        # the variable values ride env dumps of later steps, and without a
-        # registered mask the whole source (operator code) would print in
-        # public run logs (live-caught 2026-09-15).
-        for src in "$PLUGINS_JSON" "$PLUGINS_JSON_1" "$PLUGINS_JSON_2" "$PLUGINS_JSON_3" "$PLUGINS_JSON_4" "$PLUGINS_JSON_5"; do
-          [ -n "$src" ] && printf "::add-mask::%s\n" "$src"
-        done
-        ALL_PLUGINS='{}'
-        for src in "$PLUGINS_JSON" "$PLUGINS_JSON_1" "$PLUGINS_JSON_2" "$PLUGINS_JSON_3" "$PLUGINS_JSON_4" "$PLUGINS_JSON_5"; do
-          [ -z "$(printf '%s' "$src" | tr -d '[:space:]')" ] && continue
-          if ! jq -e 'type == "object"' <<< "$src" >/dev/null 2>&1; then
-            echo "::error::An OPENCODE_PLUGINS_JSON(_N) variable is not a JSON object. Expected {\"<relative-path>\": \"<file content>\"} - see the repo README."
-            exit 1
-          fi
-          if [ -n "$(jq -n --argjson acc "$ALL_PLUGINS" --argjson add "$src" '$add | keys[] | select(. as $k | $acc | has($k))')" ]; then
-            echo "::error::Duplicate plugin path across OPENCODE_PLUGINS_JSON variables - each file path may be defined exactly once."
-            exit 1
-          fi
-          ALL_PLUGINS=$(jq -n --argjson acc "$ALL_PLUGINS" --argjson add "$src" '$acc * $add')
-        done
-
-        if [ "$ALL_PLUGINS" != "{}" ]; then
-          PLUGINS_DIR="$HOME/.mirrobot-plugins"
-          mkdir -p "$PLUGINS_DIR"
-          chmod 700 "$PLUGINS_DIR"
-          while IFS= read -r relpath; do
-            # Defensive CR strip: some jq builds emit CRLF; a real path never ends in CR.
-            relpath="${relpath%$'\r'}"
-            case "$relpath" in
-              ""|".."|../*|*/../*|*/..|/*|*[[:space:]]*|*"~"*|*"\\"*)
-                echo "::error::OPENCODE_PLUGINS_JSON contains an unsafe path entry. Use relative paths without spaces, traversal, or escapes."
-                exit 1
-                ;;
-            esac
-            target="$PLUGINS_DIR/$relpath"
-            mkdir -p "$(dirname "$target")"
-            jq -rn --argjson all "$ALL_PLUGINS" --arg k "$relpath" '$all[$k]' > "$target"
-            chmod 600 "$target"
-          done < <(jq -r 'keys[]' <<< "$ALL_PLUGINS")
-          echo "Plugins materialized."
-        fi
+        # Allowlisted pack content lands where opencode discovers it: skills
+        # under ~/.agents/skills, plugins, agents and commands under
+        # ~/.config/opencode. Reading those homes is permission-denied except
+        # for skills, and nothing there holds a credential.
+        python3 "${GITHUB_ACTION_PATH}/install-packs.py" install
 
         # --- MASK CREDENTIAL LEAVES (config- and auth-derived secrets) ---
         # GitHub masks whole SECRET values automatically, but
@@ -546,3 +493,7 @@ runs:
     - name: Ensure opencode directory exists
       shell: bash
       run: mkdir -p /home/runner/.local/share/opencode/project
+
+    - name: Wait for pack extensions and report
+      shell: bash
+      run: python3 "${GITHUB_ACTION_PATH}/install-packs.py" wait
