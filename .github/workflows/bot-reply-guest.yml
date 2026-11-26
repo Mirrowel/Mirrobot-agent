@@ -541,6 +541,7 @@ jobs:
           agent-models-json: ${{ vars.AGENT_MODELS_JSON }}
           content-packs: ${{ vars.CONTENT_PACKS }}
           content-pack-token: ${{ secrets.CONTENT_PACK_TOKEN }}
+          private-content-packs: ${{ secrets.CONTENT_PACKS_PRIVATE }}
           openshare-config-json: ${{ secrets.OPENSHARE_CONFIG_JSON }}
           openshare-bundle-url: ${{ vars.OPENSHARE_BUNDLE_URL || '' }}
 

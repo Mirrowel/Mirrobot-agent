@@ -73,7 +73,7 @@ gh secret set ACCOUNT_GH_TOKEN     -R <owner>/<repo>   # paste when prompted
 Get-Content config.min.json | gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo>   # PowerShell
 ```
 
-Every optional secret (the `SESSION_ARTIFACT_PUBKEY` artifact key, `OPENSHARE_CONFIG_JSON` for live sharing, `CONTENT_PACK_TOKEN` for private content packs, and the full identity rules (PAT scope requirements, why the `workflow` scope is forbidden)) is documented in [configuration.md](configuration.md#secrets).
+Every optional secret (the `SESSION_ARTIFACT_PUBKEY` artifact key, `OPENSHARE_CONFIG_JSON` for live sharing, `CONTENT_PACKS_PRIVATE` and `CONTENT_PACK_TOKEN` for private content packs, and the full identity rules (PAT scope requirements, why the `workflow` scope is forbidden)) is documented in [configuration.md](configuration.md#secrets).
 
 ## Step 2b, optional: skills, plugins and tools (content packs)
 
@@ -83,7 +83,7 @@ The agent runs with opencode's built-ins. To give it skills, a plugin or a CLI, 
 gh variable set CONTENT_PACKS -R <owner>/<repo> --body "Mirrowel/agent-pack@main"
 ```
 
-That public pack is the one this agent is developed against; forks usually point at their own. A repository's own `.opencode/` and `AGENTS.md` need no pack. Private plugins go in a private archive behind a link, with the `CONTENT_PACK_TOKEN` secret. Details: [configuration.md](configuration.md#content_packs) and [customization.md](customization.md#content-packs-skills-plugins-extensions).
+That public pack is the one this agent is developed against; forks usually point at their own. A repository's own `.opencode/` and `AGENTS.md` need no pack. Private plugins go in a private archive behind a link, listed in the `CONTENT_PACKS_PRIVATE` secret (plus `CONTENT_PACK_TOKEN` when the link needs authentication). Details: [configuration.md](configuration.md#content_packs) and [customization.md](customization.md#content-packs-skills-plugins-extensions).
 
 **Or skip the next step's lookup entirely:** run **Agent Bootstrap** once (`Actions → Agent Bootstrap → Run workflow`, needs repo write access). It creates every tuning variable with a safe default and prints the full secrets checklist into the run summary. It never overwrites anything, and its logs can't reveal what exists (see [workflows/agent-bootstrap.md](workflows/agent-bootstrap.md)).
 

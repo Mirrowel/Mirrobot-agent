@@ -135,7 +135,7 @@ Rules:
 ### `CONTENT_PACKS`
 **Default:** absent (the agent runs with opencode's built-ins only). **Type:** comma-separated content pack sources.
 
-Where the agent's skills, plugins, agents, commands and boot-time extensions come from. Each entry is one **content pack**. Later entries win when two packs ship the same file.
+Where the agent's skills, plugins, agents, commands and boot-time extensions come from. Each entry is one **content pack**. Later entries win when two packs ship the same file. The variable carries public sources; private archive links go in the [`CONTENT_PACKS_PRIVATE`](#content_packs_private-optional) secret and follow the variable's entries.
 
 ```bash
 gh variable set CONTENT_PACKS -R <owner>/<repo> --body "Mirrowel/agent-pack@main, https://files.example.com/my-private-pack.zip"
@@ -166,15 +166,15 @@ What keeps a pack from becoming a side door:
 - Archives are extracted with path traversal, absolute paths and links refused, and a cap on file count and total size.
 - A pack can never change the permission profile.
 - Extension installs run in a step that holds no credentials.
-- The log is an index: pack name, commit, file counts. The variable's value and the token are masked.
+- The log is an index: pack name, commit, file counts. The private list and the token are secrets, which GitHub masks everywhere; a repository variable would be printed in clear (see [security.md](security.md#content-packs)).
 
 *When to use it:* give every repository's agent the same skills and tools without copying them into each repository, and keep private plugins out of git.
 
-**Private sources.** A private repository or a link that needs authentication uses the `CONTENT_PACK_TOKEN` secret. To make a private archive, zip the pack folder and host it anywhere that serves a direct download.
+**Private sources.** Private archive links go in the `CONTENT_PACKS_PRIVATE` secret, in the same format; its entries follow the variable's. A private repository, or a link that needs authentication, also uses the `CONTENT_PACK_TOKEN` secret. To make a private archive, zip the pack folder and host it anywhere that serves a direct download.
 
 #### Tested hosts for a private pack
 
-Two anonymous hosts were tested end to end on 2026-11-26 (upload, download, identical bytes, 20 to 40 downloads back to back, reachability from 57 other networks). Both give an unlisted link: anyone who has it can download the file, so treat the link as a secret, or encrypt the archive.
+Two anonymous hosts were tested end to end on 2026-11-26 (upload, download, identical bytes, 20 to 40 downloads back to back, reachability from 57 other networks). Both give an unlisted link: anyone who has it can download the file, so keep the link in the `CONTENT_PACKS_PRIVATE` secret, or encrypt the archive.
 
 | Host | Upload | Link for `CONTENT_PACKS` | Notes |
 |---|---|---|---|
@@ -191,7 +191,7 @@ $r = curl.exe -sS -F "files[]=@pack.zip" -F "expiry=-1" https://qu.ax/upload | C
 "https://qu.ax/x/$((($r.files[0].url -split '/')[-1])).zip"
 ```
 
-Every update of the pack means a new upload, and on both hosts a changed file means a new link, so `CONTENT_PACKS` changes with it.
+Every update of the pack means a new upload, and on both hosts a changed file means a new link, so `CONTENT_PACKS_PRIVATE` changes with it.
 
 **Not suitable, also tested:** catbox.moe returned empty files for some uploads (a partial-upload failure their own blog documents), dropped new connections from one residential address for over an hour while every other network was served, and its terms forbid use as a CDN. put.re answered `503 Uploading disabled` to its documented API.
 
@@ -290,6 +290,13 @@ API key for the main model's provider, injected as `provider.<main>.options.apiK
 ### `CONTENT_PACK_TOKEN` (optional)
 Token for private content pack sources in [`CONTENT_PACKS`](#content_packs): sent as the git credential for a private repository, or as a Bearer header for a link. It never appears in a URL, a log line or the agent's environment. Unset means public sources only.
 
+### `CONTENT_PACKS_PRIVATE` (optional)
+Private archive links for content packs, in the same format as [`CONTENT_PACKS`](#content_packs); its entries follow the variable's. A secret and not a variable on purpose: the run log prints repository variables in clear (see [security.md](security.md#content-packs)). A fork with only public packs never needs it.
+
+```bash
+gh secret set CONTENT_PACKS_PRIVATE -R <owner>/<repo>   # paste the link when prompted
+```
+
 ### Identity pair, exactly one of:
 
 | | Secret(s) | Notes |
@@ -342,6 +349,6 @@ Related variables: [`OPENSHARE_PASSIVE`](#openshare_passive) (opt out of the pas
 | Stop just one part (e.g. reviews) | `AGENT_PAUSED_PARTS_JSON` |
 | Rename the bot | `BOT_IDENTITIES` + `BOT_TRIGGERS` |
 | Give the agent skills, plugins or a CLI | `CONTENT_PACKS` |
-| Private plugin | a private content pack: archive link in `CONTENT_PACKS` + `CONTENT_PACK_TOKEN` |
+| Private plugin | a private content pack: archive link in the `CONTENT_PACKS_PRIVATE` secret (`+ CONTENT_PACK_TOKEN` when the link needs authentication) |
 | Live session shares | `OPENSHARE_CONFIG_JSON` (+ `SESSION_ARTIFACT_PUBKEY` for the offline artifact) |
 | Agent follows me into other repos | `FOREIGN_MENTIONS_ENABLED` + `FOREIGN_MENTIONS_USERS` + PAT scopes + the worker |

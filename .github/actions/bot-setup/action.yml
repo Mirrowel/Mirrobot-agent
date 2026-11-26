@@ -31,6 +31,10 @@ inputs:
     description: 'Optional: token for private pack sources (repository or link). Used as a git credential or Bearer header; never placed in a URL or printed.'
     required: false
     default: ''
+  private-content-packs:
+    description: 'Optional: value of the CONTENT_PACKS_PRIVATE secret. Private archive links in the same format as content-packs, appended after its entries. Private links must travel through this secret and never through a repository variable: the runner echoes variables into the log in clear.'
+    required: false
+    default: ''
   agent-key:
     description: 'Optional: per-agent key (e.g. pr-review, bot-reply) resolved against the AGENT_MODELS_JSON variable to override the global model for this agent. Missing key or empty model string falls back to the global inputs.'
     required: false
@@ -194,10 +198,14 @@ runs:
         # credential-shaped in any URL, config value, or printed output.
         git config --global credential.https://github.com.helper '!gh auth git-credential'
 
+    # Private archive links arrive through a SECRET input on purpose: the
+    # runner echoes every step env block and action input into the log, and
+    # GitHub masks secrets there but prints repository variables in clear.
     - name: Fetch content packs
       shell: bash
       env:
         CONTENT_PACKS: ${{ inputs.content-packs }}
+        PRIVATE_CONTENT_PACKS: ${{ inputs.private-content-packs }}
         PACK_TOKEN: ${{ inputs.content-pack-token }}
       run: python3 "${GITHUB_ACTION_PATH}/install-packs.py" fetch
 

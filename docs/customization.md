@@ -81,7 +81,7 @@ The variable is [`CONTENT_PACKS`](configuration.md#content_packs). To add someth
 | A CLI the skills call | `extensions/<tool>/install.sh`, run in the background at boot |
 | Extra opencode config | An `opencode.json` fragment at the pack root. It merges under the config secret; `permission` is refused |
 
-Keep private plugins in a separate private pack (an archive behind a link, with `CONTENT_PACK_TOKEN` when the link needs authentication). [Two anonymous hosts were tested](configuration.md#tested-hosts-for-a-private-pack) and work without a token: pone.rs and qu.ax. Never put them in the public pack. A repository's own `.opencode/` and `AGENTS.md` still load natively: trusted when identical to what `main` or `dev` ships, removed and flagged when a PR changes them.
+Keep private plugins in a separate private pack (an archive behind a link listed in the `CONTENT_PACKS_PRIVATE` secret, with `CONTENT_PACK_TOKEN` when the link needs authentication). [Two anonymous hosts were tested](configuration.md#tested-hosts-for-a-private-pack) and work without a token: pone.rs and qu.ax. Never put them in the public pack. A repository's own `.opencode/` and `AGENTS.md` still load natively: trusted when identical to what `main` or `dev` ships, removed and flagged when a PR changes them.
 
 Known limit: substring permission rules are advisory whenever an *interpreter* is allowed. This deployment allows `python`/`python3` (the platform's home repos are Python); a determined session could construct forbidden strings inside a `python -c` one-liner. The interpreter is a deliberate per-repo tradeoff (see below); the profile closes the cheap paths; the security brief's refusal rules and the deny-is-a-signal doctrine carry the rest.
 

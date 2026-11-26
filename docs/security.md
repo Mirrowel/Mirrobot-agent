@@ -58,6 +58,8 @@ Skills, plugins, agents, commands and boot-time extensions come from the sources
 - **Extensions run without credentials.** `extensions/<name>/install.sh` starts in a background step whose environment holds no secrets, before the config exists.
 - **The log is an index**: pack name, commit and file counts. The variable's value and the token are masked.
 
+**Nothing private may travel through a repository variable.** The runner echoes each step's `env:` block and each action's inputs into the log before the step runs. GitHub masks secrets there but prints variables in clear, and no step can hide one: a masking step would echo the value itself. Private archive links therefore ride the `CONTENT_PACKS_PRIVATE` secret, which is merged into the pack list inside the fetch step. Measured on a real runner. The same exposure existed before: the retired plugin variable's source was printed in the Bot Setup step headers of past runs (the source holds no credentials).
+
 Pack plugins live in opencode's plugin directory for the run, which the agent's profile denies reading. Content a repository itself auto-loads from its tree (`.opencode/`, `.agents/skills/`, `AGENTS.md`) passes the same trust check as every other auto-load file: kept when identical to a state `main` or `dev` ships, removed, quarantined and flagged otherwise.
 
 ## Encrypted session sharing

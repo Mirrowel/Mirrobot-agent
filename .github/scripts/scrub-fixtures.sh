@@ -526,6 +526,7 @@ check "share: announcer encrypts with the pubkey"  yes "$(grep -q 'pkeyutl -encr
   check "models: $wf passes AGENT_MODELS_JSON"     yes "$(grep -q 'agent-models-json: \${{ vars.AGENT_MODELS_JSON }}' "$WFF" && echo yes || echo no)"
   check "packs: $wf wires CONTENT_PACKS"            yes "$(grep -q 'content-packs: \${{ vars.CONTENT_PACKS }}' "$WFF" && echo yes || echo no)"
   check "packs: $wf wires the pack token"           yes "$(grep -q 'content-pack-token: \${{ secrets.CONTENT_PACK_TOKEN }}' "$WFF" && echo yes || echo no)"
+  check "packs: $wf wires the private pack secret"      yes "$(grep -q 'private-content-packs: \${{ secrets.CONTENT_PACKS_PRIVATE }}' "$WFF" && echo yes || echo no)"
   check "packs: $wf carries no retired plugin var"  no  "$(grep -q 'OPENCODE_PLUGINS_JSON' "$WFF" && echo yes || echo no)"
   # Config lifecycle: opencode reads config+plugins once at boot; the
   # boot-sentinel waiter + post-run cleanup guarantee the sensitive files
@@ -667,6 +668,7 @@ check "share: announcer encrypts with the pubkey"  yes "$(grep -q 'pkeyutl -encr
   check "models: $wf passes AGENT_MODELS_JSON"     yes "$(grep -q 'agent-models-json: \${{ vars.AGENT_MODELS_JSON }}' "$WFF" && echo yes || echo no)"
   check "packs: $wf wires CONTENT_PACKS"            yes "$(grep -q 'content-packs: \${{ vars.CONTENT_PACKS }}' "$WFF" && echo yes || echo no)"
   check "packs: $wf wires the pack token"           yes "$(grep -q 'content-pack-token: \${{ secrets.CONTENT_PACK_TOKEN }}' "$WFF" && echo yes || echo no)"
+  check "packs: $wf wires the private pack secret"      yes "$(grep -q 'private-content-packs: \${{ secrets.CONTENT_PACKS_PRIVATE }}' "$WFF" && echo yes || echo no)"
   check "packs: $wf carries no retired plugin var"  no  "$(grep -q 'OPENCODE_PLUGINS_JSON' "$WFF" && echo yes || echo no)"
   # Config lifecycle: opencode reads config+plugins once at boot; the
   # boot-sentinel waiter + post-run cleanup guarantee the sensitive files
@@ -806,6 +808,8 @@ check "packs: config fragments drop permission at any depth" yes "$(grep -q '^de
 check "packs: extension errors relay as warnings" yes "$(grep -q "its errors relay as warnings" "$PACKS" && echo yes || echo no)"
 check "packs: link fetch sends a same-origin referer and caps the download" yes "$(grep -q 'directives = \[("referer"' "$PACKS" && grep -q '"--max-filesize", str(MAX_BYTES)' "$PACKS" && echo yes || echo no)"
 check "packs: the wait step cannot fail the run" yes "$(grep -q 'the wait step only reports; it must never end the run' "$PACKS" && echo yes || echo no)"
+check "setup: private pack links arrive through a secret input" yes "$(grep -q '^  private-content-packs:' "$ACTION" && grep -q 'PRIVATE_CONTENT_PACKS: \${{ inputs.private-content-packs }}' "$ACTION" && grep -q 'PRIVATE_CONTENT_PACKS' "$PACKS" && echo yes || echo no)"
+check "setup: no masking helper survives (the runner echoes action inputs too)" no "$(test -e "$SCRIPT_DIR/../actions/mask-values" && echo yes || echo no)"
 # Drift check is PERMISSION-ONLY: the example is a full-config template, so
 # comparing against the whole file would false-warn on every repo whose
 # config lacks the example's providers/mcp/plugin shape.
@@ -848,6 +852,8 @@ check "packs: config fragments drop permission at any depth" yes "$(grep -q '^de
 check "packs: extension errors relay as warnings" yes "$(grep -q "its errors relay as warnings" "$PACKS" && echo yes || echo no)"
 check "packs: link fetch sends a same-origin referer and caps the download" yes "$(grep -q 'directives = \[("referer"' "$PACKS" && grep -q '"--max-filesize", str(MAX_BYTES)' "$PACKS" && echo yes || echo no)"
 check "packs: the wait step cannot fail the run" yes "$(grep -q 'the wait step only reports; it must never end the run' "$PACKS" && echo yes || echo no)"
+check "setup: private pack links arrive through a secret input" yes "$(grep -q '^  private-content-packs:' "$ACTION" && grep -q 'PRIVATE_CONTENT_PACKS: \${{ inputs.private-content-packs }}' "$ACTION" && grep -q 'PRIVATE_CONTENT_PACKS' "$PACKS" && echo yes || echo no)"
+check "setup: no masking helper survives (the runner echoes action inputs too)" no "$(test -e "$SCRIPT_DIR/../actions/mask-values" && echo yes || echo no)"
 # Drift check is PERMISSION-ONLY: the example is a full-config template, so
 # comparing against the whole file would false-warn on every repo whose
 # config lacks the example's providers/mcp/plugin shape.

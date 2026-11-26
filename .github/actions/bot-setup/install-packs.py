@@ -16,9 +16,12 @@ not present as directories are fetched from their upstream repository at the
 recorded commit and verified against the recorded tree SHA. A committed
 directory always wins.
 
-Sources come from the CONTENT_PACKS variable, a flat comma list of
-`owner/repo[@ref]` (GitHub repository, shallow-fetched) or `https://...`
-(zip or tar.gz archive). Later entries win.
+Sources come from the CONTENT_PACKS variable (public sources) and the
+CONTENT_PACKS_PRIVATE secret (private archive links; its entries follow the
+variable's), each a flat comma list of `owner/repo[@ref]` (GitHub repository,
+shallow-fetched) or `https://...` (zip or tar.gz archive). Later entries win.
+The private list rides a secret because the runner echoes variables into the
+log in clear.
 
 Subcommands, in the order bot-setup runs them:
     fetch          download every source into $RUNNER_TEMP/mirrobot-packs
@@ -627,7 +630,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     fetch = sub.add_parser("fetch", help="download every configured pack")
-    fetch.add_argument("--packs", default=os.environ.get("CONTENT_PACKS", ""))
+    listed = [os.environ.get(name, "") for name in ("CONTENT_PACKS", "PRIVATE_CONTENT_PACKS")]
+    fetch.add_argument("--packs", default=", ".join(value for value in listed if value.strip()))
     fetch.set_defaults(func=cmd_fetch)
     sub.add_parser("start", help="launch extensions and the upstream skill fetch in the background").set_defaults(func=cmd_start)
     sub.add_parser("install", help="copy allowlisted content into the opencode homes").set_defaults(func=cmd_install)
