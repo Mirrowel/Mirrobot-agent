@@ -154,7 +154,7 @@ runs:
     - name: Generate GitHub App Token (app mode)
       id: generate_token
       if: steps.resolve_mode.outputs.mode == 'app'
-      uses: actions/create-github-app-token@v1
+      uses: actions/create-github-app-token@v3
       with:
         app-id: ${{ inputs.bot-app-id }}
         private-key: ${{ inputs.bot-private-key }}
@@ -475,7 +475,9 @@ runs:
 
     - name: Set up uv
       if: steps.check_requirements_file.outputs.exists == 'true'
-      uses: astral-sh/setup-uv@v4
+      # Pinned to the exact release: setup-uv stopped maintaining moving
+      # major tags at v8 (there is no v10 tag, only v10.x.y).
+      uses: astral-sh/setup-uv@v10.4.0
       with:
         enable-cache: true
         cache-dependency-glob: "requirements.txt"

@@ -325,7 +325,7 @@ jobs:
       # This prevents malicious PRs from injecting code into the AI prompt.
       - name: Checkout base branch (for trusted prompt)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false  # no credentials in .git/config (public repo: anonymous fetches still work)
 
@@ -581,7 +581,7 @@ jobs:
       # The trusted artifacts are already secured in /tmp
       - name: Checkout PR Head for Diff Generation
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.pr_info.outputs.head_sha }}
           fetch-depth: 0  # Full history needed for diff
@@ -933,7 +933,7 @@ jobs:
       - name: Upload session artifact
         if: always() && vars.OPENSHARE_PASSIVE != 'false'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: session-${{ github.run_id }}.enc
           path: ${{ runner.temp }}/session-${{ github.run_id }}.enc

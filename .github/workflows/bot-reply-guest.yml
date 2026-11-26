@@ -129,7 +129,7 @@ jobs:
           esac
 
       - name: Checkout routing script
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           sparse-checkout: .github/scripts
           persist-credentials: false
@@ -516,7 +516,7 @@ jobs:
       # with "Can't find 'action.yml'" until this restore existed).
       - name: Checkout repository
         if: steps.validate.outputs.should_proceed == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Stash local action for the post phase
@@ -904,7 +904,7 @@ jobs:
       - name: Upload session artifact
         if: always() && vars.OPENSHARE_PASSIVE != 'false'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: session-${{ github.run_id }}.enc
           path: ${{ runner.temp }}/session-${{ github.run_id }}.enc
