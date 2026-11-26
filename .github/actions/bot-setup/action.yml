@@ -407,7 +407,7 @@ runs:
         done
         echo "Credential leaf masking applied."
 
-    - name: Stage OpenShare plugin (live session sharing)
+    - name: Prepare OpenShare plugin (masks + background download)
       shell: bash
       env:
         OPENSHARE_CONFIG: ${{ inputs.openshare-config-json }}
@@ -440,32 +440,26 @@ runs:
         PLUGINS_DIR="$HOME/.mirrobot-plugins"
         mkdir -p "$PLUGINS_DIR"; chmod 700 "$PLUGINS_DIR"
         BUNDLE="$PLUGINS_DIR/openshare.js"
+
+        # Released single-file bundle from the OpenShare repo (master is
+        # the released line; auto-updates on every OpenShare release). The
+        # repo variable can point the fetch at another branch while it is
+        # ahead (OPENSHARE_BUNDLE_URL); delete the variable to return to
+        # the released master line.
+        #
+        # raw.githubusercontent.com answers 429 to the shared addresses of
+        # hosted runners, and that window outlasts a quick retry loop: four
+        # attempts inside seven seconds all failed in one run, which cost
+        # that run its live share. The download runs in the background with
+        # retries spread over a minute and the staging step below collects
+        # it, so a healthy download costs setup nothing.
         BUNDLE_URL="${OPENSHARE_BUNDLE_URL:-https://raw.githubusercontent.com/Mirrowel/OpenShare/master/share-plugin/ci/openshare.js}"
-        if ! curl -fsSL --retry 3 --max-time 60 "$BUNDLE_URL" -o "$BUNDLE"; then
-          echo "::warning::OpenShare bundle fetch failed - live sharing disabled for this run."
-          exit 0
-        fi
-        grep -q 'openshare' "$BUNDLE" || {
-          echo "::warning::OpenShare bundle failed validation - live sharing disabled for this run."
-          rm -f "$BUNDLE"; exit 0; }
-        chmod 600 "$BUNDLE"
-        echo "OpenShare bundle sha256: $(sha256sum "$BUNDLE" | cut -d' ' -f1)"
-
-        # Adjacent config: the plugin reads it at load (env > adjacent
-        # file > package root > walk-up > global home > defaults). Read
-        # gating is assured by the plugin's init-ack alarm plus the
-        # post-run step's gated:false warning - no env duplication.
-        printf '%s' "$OPENSHARE_CONFIG" > "$PLUGINS_DIR/openshare.config.json"
-        chmod 600 "$PLUGINS_DIR/openshare.config.json"
-
-        # Register the plugin (idempotent append; the generated config is
-        # file-local, the secret stays untouched).
-        CFG="$HOME/.config/opencode/opencode.json"
-        if [ -f "$CFG" ] && ! jq -e --arg p "$BUNDLE" '(.plugin // []) | index($p)' "$CFG" >/dev/null; then
-          tmp=$(mktemp)
-          jq --arg p "$BUNDLE" '.plugin = ((.plugin // []) + [$p])' "$CFG" > "$tmp" && mv "$tmp" "$CFG"
-        fi
-        echo "OpenShare staged: bundle + adjacent config + plugin registered."
+        rm -f "$RUNNER_TEMP/openshare-bundle.done"
+        nohup setsid bash -c 'for i in 1 2 3 4 5 6 7; do
+            if curl -fsSL --max-time 20 "$1" -o "$2.part"; then mv "$2.part" "$2"; echo 0 > "$3"; exit 0; fi
+            rm -f "$2.part"; [ "$i" -lt 7 ] && sleep $(( i * 4 ))
+          done; echo 1 > "$3"' _ "$BUNDLE_URL" "$BUNDLE" "$RUNNER_TEMP/openshare-bundle.done" > "$RUNNER_TEMP/openshare-bundle.log" 2>&1 < /dev/null &
+        echo "OpenShare bundle download started in the background."
 
     - name: Check for Python requirements file
       id: check_requirements_file
@@ -550,6 +544,49 @@ runs:
     - name: Ensure opencode directory exists
       shell: bash
       run: mkdir -p /home/runner/.local/share/opencode/project
+
+    # Collects the download started by the prepare step. It sits right
+    # before the report boot, which loads the plugin. A failed download
+    # costs this run its live share and nothing else.
+    - name: Stage OpenShare plugin (config + registration)
+      shell: bash
+      env:
+        OPENSHARE_CONFIG: ${{ inputs.openshare-config-json }}
+      run: |
+        set -e
+        if [ -z "$(printf '%s' "$OPENSHARE_CONFIG" | tr -d '[:space:]')" ]; then
+          exit 0
+        fi
+        PLUGINS_DIR="$HOME/.mirrobot-plugins"
+        BUNDLE="$PLUGINS_DIR/openshare.js"
+        done_file="$RUNNER_TEMP/openshare-bundle.done"
+        for _ in $(seq 1 450); do [ -f "$done_file" ] && break; sleep 0.2; done
+        if [ ! -f "$done_file" ] || [ "$(cat "$done_file")" != "0" ]; then
+          echo "::warning::OpenShare bundle fetch failed - live sharing disabled for this run."
+          tail -n 5 "$RUNNER_TEMP/openshare-bundle.log" 2>/dev/null || true
+          exit 0
+        fi
+        grep -q 'openshare' "$BUNDLE" || {
+          echo "::warning::OpenShare bundle failed validation - live sharing disabled for this run."
+          rm -f "$BUNDLE"; exit 0; }
+        chmod 600 "$BUNDLE"
+        echo "OpenShare bundle sha256: $(sha256sum "$BUNDLE" | cut -d' ' -f1)"
+
+        # Adjacent config: the plugin reads it at load (env > adjacent
+        # file > package root > walk-up > global home > defaults). Read
+        # gating is assured by the plugin's init-ack alarm plus the
+        # post-run step's gated:false warning - no env duplication.
+        printf '%s' "$OPENSHARE_CONFIG" > "$PLUGINS_DIR/openshare.config.json"
+        chmod 600 "$PLUGINS_DIR/openshare.config.json"
+
+        # Register the plugin (idempotent append; the generated config is
+        # file-local, the secret stays untouched).
+        CFG="$HOME/.config/opencode/opencode.json"
+        if [ -f "$CFG" ] && ! jq -e --arg p "$BUNDLE" '(.plugin // []) | index($p)' "$CFG" >/dev/null; then
+          tmp=$(mktemp)
+          jq --arg p "$BUNDLE" '.plugin = ((.plugin // []) + [$p])' "$CFG" > "$tmp" && mv "$tmp" "$CFG"
+        fi
+        echo "OpenShare staged: bundle + adjacent config + plugin registered."
 
     - name: Wait for pack extensions and report
       shell: bash

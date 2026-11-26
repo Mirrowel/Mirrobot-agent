@@ -591,11 +591,20 @@ ACT="$SCRIPT_DIR/../actions/bot-setup/action.yml"
 check "openshare: action declares input"             yes "$(grep -q '  openshare-config-json:' "$ACT" && echo yes || echo no)"
 check "openshare: bundle-url input declared"          yes "$(grep -q '  openshare-bundle-url:' "$ACT" && echo yes || echo no)"
 check "openshare: master fetch stays the default"      yes "$(grep -q 'OPENSHARE_BUNDLE_URL:-https://raw.githubusercontent.com/Mirrowel/OpenShare/master' "$ACT" && echo yes || echo no)"
-check "openshare: env auth belt removed"               yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q 'OPENSHARE_AUTH_LOGIN' && echo no || echo yes)"
+check "openshare: env auth belt removed"               yes "$(sed -n '/Prepare OpenShare plugin/,/plugin registered/p' "$ACT" | grep -q 'OPENSHARE_AUTH_LOGIN' && echo no || echo yes)"
 check "openshare: fetch failure degrades (warning)"  yes "$(grep -B2 -A2 'bundle fetch failed' "$ACT" | grep -q '::warning' && echo yes || echo no)"
-check "openshare: config written adjacent to plugin" yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q '\$PLUGINS_DIR/openshare.config.json' && echo yes || echo no)"
-check "openshare: credential leaves add-masked"      yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q '::add-mask' && echo yes || echo no)"
-check "openshare: plugin registered idempotently"    yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q 'index(\$p)' && echo yes || echo no)"
+check "openshare: config written adjacent to plugin" yes "$(sed -n '/Prepare OpenShare plugin/,/plugin registered/p' "$ACT" | grep -q '\$PLUGINS_DIR/openshare.config.json' && echo yes || echo no)"
+check "openshare: credential leaves add-masked"      yes "$(sed -n '/Prepare OpenShare plugin/,/plugin registered/p' "$ACT" | grep -q '::add-mask' && echo yes || echo no)"
+check "openshare: plugin registered idempotently"    yes "$(sed -n '/Prepare OpenShare plugin/,/plugin registered/p' "$ACT" | grep -q 'index(\$p)' && echo yes || echo no)"
+# raw.githubusercontent.com answers 429 to hosted-runner addresses in windows
+# that outlast a quick retry loop (a run lost its live share to four attempts
+# inside seven seconds). The download runs in the background, spreads its
+# retries over a minute, and the staging step collects it right before the
+# report boot without ever failing the run.
+check "openshare: download retries spread over a minute, in the background" yes "$(sdk_step 'Prepare OpenShare plugin' | grep -q 'nohup setsid' && [ "$(sdk_step 'Prepare OpenShare plugin' | grep -c 'for i in 1 2 3 4 5 6 7')" = 1 ] && echo yes || echo no)"
+check "openshare: staging waits for the download marker"            yes "$(sdk_step 'Stage OpenShare plugin' | grep -q 'openshare-bundle.done' && echo yes || echo no)"
+check "openshare: a failed download never fails the run"             yes "$(sdk_step 'Stage OpenShare plugin' | grep -q 'bundle fetch failed' && [ "$(sdk_step 'Stage OpenShare plugin' | grep -c 'exit 0')" -ge 3 ] && echo yes || echo no)"
+check "openshare: staging sits after the SDK restore, before the report" yes "$(awk '/name: Stage OpenShare plugin/{s=NR} /name: Restore the plugin SDK/{r=NR} /name: Wait for pack extensions and report/{w=NR} END{print (r && s && w && r < s && s < w) ? "yes" : "no"}' "$ACT")"
 
 # ---- OpenShare export-session v2 contract (behavioral + structural) -------
 # The passive artifact must emit OpenShare contract v2 (content-embedded
@@ -733,11 +742,20 @@ ACT="$SCRIPT_DIR/../actions/bot-setup/action.yml"
 check "openshare: action declares input"             yes "$(grep -q '  openshare-config-json:' "$ACT" && echo yes || echo no)"
 check "openshare: bundle-url input declared"          yes "$(grep -q '  openshare-bundle-url:' "$ACT" && echo yes || echo no)"
 check "openshare: master fetch stays the default"      yes "$(grep -q 'OPENSHARE_BUNDLE_URL:-https://raw.githubusercontent.com/Mirrowel/OpenShare/master' "$ACT" && echo yes || echo no)"
-check "openshare: env auth belt removed"               yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q 'OPENSHARE_AUTH_LOGIN' && echo no || echo yes)"
+check "openshare: env auth belt removed"               yes "$(sed -n '/Prepare OpenShare plugin/,/plugin registered/p' "$ACT" | grep -q 'OPENSHARE_AUTH_LOGIN' && echo no || echo yes)"
 check "openshare: fetch failure degrades (warning)"  yes "$(grep -B2 -A2 'bundle fetch failed' "$ACT" | grep -q '::warning' && echo yes || echo no)"
-check "openshare: config written adjacent to plugin" yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q '\$PLUGINS_DIR/openshare.config.json' && echo yes || echo no)"
-check "openshare: credential leaves add-masked"      yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q '::add-mask' && echo yes || echo no)"
-check "openshare: plugin registered idempotently"    yes "$(sed -n '/Stage OpenShare/,/registered/p' "$ACT" | grep -q 'index(\$p)' && echo yes || echo no)"
+check "openshare: config written adjacent to plugin" yes "$(sed -n '/Prepare OpenShare plugin/,/plugin registered/p' "$ACT" | grep -q '\$PLUGINS_DIR/openshare.config.json' && echo yes || echo no)"
+check "openshare: credential leaves add-masked"      yes "$(sed -n '/Prepare OpenShare plugin/,/plugin registered/p' "$ACT" | grep -q '::add-mask' && echo yes || echo no)"
+check "openshare: plugin registered idempotently"    yes "$(sed -n '/Prepare OpenShare plugin/,/plugin registered/p' "$ACT" | grep -q 'index(\$p)' && echo yes || echo no)"
+# raw.githubusercontent.com answers 429 to hosted-runner addresses in windows
+# that outlast a quick retry loop (a run lost its live share to four attempts
+# inside seven seconds). The download runs in the background, spreads its
+# retries over a minute, and the staging step collects it right before the
+# report boot without ever failing the run.
+check "openshare: download retries spread over a minute, in the background" yes "$(sdk_step 'Prepare OpenShare plugin' | grep -q 'nohup setsid' && [ "$(sdk_step 'Prepare OpenShare plugin' | grep -c 'for i in 1 2 3 4 5 6 7')" = 1 ] && echo yes || echo no)"
+check "openshare: staging waits for the download marker"            yes "$(sdk_step 'Stage OpenShare plugin' | grep -q 'openshare-bundle.done' && echo yes || echo no)"
+check "openshare: a failed download never fails the run"             yes "$(sdk_step 'Stage OpenShare plugin' | grep -q 'bundle fetch failed' && [ "$(sdk_step 'Stage OpenShare plugin' | grep -c 'exit 0')" -ge 3 ] && echo yes || echo no)"
+check "openshare: staging sits after the SDK restore, before the report" yes "$(awk '/name: Stage OpenShare plugin/{s=NR} /name: Restore the plugin SDK/{r=NR} /name: Wait for pack extensions and report/{w=NR} END{print (r && s && w && r < s && s < w) ? "yes" : "no"}' "$ACT")"
 
 # ---- OpenShare export-session v2 contract (behavioral + structural) -------
 # The passive artifact must emit OpenShare contract v2 (content-embedded
