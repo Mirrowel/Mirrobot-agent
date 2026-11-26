@@ -144,7 +144,7 @@ gh variable set CONTENT_PACKS -R <owner>/<repo> --body "Mirrowel/agent-pack@main
 | Source form | How it is acquired |
 |---|---|
 | `owner/repo` or `owner/repo@ref` | shallow git fetch at that ref (the default branch when omitted) |
-| `https://...` pointing at a zip or tar.gz | downloaded and extracted; a single wrapping folder is fine |
+| `https://...` pointing at a zip or tar.gz | downloaded and extracted; a single wrapping folder is fine. The download carries a `Referer` from the link's own origin, so hosts with hotlink protection work |
 
 **What a pack may contain.** Anything else in it is ignored:
 
@@ -171,6 +171,29 @@ What keeps a pack from becoming a side door:
 *When to use it:* give every repository's agent the same skills and tools without copying them into each repository, and keep private plugins out of git.
 
 **Private sources.** A private repository or a link that needs authentication uses the `CONTENT_PACK_TOKEN` secret. To make a private archive, zip the pack folder and host it anywhere that serves a direct download.
+
+#### Tested hosts for a private pack
+
+Two anonymous hosts were tested end to end on 2026-11-26 (upload, download, identical bytes, 20 to 40 downloads back to back, reachability from 57 other networks). Both give an unlisted link: anyone who has it can download the file, so treat the link as a secret, or encrypt the archive.
+
+| Host | Upload | Link for `CONTENT_PACKS` | Notes |
+|---|---|---|---|
+| [pone.rs](https://pone.rs/faq) | `curl -sS -F "files[]=@pack.zip" https://pone.rs/upload` | the `url` in the answer, for example `https://u.pone.rs/uskifwfg.zip` | "Forever" retention. Uploading identical bytes again returns the same link; changed bytes get a new one. No delete token. One-person host since 2025, behind Cloudflare. |
+| [qu.ax](https://qu.ax/tos) | `curl -sS -F "files[]=@pack.zip" -F "expiry=-1" https://qu.ax/upload` | the raw link, for example `https://qu.ax/x/qd2ds.zip` | `-1` asks for permanent storage, which their terms call best-effort. The raw link is on the file page and refuses downloads without a `Referer` from qu.ax; the installer sends one for every link pack, so it needs no extra setting. A `.tar.gz` is served as `/x/<id>.gz`. |
+
+The upload answer of qu.ax names the file page (`https://qu.ax/<id>`), not the raw link. This prints the raw link for a zip:
+
+```bash
+id=$(curl -sS -F "files[]=@pack.zip" -F "expiry=-1" https://qu.ax/upload | jq -r '.files[0].url | split("/") | last'); echo "https://qu.ax/x/$id.zip"
+```
+```powershell
+$r = curl.exe -sS -F "files[]=@pack.zip" -F "expiry=-1" https://qu.ax/upload | ConvertFrom-Json
+"https://qu.ax/x/$((($r.files[0].url -split '/')[-1])).zip"
+```
+
+Every update of the pack means a new upload, and on both hosts a changed file means a new link, so `CONTENT_PACKS` changes with it.
+
+**Not suitable, also tested:** catbox.moe returned empty files for some uploads (a partial-upload failure their own blog documents), dropped new connections from one residential address for over an hour while every other network was served, and its terms forbid use as a CDN. put.re answered `503 Uploading disabled` to its documented API.
 
 ### `TRUSTED_AGENT_USERS`
 **Default:** absent (= empty). **Type:** comma-separated logins.

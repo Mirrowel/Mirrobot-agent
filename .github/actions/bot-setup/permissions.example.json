@@ -108,6 +108,7 @@
 			"*git config -l*": "deny",
 			"*git config --list*": "deny",
 			"*git config --get*": "deny",
+			"*git -C * config *": "deny",
 			"*git --git-dir*": "deny",
 			"*git --work-tree*": "deny",
 			"gh auth*": "deny",
@@ -136,6 +137,8 @@
 			"*gh api */actions/registration*": "deny",
 			"*gh api */actions/secrets*": "deny",
 			"*gh api */actions/variables*": "deny",
+			"*gh api */organization-variables*": "deny",
+			"*gh api */organization-secrets*": "deny",
 			"*gh api */dependabot/secrets*": "deny",
 			"*gh api */codespaces/secrets*": "deny",
 			"*gh api *environment-secrets*": "deny",
@@ -183,8 +186,7 @@
 			"telnet*": "deny",
 			"ftp*": "deny",
 			"tftp*": "deny",
-			"nmap*": "deny",
-			"gh api graphql*": "allow"
+			"nmap*": "deny"
 		},
 		"read": {
 			"*": "allow",

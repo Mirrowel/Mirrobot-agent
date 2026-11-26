@@ -9,7 +9,7 @@ the pack is ignored:
     agents/<name>.md                 opencode agent definitions
     commands/<name>.md               slash commands
     extensions/<name>/install.sh     boot-time installer, run in the background
-    opencode.json                    optional config fragment (never `permission`)
+    opencode.json                    optional config fragment (never `permission`, at any depth)
 
 Skills listed in `.agents/.skill-lock.json` (written by `npx skills`) that are
 not present as directories are fetched from their upstream repository at the
@@ -43,6 +43,7 @@ import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT_NAMES = {".agents", "plugins", "agents", "commands", "extensions", "instructions", "opencode.json"}
 KIND_DIRS = {"plugins", "agents", "commands"}
@@ -216,21 +217,42 @@ def fetch_repo(repo, ref, token, work):
     return sha
 
 
+def curl_config(pairs):
+    """Render lines for curl's `--config`; a quote or line break inside a value could add a directive, so it is refused."""
+    lines = []
+    for key, value in pairs:
+        if any(ch in value for ch in '"\r\n'):
+            raise FetchError(f"the {key} for a content pack contains a quote or a line break")
+        lines.append(f'{key} = "{value}"')
+    return "\n".join(lines) + "\n"
+
+
 def fetch_url(url, token, work):
     """Download the archive at `url` and extract it safely into `work`; return the archive's SHA-256 prefix and the pack root."""
     work.mkdir(parents=True)
     archive = work / "archive"
-    cmd = ["curl", "-fsSL", "--retry", "2", "--max-time", "180", "--config", "-", "-o", str(archive), url]
-    header = f'header = "Authorization: Bearer {token}"\n' if token else ""
-    proc = subprocess.run(cmd, input=header, capture_output=True, text=True)
+    # A host with hotlink protection wants a Referer from its own origin
+    # (qu.ax answers 302 without one); everywhere else the header is harmless.
+    parts = urlsplit(url)
+    directives = [("referer", f"{parts.scheme}://{parts.netloc}/")]
+    if token:
+        directives.append(("header", f"Authorization: Bearer {token}"))
+    cmd = ["curl", "-fsSL", "--retry", "2", "--max-time", "180", "--max-filesize", str(MAX_BYTES), "--config", "-",
+           "-o", str(archive), url]
+    proc = subprocess.run(cmd, input=curl_config(directives), capture_output=True, text=True)
+    if proc.returncode == 63:
+        raise FetchError("the file at this link is larger than the extraction cap")
     if proc.returncode != 0:
         raise FetchError(f"download failed (curl exit {proc.returncode})")
     if archive.stat().st_size == 0:
         raise FetchError("the file at this link is empty")
-    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with archive.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
     root = extract_archive(archive, work / "root")
     archive.unlink()
-    return digest[:12], root
+    return digest.hexdigest()[:12], root
 
 
 def parse_sources(raw):
@@ -492,8 +514,22 @@ def merge_config(base, fragment):
     return base
 
 
+def strip_permissions(node):
+    """Drop every `permission` key at any depth (the top level and agent definitions alike); return the cleaned node and how many were dropped."""
+    if not isinstance(node, dict):
+        return node, 0
+    cleaned, dropped = {}, 0
+    for key, value in node.items():
+        if key == "permission":
+            dropped += 1
+            continue
+        cleaned[key], removed = strip_permissions(value)
+        dropped += removed
+    return cleaned, dropped
+
+
 def cmd_merge_config(args):
-    """Merge every pack's `opencode.json` fragment into the generated config; fragments never contribute `permission`."""
+    """Merge every pack's `opencode.json` fragment into the generated config; fragments never contribute `permission`, at any depth."""
     path = Path(args.config)
     config = json.loads(path.read_text())
     for pack in load_manifest():
@@ -508,9 +544,9 @@ def cmd_merge_config(args):
         if not isinstance(fragment, dict):
             say(f"content pack {pack['index']}: opencode.json is not an object and was not merged", "warning")
             continue
-        if "permission" in fragment:
-            say(f"content pack {pack['index']}: a pack cannot change permissions; the permission key was ignored", "warning")
-            fragment = {key: value for key, value in fragment.items() if key != "permission"}
+        fragment, dropped = strip_permissions(fragment)
+        if dropped:
+            say(f"content pack {pack['index']}: a pack cannot change permissions; {dropped} permission key(s) were ignored", "warning")
         config = merge_config(config, fragment)
         say(f"content pack {pack['index']}: config fragment merged")
     path.write_text(json.dumps(config))
@@ -526,7 +562,9 @@ def relay_extension(job):
     summaries = [line for line in lines if line.startswith("EXT-SUMMARY:")]
     for line in lines:
         if line.startswith(("::warning::", "::error::", "::notice::")):
-            say(line.split("::", 2)[2], line.split("::")[1])
+            # An extension cannot fail the run from its own log: its errors relay as warnings.
+            level = "notice" if line.startswith("::notice::") else "warning"
+            say(f"{job['label']}: {line.split('::', 2)[2]}", level)
     status = Path(job["status"]).read_text().strip() if Path(job["status"]).is_file() else "?"
     for line in summaries:
         say(f"[{job['label']}] {line.removeprefix('EXT-SUMMARY:').strip()}")
@@ -585,7 +623,7 @@ def cmd_wait(args):
 
 
 def main(argv=None):
-    """Dispatch one subcommand; every subcommand exits 0 so a pack problem never fails the run."""
+    """Dispatch one subcommand; `fetch` and `wait` report problems as warnings, the others fail loudly."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     fetch = sub.add_parser("fetch", help="download every configured pack")
@@ -601,7 +639,13 @@ def main(argv=None):
     wait.add_argument("--timeout", type=int, default=300)
     wait.set_defaults(func=cmd_wait)
     args = parser.parse_args(argv)
-    args.func(args)
+    if args.command == "wait":
+        try:
+            args.func(args)
+        except Exception as error:  # the wait step only reports; it must never end the run
+            say(f"wait: {type(error).__name__}", "warning")
+    else:
+        args.func(args)
     return 0
 
 

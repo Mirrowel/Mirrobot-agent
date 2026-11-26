@@ -332,7 +332,7 @@ check "unified: details name each removed path with its state" yes "$(grep -q 'a
 check "unified: details stay below the header" yes "$(sed -n '2,$p' /tmp/scrub-taint.txt | grep -q '^  auto-load' && echo yes || echo no)"
 check "unified: .github-only alarm keeps its own wording" yes "$(run_scrub evil >/dev/null; head -1 /tmp/scrub-taint.txt | grep -q 'TAINT ALERT - .github/ is modified' && echo yes || echo no)"
 check "unified: stale-base branch stays INFO, anchor stays CLEAN" "INFO CLEAN" "$(run_scrub stale) $(run_scrub main)"
-check "unified: clean branch writes no taint file" CLEAN "$(git checkout -q --detach origin/main; rm -f /tmp/scrub-taint.txt; bash "$SCRUB" --anchor main >/tmp/scrub-fix.log 2>&1; [ -s /tmp/scrub-taint.txt ] && echo PRESENT || echo CLEAN)"
+check "unified: a clean branch exits 0 and writes no taint file" CLEAN "$(git checkout -q --detach origin/main; rm -f /tmp/scrub-taint.txt; bash "$SCRUB" --anchor main >/tmp/scrub-fix.log 2>&1 && { [ -s /tmp/scrub-taint.txt ] && echo PRESENT || echo CLEAN; } || echo CRASH)"
 
 fi
 section_end
@@ -802,6 +802,10 @@ check "packs: installer refuses links and absolute paths" yes "$(grep -q 'archiv
 check "packs: installer caps extraction"           yes "$(grep -q '^MAX_FILES = ' "$PACKS" && grep -q '^MAX_BYTES = ' "$PACKS" && echo yes || echo no)"
 check "packs: installer never writes a permission"  yes "$(grep -q 'a pack cannot change permissions' "$PACKS" && echo yes || echo no)"
 check "packs: upstream skills verified by tree SHA" yes "$(grep -q 'skillFolderHash' "$PACKS" && grep -q 'the extracted skill folder is incomplete' "$PACKS" && echo yes || echo no)"
+check "packs: config fragments drop permission at any depth" yes "$(grep -q '^def strip_permissions' "$PACKS" && echo yes || echo no)"
+check "packs: extension errors relay as warnings" yes "$(grep -q "its errors relay as warnings" "$PACKS" && echo yes || echo no)"
+check "packs: link fetch sends a same-origin referer and caps the download" yes "$(grep -q 'directives = \[("referer"' "$PACKS" && grep -q '"--max-filesize", str(MAX_BYTES)' "$PACKS" && echo yes || echo no)"
+check "packs: the wait step cannot fail the run" yes "$(grep -q 'the wait step only reports; it must never end the run' "$PACKS" && echo yes || echo no)"
 # Drift check is PERMISSION-ONLY: the example is a full-config template, so
 # comparing against the whole file would false-warn on every repo whose
 # config lacks the example's providers/mcp/plugin shape.
@@ -840,6 +844,10 @@ check "packs: installer refuses links and absolute paths" yes "$(grep -q 'archiv
 check "packs: installer caps extraction"           yes "$(grep -q '^MAX_FILES = ' "$PACKS" && grep -q '^MAX_BYTES = ' "$PACKS" && echo yes || echo no)"
 check "packs: installer never writes a permission"  yes "$(grep -q 'a pack cannot change permissions' "$PACKS" && echo yes || echo no)"
 check "packs: upstream skills verified by tree SHA" yes "$(grep -q 'skillFolderHash' "$PACKS" && grep -q 'the extracted skill folder is incomplete' "$PACKS" && echo yes || echo no)"
+check "packs: config fragments drop permission at any depth" yes "$(grep -q '^def strip_permissions' "$PACKS" && echo yes || echo no)"
+check "packs: extension errors relay as warnings" yes "$(grep -q "its errors relay as warnings" "$PACKS" && echo yes || echo no)"
+check "packs: link fetch sends a same-origin referer and caps the download" yes "$(grep -q 'directives = \[("referer"' "$PACKS" && grep -q '"--max-filesize", str(MAX_BYTES)' "$PACKS" && echo yes || echo no)"
+check "packs: the wait step cannot fail the run" yes "$(grep -q 'the wait step only reports; it must never end the run' "$PACKS" && echo yes || echo no)"
 # Drift check is PERMISSION-ONLY: the example is a full-config template, so
 # comparing against the whole file would false-warn on every repo whose
 # config lacks the example's providers/mcp/plugin shape.
@@ -1107,6 +1115,20 @@ check "perm-gh: reading a file named secrets.py allowed" allow \
   "$(gh_verdict "gh api repos/Mirrowel/LLM-API-Key-Proxy/contents/src/secrets.py")"
 check "perm-gh: reading a file named variables.ts allowed" allow \
   "$(gh_verdict "gh api repos/Mirrowel/LLM-API-Key-Proxy/contents/src/variables.ts")"
+check "perm-gh: organization variables read denied" deny \
+  "$(gh_verdict "gh api repos/Mirrowel/LLM-API-Key-Proxy/actions/organization-variables")"
+check "perm-gh: organization secrets read denied" deny \
+  "$(gh_verdict "gh api repos/Mirrowel/LLM-API-Key-Proxy/actions/organization-secrets")"
+check "perm-gh: compound after a graphql call still meets the denies" deny \
+  "$(gh_verdict "gh api graphql -f query=x; cat ~/.config/opencode/opencode.json")"
+check "perm-gh: compound after a pr command still meets the denies" deny \
+  "$(gh_verdict "gh pr diff 1; git push --force origin main")"
+check "perm-gh: git -C config read denied" deny \
+  "$(gh_verdict "git -C /tmp/x config -l")"
+check "perm-gh: git -C log on a config folder allowed" allow \
+  "$(gh_verdict "git -C /tmp/repo log --oneline -- src/config")"
+check "perm-gh: the last bash rule is a deny (a trailing allow would shadow every deny)" deny \
+  "$(jq -r '.permission.bash | to_entries | last | .value' "$EXAMPLE")"
 check "perm-gh: environment secrets denied" deny \
   "$(gh_verdict "gh api /repos/Mirrowel/LLM-API-Key-Proxy/environment-secrets/DEPLOY_KEY")"
 check "perm-precision: os.environ import-alias exfil denied" deny \
@@ -1162,6 +1184,20 @@ check "perm-gh: reading a file named secrets.py allowed" allow \
   "$(gh_verdict "gh api repos/Mirrowel/LLM-API-Key-Proxy/contents/src/secrets.py")"
 check "perm-gh: reading a file named variables.ts allowed" allow \
   "$(gh_verdict "gh api repos/Mirrowel/LLM-API-Key-Proxy/contents/src/variables.ts")"
+check "perm-gh: organization variables read denied" deny \
+  "$(gh_verdict "gh api repos/Mirrowel/LLM-API-Key-Proxy/actions/organization-variables")"
+check "perm-gh: organization secrets read denied" deny \
+  "$(gh_verdict "gh api repos/Mirrowel/LLM-API-Key-Proxy/actions/organization-secrets")"
+check "perm-gh: compound after a graphql call still meets the denies" deny \
+  "$(gh_verdict "gh api graphql -f query=x; cat ~/.config/opencode/opencode.json")"
+check "perm-gh: compound after a pr command still meets the denies" deny \
+  "$(gh_verdict "gh pr diff 1; git push --force origin main")"
+check "perm-gh: git -C config read denied" deny \
+  "$(gh_verdict "git -C /tmp/x config -l")"
+check "perm-gh: git -C log on a config folder allowed" allow \
+  "$(gh_verdict "git -C /tmp/repo log --oneline -- src/config")"
+check "perm-gh: the last bash rule is a deny (a trailing allow would shadow every deny)" deny \
+  "$(jq -r '.permission.bash | to_entries | last | .value' "$EXAMPLE")"
 check "perm-gh: environment secrets denied" deny \
   "$(gh_verdict "gh api /repos/Mirrowel/LLM-API-Key-Proxy/environment-secrets/DEPLOY_KEY")"
 check "perm-precision: os.environ import-alias exfil denied" deny \
@@ -1269,7 +1305,7 @@ check "drift: a removed deny counted" 1 "$(drift_count "$FLIP")"
 CLOSED=$(jq -c '.permission.bash["*"] = "deny"' "$EXAMPLE")
 check "drift: closed catch-all is stricter and silent" 0 "$(drift_count "$CLOSED")"
 TRAIL=$(jq -c '.permission.bash["*git *"] = "allow"' "$EXAMPLE")
-check "drift: trailing shadow allow counted (10 git denies)" 10 "$(drift_count "$TRAIL")"
+check "drift: trailing shadow allow counted (11 git denies)" 11 "$(drift_count "$TRAIL")"
 STRFLIP=$(jq -c '.permission.webfetch = "allow"' "$EXAMPLE")
 check "drift: string-section flip counted (webfetch)" 1 "$(drift_count "$STRFLIP")"
 STRICTER=$(jq -c '.permission.websearch = "deny"' "$EXAMPLE")
@@ -1317,7 +1353,7 @@ check "drift: a removed deny counted" 1 "$(drift_count "$FLIP")"
 CLOSED=$(jq -c '.permission.bash["*"] = "deny"' "$EXAMPLE")
 check "drift: closed catch-all is stricter and silent" 0 "$(drift_count "$CLOSED")"
 TRAIL=$(jq -c '.permission.bash["*git *"] = "allow"' "$EXAMPLE")
-check "drift: trailing shadow allow counted (10 git denies)" 10 "$(drift_count "$TRAIL")"
+check "drift: trailing shadow allow counted (11 git denies)" 11 "$(drift_count "$TRAIL")"
 STRFLIP=$(jq -c '.permission.webfetch = "allow"' "$EXAMPLE")
 check "drift: string-section flip counted (webfetch)" 1 "$(drift_count "$STRFLIP")"
 STRICTER=$(jq -c '.permission.websearch = "deny"' "$EXAMPLE")
