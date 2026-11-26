@@ -124,7 +124,7 @@ Everything is *up to*, newest-first, deduped. **Filter before cap, everywhere:**
 ```
 
 Rules:
-- Empty string = not set → falls back to the global `OPENCODE_MODEL` secret. Missing keys: same fallback. Fill what you want, leave the rest.
+- Empty string = not set → falls back to the global model: `OPENCODE_MODEL`, or the config's own `model` field. Missing keys: same fallback. Fill what you want, leave the rest.
 - `"fast"` (optional) sets that agent's `small_model`. opencode uses `small_model` for session-title generation, so the override only matters for completeness.
 - Malformed JSON **fails the run with a visible error**: never a silent global fallback.
 - Model names never appear in any log; the run only says the override is active.
@@ -269,10 +269,10 @@ Migrate to this rule when you install the platform on another repo: add that rep
 
 ## Secrets
 
-`Settings → Secrets and variables → Actions → Secrets`. Minimal set: `OPENCODE_MODEL` + `OPENCODE_CONFIG_JSON` + one identity pair.
+`Settings → Secrets and variables → Actions → Secrets`. Minimal set: `OPENCODE_CONFIG_JSON` (carrying a `model` field, or with the separate `OPENCODE_MODEL` below) + one identity pair.
 
 ### `OPENCODE_MODEL`
-Main model, `provider/model` (e.g. `anthropic/claude-sonnet-4`). Overrides any `model` key in your config; per-agent overrides (above) beat this.
+Main model, `provider/model` (e.g. `anthropic/claude-sonnet-4`). Optional when your config carries a `model` field; when set it overrides that field. Per-agent overrides (above) beat this.
 
 ### `OPENCODE_CONFIG_JSON`
 Your complete [OpenCode config](https://opencode.ai/docs/config), minified to one line: providers (with models and API keys), `small_model`, agents, MCP servers, the `plugin` array, and the `permission` profile. Start from the committed template `.github/actions/bot-setup/permissions.example.json`: it's a full-config example with a placeholder provider, an MCP entry, and the recommended permission block (an ordered denylist, see [customization.md](customization.md#the-permission-profile)). Plugins that live in a content pack need no entry in it.

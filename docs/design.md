@@ -90,6 +90,10 @@ A mode's prompt is an *assembly*, built at run time. `.github/prompts/parts/` ho
 
 Full authoring guide: [customization.md](customization.md#prompts).
 
+## Where skills and tools come from
+
+Skills, plugins, agents, commands and boot-time CLIs are not baked into this repository. They arrive through **content packs**: sources listed in `CONTENT_PACKS` (public) and `CONTENT_PACKS_PRIVATE` (private archive links, kept in a secret because run logs print variables in clear). One installer (`install-packs.py`) fetches each pack, installs only allowlisted paths into opencode's own home, fetches lock-pinned upstream skills at their recorded commits, runs wait-for-able boot extensions in a credential-free step, and deep-merges a pack's `opencode.json` fragment under the config secret, with `permission` refused at any depth. A fork therefore changes what the agent can do by editing a pack, not by editing workflows.
+
 ## The identity model
 
 The bot speaks as exactly one identity per installation (a user account (account mode) or a GitHub App bot (app mode)) selected by which secrets exist. Both modes flow through the same machinery.

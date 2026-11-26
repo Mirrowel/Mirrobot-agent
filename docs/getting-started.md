@@ -54,18 +54,18 @@ Either way, the account/App needs **Write** on the repository (direct collaborat
 
 If you rename anything, read [customization.md](customization.md#renaming-the-agent); identity is matched case-insensitively in a couple of places you'll want to update.
 
-## Step 2, add secrets (three entries minimum)
+## Step 2, add secrets (the config plus one identity pair)
 
 `Settings → Secrets and variables → Actions → Secrets`:
 
 | Secret | What |
 |---|---|
-| `OPENCODE_MODEL` | Main model in `provider/model` format, e.g. `anthropic/claude-sonnet-4` |
-| `OPENCODE_CONFIG_JSON` | Your complete [OpenCode](https://opencode.ai/docs/config) config (providers, API keys, permissions) minified to one line. Start from the committed template: `.github/actions/bot-setup/permissions.example.json` |
+| `OPENCODE_CONFIG_JSON` | Your complete [OpenCode](https://opencode.ai/docs/config) config (providers, API keys, permissions, `model`) minified to one line. Start from the committed template: `.github/actions/bot-setup/permissions.example.json` |
+| `OPENCODE_MODEL` | Only when your config carries no `model` field: main model in `provider/model` format, e.g. `anthropic/claude-sonnet-4`. When set it overrides the config's `model` |
 | `ACCOUNT_GH_TOKEN` *or* `BOT_APP_ID` + `BOT_PRIVATE_KEY` | The identity pair you picked in step 1 |
 
 ```bash
-gh secret set OPENCODE_MODEL       -R <owner>/<repo> --body "anthropic/claude-sonnet-4"
+gh secret set OPENCODE_MODEL       -R <owner>/<repo> --body "anthropic/claude-sonnet-4"   # only if the config has no "model"
 gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < config.min.json   # bash/macOS/Linux
 gh secret set ACCOUNT_GH_TOKEN     -R <owner>/<repo>   # paste when prompted
 ```

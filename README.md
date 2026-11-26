@@ -140,15 +140,15 @@ Both work identically downstream; presence of the account token selects account 
 
 | Secret | What |
 |---|---|
-| `OPENCODE_MODEL` | Main model, `provider/model` format, e.g. `anthropic/claude-sonnet-4` |
-| `OPENCODE_CONFIG_JSON` | Your complete [OpenCode config](https://opencode.ai/docs/config), minified to one line: permission profile, providers, API keys, MCP servers, plugins. Start from the committed template: `.github/actions/bot-setup/permissions.example.json` |
+| `OPENCODE_MODEL` | Main model, `provider/model` format, e.g. `anthropic/claude-sonnet-4`. Optional when your config carries a `model` field; when set it overrides that field |
+| `OPENCODE_CONFIG_JSON` | Your complete [OpenCode config](https://opencode.ai/docs/config), minified to one line: permission profile, providers, API keys, MCP servers, model. Start from the committed template: `.github/actions/bot-setup/permissions.example.json` |
 | + identity | `ACCOUNT_GH_TOKEN` (account mode), or `BOT_APP_ID` + `BOT_PRIVATE_KEY` (App mode) |
 
 ```bash
 # minify the template (or your own config) to one line first:
 python minify_json_secret.py .github/actions/bot-setup/permissions.example.json > config.min.json
 
-gh secret set OPENCODE_MODEL       -R <owner>/<repo> --body "anthropic/claude-sonnet-4"
+gh secret set OPENCODE_MODEL       -R <owner>/<repo> --body "anthropic/claude-sonnet-4"   # skip when the config carries "model"
 gh secret set OPENCODE_CONFIG_JSON -R <owner>/<repo> < config.min.json        # bash/macOS/Linux
 gh secret set ACCOUNT_GH_TOKEN     -R <owner>/<repo>   # paste the PAT when prompted
 ```
@@ -201,7 +201,7 @@ Details: [configuration](docs/configuration.md) · [renaming](docs/customization
 
 Full reference with worked examples lives in [docs/configuration.md](docs/configuration.md). Summary:
 
-**Secrets** (`Settings → … → Secrets`): the three above are the minimal set. Optional: `OPENCODE_API_KEY` (provider key when it's not inside your config), `CONTENT_PACKS_PRIVATE` + `CONTENT_PACK_TOKEN` (private content packs), `SESSION_ARTIFACT_PUBKEY` (encrypted session artifacts; `python decrypt_share_link.py setup` does everything), `OPENSHARE_CONFIG_JSON` (live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare) — the whole plugin config as one secret, template at `.github/plugins/openshare.ci.EXAMPLE.json`; see [configuration.md](docs/configuration.md#openshare_config_json-optional)).
+**Secrets** (`Settings → … → Secrets`): the minimal set is `OPENCODE_CONFIG_JSON` (with a `model` field, or add `OPENCODE_MODEL`), plus one identity pair. Optional: `OPENCODE_API_KEY` (provider key when it's not inside your config), `CONTENT_PACKS_PRIVATE` + `CONTENT_PACK_TOKEN` (private content packs), `SESSION_ARTIFACT_PUBKEY` (encrypted session artifacts; `python decrypt_share_link.py setup` does everything), `OPENSHARE_CONFIG_JSON` (live session sharing via [OpenShare](https://github.com/Mirrowel/OpenShare) — the whole plugin config as one secret, template at `.github/plugins/openshare.ci.EXAMPLE.json`; see [configuration.md](docs/configuration.md#openshare_config_json-optional)).
 
 **Variables** (`Settings → … → Variables`):
 
