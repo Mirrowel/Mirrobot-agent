@@ -25,9 +25,9 @@ log in clear.
 
 Subcommands, in the order bot-setup runs them:
     fetch          download every source into $RUNNER_TEMP/mirrobot-packs
-    start          launch extensions and the upstream skill fetch in the background
-    install        copy allowlisted content into the opencode homes
     merge-config   merge `opencode.json` fragments into the generated config
+    install        copy allowlisted content into the opencode homes
+    start          launch extensions and the upstream skill fetch in the background
     wait           wait for the background jobs, relay their results, report
 """
 import argparse

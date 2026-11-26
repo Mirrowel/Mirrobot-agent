@@ -154,7 +154,7 @@ gh variable set CONTENT_PACKS -R <owner>/<repo> --body "Mirrowel/agent-pack@main
 | `.agents/.skill-lock.json` | Entries with no committed folder are fetched from their upstream repository at the recorded commit and verified against the recorded tree SHA. A committed copy always wins |
 | `plugins/<file>` | Placed in `~/.config/opencode/plugins/`, where opencode loads it with no config entry |
 | `agents/`, `commands/` | Placed in `~/.config/opencode/agents/` and `commands/` |
-| `extensions/<name>/install.sh` | Run in the background at boot, overlapping the rest of setup. Use it to install a CLI the skills need |
+| `extensions/<name>/install.sh` | Run in the background near the end of setup, after the opencode install; the run waits for it before the agent starts. Use it to install a CLI the skills need |
 | `opencode.json` | A config **fragment**. Objects merge under your `OPENCODE_CONFIG_JSON`, arrays union, your config wins on scalars, and a `permission` key is refused |
 
 One mechanism covers both audiences: a public repository for what you share, and a private archive for what you do not (a private plugin, for example). No plugin file needs a variable.
