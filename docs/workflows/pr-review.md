@@ -47,6 +47,8 @@ Pipeline: bot-setup → metadata fetch (fail-closed on bogus numbers before any 
 - First reviews post a living ack (progress-edited); follow-ups post only the review (no announcement noise).
 - Every posted review ends with footer markers carrying the reviewed head SHA; follow-up runs and the verify step both key off them.
 
+**Posting and skills.** The review is submitted through `post-review.sh`, which resolves and verifies the SHA, validates every inline anchor against the diff and appends the identity tag, signature and SHA marker. Labels are inline on FIRST; a FOLLOW-UP installs the labels skill and loads it only when it actually re-checks a grade.
+
 **Knobs:** `AGENT_MODELS_JSON["pr-review"]`, `AGENT_MODELS_JSON["review-*"]` is not a thing; mode-level routing is via the manifest; the knobs block in the workflow env carries the noise filters and `ELEVATED_REVIEWS_COUNT`; identity resolves at runtime via `bot-config.sh` (the `BOT_IDENTITIES` variable + `/user` detection). The stub's label gate is the literal string `Agent Monitored`.
 
 **Concurrency:** group `PR Review-<N>`, serialized, no cancel; concurrent reviews of one PR are structurally impossible.

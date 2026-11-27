@@ -22,6 +22,8 @@ A mention in an issue or PR thread (`@mirrobot`, `@mirrobot-agent`) → router d
 4. The **security brief + prompt assembly**, then one agent session.
 5. The agent may load **instruction sets** (the same playbooks the dedicated modes use, how to review and how to contribute) as instructions for a job, while bot-reply stays its own "person" with its own judgment. Compliance is never bot-reply's job.
 
+**Posting and skills.** Deliverables go through `/tmp/post/` (comment, ack edit by id, discussion reply, review), so signatures and markers are never typed. The labels skill is installed but loaded only when the thread settles a grade; the Discussion skill is installed only when the thread is a Discussion, and the load report in the run summary names what was actually loaded.
+
 What it can do in one session: answer, investigate (read-only anywhere), run the review kit on any home PR, contribute code (branch → commits → PR, within scope-of-action rules), and post its deliverable as a top-level comment with the standard footer.
 
 It may also update a grade or conclusion label when a conversation settles one (the same shared grade rules as Issue Analysis and PR Review); otherwise it leaves labels alone. Guest sessions never label.

@@ -15,6 +15,7 @@ On a new issue, one agent session that:
 - judges neutrally — neither presuming the filer wrong nor right — reproducing where it can, rooting causes at file:line, and checking whether a fix is already in flight (open PRs, `dev`/`experimental`),
 - **evaluates proposals instead of validating them**: the job behind the ask, who benefits, whether it is already possible or better done elsewhere, cost and risk, fit with the project. The result is `ai: recommended` or `ai: discouraged`, with the reason,
 - **grades and labels**: three grades (`severity:`, `value:`, `risk:`), each with its reason in the comment. The workflow fetches the repository's live labels once and renders exactly those into the prompt, so the agent applies only what exists and never creates a label. Its own conclusions are the `ai:` labels; decisions (`accepted`, `Priority`) stay with the maintainer,
+- posts through the posting toolkit (`/tmp/post/post-comment.sh`): the signature is appended by the script, and the acknowledgment goes without one,
 - posts its analysis in its own shape: verdict, the grade lines, evidence, what's next are the content; the form is not a template,
 - reacts 👀 immediately on pickup.
 

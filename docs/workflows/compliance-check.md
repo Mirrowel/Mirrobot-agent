@@ -18,6 +18,8 @@ A deployed repo typically adds its product groups (e.g. "when `src/auth/**` chan
 
 Beyond the watch-list, the agent verifies merge-readiness generally: PR description coherence, leftover debug code, missing docstrings/comments on new public surface, breaking-change notes.
 
+**One artifact.** The report is the only comment a run posts: it goes through `post-compliance.sh` (identity tag, signature and `compliance-check-id` appended), and the commit status goes through `set-status.sh` with the report URL as its target. The verifier selects the tagged report rather than the latest comment, so a stray remark can never become the audit of record.
+
 ## Status semantics
 
 The GitHub statuses API has no "neutral" state, so the mapping is deliberate:
