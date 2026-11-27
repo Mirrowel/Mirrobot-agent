@@ -92,8 +92,8 @@ labels_section() {
   local KIT="$SCRIPT_DIR/generate-review-kit.sh"
   local rendered flat n w m got want slog all most r first last wf PY_L="" sb="$WORK/labels-stub" rt="$WORK/labels-rt"
   check "labels: render script passes bash -n" OK "$(bash -n "$RENDER" && echo OK || echo BAD)"
-  check "labels: the committed palette validates" OK "$("$RENDER" "$PALETTE" >/dev/null 2>&1 && echo OK || echo BAD)"
-  rendered="$("$RENDER" "$PALETTE")"
+  check "labels: the committed palette validates" OK "$(bash "$RENDER" "$PALETTE" >/dev/null 2>&1 && echo OK || echo BAD)"
+  rendered="$(bash "$RENDER" "$PALETTE")"
   flat="$(printf '%s\n' "$rendered" | tr '\n' ',')"
   m=0
   while IFS= read -r n; do
@@ -2462,9 +2462,11 @@ check "home: PR-head sessions scrub the workspace"     yes "$(grep -q 'Scrub wor
 # thread-context block - the entire fetched THREAD_CONTEXT was exported and
 # never printed; the placeholder-coverage check cannot see exported-but-
 # unconsumed channels). Both conversational modes MUST print the wrapper.
-check "context: home prints the thread-context channel"  yes "$(bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply | grep -q '<thread_context>' && echo yes || echo no)"
-check "context: guest prints the thread-context channel" yes "$(bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply-guest | grep -q '<thread_context>' && echo yes || echo no)"
-check "context: guest prints the summoner request block" yes "$(bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply-guest | grep -q 'new-request-from-user' && echo yes || echo no)"
+home_prompt="$(SKILLS_DIR="$WORK/skills-context-home" bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply)"
+guest_prompt="$(SKILLS_DIR="$WORK/skills-context-guest" bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply-guest)"
+check "context: home prints the thread-context channel"  yes "$(printf '%s' "$home_prompt" | grep -q '<thread_context>' && echo yes || echo no)"
+check "context: guest prints the thread-context channel" yes "$(printf '%s' "$guest_prompt" | grep -q '<thread_context>' && echo yes || echo no)"
+check "context: guest prints the summoner request block" yes "$(printf '%s' "$guest_prompt" | grep -q 'new-request-from-user' && echo yes || echo no)"
 # Lost-in-surgery tripwires (live-caught 2026-09-15: the guest-strip deletion
 # range swallowed two HOME steps; the audit then read the post-loss state as
 # ground truth and the wiring was removed as "vestigial"). These pin the
@@ -2560,9 +2562,11 @@ check "home: PR-head sessions scrub the workspace"     yes "$(grep -q 'Scrub wor
 # thread-context block - the entire fetched THREAD_CONTEXT was exported and
 # never printed; the placeholder-coverage check cannot see exported-but-
 # unconsumed channels). Both conversational modes MUST print the wrapper.
-check "context: home prints the thread-context channel"  yes "$(bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply | grep -q '<thread_context>' && echo yes || echo no)"
-check "context: guest prints the thread-context channel" yes "$(bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply-guest | grep -q '<thread_context>' && echo yes || echo no)"
-check "context: guest prints the summoner request block" yes "$(bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply-guest | grep -q 'new-request-from-user' && echo yes || echo no)"
+home_prompt="$(SKILLS_DIR="$WORK/skills-context-home" bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply)"
+guest_prompt="$(SKILLS_DIR="$WORK/skills-context-guest" bash "$SCRIPT_DIR/assemble-prompt.sh" bot-reply-guest)"
+check "context: home prints the thread-context channel"  yes "$(printf '%s' "$home_prompt" | grep -q '<thread_context>' && echo yes || echo no)"
+check "context: guest prints the thread-context channel" yes "$(printf '%s' "$guest_prompt" | grep -q '<thread_context>' && echo yes || echo no)"
+check "context: guest prints the summoner request block" yes "$(printf '%s' "$guest_prompt" | grep -q 'new-request-from-user' && echo yes || echo no)"
 # Lost-in-surgery tripwires (live-caught 2026-09-15: the guest-strip deletion
 # range swallowed two HOME steps; the audit then read the post-loss state as
 # ground truth and the wiring was removed as "vestigial"). These pin the
