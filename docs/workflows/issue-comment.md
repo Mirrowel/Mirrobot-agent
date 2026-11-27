@@ -26,7 +26,7 @@ The agent session (real), or the issue re-fetch (deleted issue). Gray skip = pau
 
 ## Knobs
 
-`AGENT_MODELS_JSON["issue-comment"]`, plus the shared env-block knobs. The triage mission lives in `mission-analyst.md`; the grade and label rules are the shared `grading.md`; the palette is [`.github/labels.txt`](../customization.md#the-label-palette), seeded by Agent Bootstrap.
+`AGENT_MODELS_JSON["issue-comment"]`, plus the shared env-block knobs. The triage mission lives in `mission-analyst.md`; the grade and label rules are the labels block (`prompts/skills/labels/`, injected inline here because issue analysis always grades); the palette is [`.github/labels.txt`](../customization.md#the-label-palette), seeded by Agent Bootstrap.
 
 ## Testing it
 

@@ -952,6 +952,7 @@ jobs:
           cp .github/prompts/security-brief.md /tmp/security-brief.md
           cp -r .github/prompts/parts /tmp/parts
           cp -r .github/prompts/manifests /tmp/manifests
+          cp -r .github/prompts/skills /tmp/skills
           cp .github/scripts/assemble-prompt.sh /tmp/assemble-prompt.sh
           cp .github/scripts/scrub-workspace.sh /tmp/scrub-workspace.sh
           cp .github/scripts/share-filter.sh /tmp/share-filter.sh
@@ -1161,7 +1162,7 @@ jobs:
           # General strategies (any thread type)
           bash /tmp/assemble-prompt.sh agentlib-investigate  | envsubst "$IVARS" > /tmp/instructions/investigate.md
           bash /tmp/assemble-prompt.sh agentlib-contribute   | envsubst "$IVARS" > /tmp/instructions/contribute.md
-          bash /tmp/assemble-prompt.sh agentlib-manage       | envsubst "$IVARS" > /tmp/instructions/manage.md
+          SKILLS_ENVSUBST="$IVARS" bash /tmp/assemble-prompt.sh agentlib-manage | envsubst "$IVARS" > /tmp/instructions/manage.md
           bash /tmp/assemble-prompt.sh agentlib-cross-repo   | envsubst "$IVARS" > /tmp/instructions/cross-repo.md
           # Review kit for this thread's own PR. The agent re-runs the same
           # script itself when reviewing any OTHER PR. KIT RESULT is exported
@@ -1230,8 +1231,13 @@ jobs:
             ( bash /tmp/opencode-cleanup.sh waiter ) &
             bash /tmp/live-share-announce.sh & ANNOUNCER=$!
             set -o pipefail
+            # Skill gating: the Discussion skill is installed only in a
+            # Discussion thread; the labels skill is installed always here
+            # (loaded only when a grade actually comes up).
+            SKILL_SKIP=""
+            [ -n "${DISCUSSION_NODE_ID:-}" ] || SKILL_SKIP=discussions
             { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $TRUST_CONTEXT_ERA $TRUSTED_PEOPLE' < /tmp/security-brief.md; \
-              bash /tmp/assemble-prompt.sh bot-reply | FULL_DIFF_PATH="$FULL_DIFF_PATH" PR_NUMBER="$THREAD_NUMBER" INCREMENTAL_DIFF_PATH="$INCREMENTAL_DIFF_PATH" LAST_REVIEWED_SHA="$LAST_REVIEWED_SHA" envsubst "$VARS"; } | opencode run - 2>&1 | bash /tmp/share-filter.sh
+              SKILLS_ENVSUBST="$VARS" SKILL_INSTALL_SKIP="$SKILL_SKIP" bash /tmp/assemble-prompt.sh bot-reply | FULL_DIFF_PATH="$FULL_DIFF_PATH" PR_NUMBER="$THREAD_NUMBER" INCREMENTAL_DIFF_PATH="$INCREMENTAL_DIFF_PATH" LAST_REVIEWED_SHA="$LAST_REVIEWED_SHA" envsubst "$VARS"; } | opencode run - 2>&1 | bash /tmp/share-filter.sh
               kill "$ANNOUNCER" 2>/dev/null || true
             bash /tmp/opencode-cleanup.sh now
 

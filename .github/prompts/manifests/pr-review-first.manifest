@@ -22,4 +22,4 @@ self-review-tone
 protocol-first
 review-verdicts
 review-submission
-grading
+inline:labels

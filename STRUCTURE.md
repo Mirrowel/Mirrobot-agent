@@ -12,8 +12,9 @@
 │   │   └── requester-context/  # Factual trust-line output for the security brief
 │   ├── ISSUE_TEMPLATE/         # Issue forms (bug/feature/support) feeding the triage agent
 │   ├── prompts/                # Agent behavior, as composable prose
-│   │   ├── parts/              # 37 instruction parts (the prose)
+│   │   ├── parts/              # 36 instruction parts (the prose)
 │   │   ├── manifests/          # 14 mode manifests (the assembly order)
+│   │   ├── skills/             # Skill templates (one body, inline or installed per lane)
 │   │   ├── security-brief.md   # Read first in every home agent session
 │   │   └── security-brief-guest.md  # Read first in every guest session
 │   ├── labels.txt              # The label palette: ONE source for seeding and for the prompt's label block
@@ -57,8 +58,8 @@ Non-code directories: `.cortexkit/`, `__pycache__/` are tooling/local state; `.f
 
 **`.github/prompts/`:**
 - Purpose: The agent's behavior and security doctrine as content, not code
-- Contains: `parts/*.md` (one instruction block each; `mission-guest.md` is the guest monolith), `manifests/*.manifest` (ordered part lists per mode), the top-level `security-brief.md` (home) and `security-brief-guest.md` (guest lane)
-- Key files: `parts/security-*.md` prose is never pinned — `prompt-rule-fixtures.sh` checks machine contracts only (assembly render, placeholder-vs-renderer completeness, workflow marker couplings); `security-brief.md` is read first in every home session, `security-brief-guest.md` in every guest session
+- Contains: `parts/*.md` (one instruction block each; `mission-guest.md` is the guest monolith), `manifests/*.manifest` (ordered part and skill directives per mode), `skills/<name>/` (a shared body with inline and skill framings), the top-level `security-brief.md` (home) and `security-brief-guest.md` (guest lane)
+- Key files: `parts/security-*.md` prose is never pinned — `prompt-rule-fixtures.sh` checks machine contracts only (assembly render, placeholder-vs-renderer completeness, skill install and fail-closed behavior, workflow marker couplings); `security-brief.md` is read first in every home session, `security-brief-guest.md` in every guest session
 
 **`.github/actions/`:**
 - Purpose: Composite actions shared across workflows
@@ -77,7 +78,7 @@ Non-code directories: `.cortexkit/`, `__pycache__/` are tooling/local state; `.f
 **Entry Points:** `.github/workflows/*.yml`, all 12 workflows; GitHub events and dispatches start here. The comment path always enters via `agent-router.yml`; cross-repo mentions enter via `mention-poller.yml` → `bot-reply-guest.yml`.
 **Core Logic:** `.github/scripts/*.sh` (identity/triggers, routing, scrubbing, context assembly, prompt assembly, verification, excerpt harvesting; `.github/actions/bot-setup/action.yml`) token minting and config lifecycle.
 **Configuration:** Secrets and variables live in GitHub (not in the repo); behavior knobs are variables (`AGENT_PAUSED`, `AGENT_PAUSED_PARTS_JSON`, `BOT_IDENTITIES`, `BOT_TRIGGERS`, `CONTEXT_LIMITS_JSON`, `AGENT_MODELS_JSON`, `OPEN_TRIGGERING`, `GUEST_REPO_RULES`, `FOREIGN_MENTIONS_USERS`, `CONTENT_PACKS`, `OPENSHARE_BUNDLE_URL`, `OPENSHARE_PASSIVE`, roster/filter lists, see `docs/configuration.md`). The committed config surface is `.github/actions/bot-setup/permissions.example.json` (full-config template), `.github/plugins/openshare.ci.EXAMPLE.json` (OpenShare live-sharing template; the filled copy is gitignored), and per-workflow `env:` knob blocks (e.g. `MAINTAINED_BASE_BRANCHES` in `pr-review.yml`, `FILE_GROUPS_JSON` in `compliance-check.yml` — optionally overridden by a repo-specific `.github/workflows/compliance-groups.json`, schema in `compliance-groups.EXAMPLE.json`, `DIFF_SPLIT_BYTES` diff split threshold). 
-**Tests:** `.github/scripts/scrub-fixtures.sh` (608 checks covering the scrub, roster transforms, router decision matrix, mention/discussion pipelines, cross-repo workflow contracts, credential-shape redaction, the unified taint matrix, the content-pack installer, plugin-SDK cache and boot-report contracts, and the permission corpus plus the bash/read/edit/write deny matrices) and `.github/scripts/prompt-rule-fixtures.sh` (80 machine-contract checks: assembly render, placeholder-vs-renderer completeness, workflow marker couplings), wired to CI via `.github/workflows/scrub-fixtures.yml`; a failing suite after an edit means the suite disagrees with the change — update the check or the behavior, never silently delete the check.
+**Tests:** `.github/scripts/scrub-fixtures.sh` (697 checks covering the scrub, roster transforms, router decision matrix, mention/discussion pipelines, cross-repo workflow contracts, credential-shape redaction, the unified taint matrix, the content-pack installer, plugin-SDK cache and boot-report contracts, the posting toolkit's footers and diff-validated anchors, and the permission corpus plus the bash/read/edit/write deny matrices) and `.github/scripts/prompt-rule-fixtures.sh` (108 machine-contract checks: assembly render, placeholder-vs-renderer completeness, skill install and gating, workflow marker couplings), wired to CI via `.github/workflows/scrub-fixtures.yml`; a failing suite after an edit means the suite disagrees with the change — update the check or the behavior, never silently delete the check.
 
 ## Naming Conventions
 
@@ -86,7 +87,8 @@ Non-code directories: `.cortexkit/`, `__pycache__/` are tooling/local state; `.f
 
 ## Where to Add New Code
 
-**New agent behavior:** `.github/prompts/parts/<new-part>.md`, then reference it from the relevant `.github/prompts/manifests/*.manifest` files; a part edit propagates to every mode that lists it. Prompt prose is never pinned: run `bash .github/scripts/prompt-rule-fixtures.sh` (assembly, placeholder-vs-renderer, marker couplings) and `bash .github/scripts/assemble-prompt.sh --verify` before committing.
+**New agent behavior:** `.github/prompts/parts/<new-part>.md`, then reference it from the relevant `.github/prompts/manifests/*.manifest` files; a part edit propagates to every mode that lists it. Text a lane needs only *sometimes* belongs in `.github/prompts/skills/<name>/` (one `body.md`, a framing per delivery) and is referenced as `skill:<name>`; text a lane *always* needs stays a part. Prompt prose is never pinned: run `bash .github/scripts/prompt-rule-fixtures.sh` (assembly, placeholder-vs-renderer, skill install and gating, marker couplings) and `bash .github/scripts/assemble-prompt.sh --verify` before committing.
+**New skill:** create `.github/prompts/skills/<dir>/{meta.yml,framing-inline.md,framing-skill.md,body.md}` and declare `skill:<dir>` (or `inline:<dir>` where the need is constant). Keep `${VAR}` placeholders inside the renderer's list; the assembler renders with `SKILLS_ENVSUBST` and fails closed on a leftover placeholder.
 **New agent mode:** create a `.github/prompts/manifests/<mode>.manifest` ordering existing (and new) parts; map the mode to its renderer's envsubst list in `prompt-rule-fixtures.sh` (`mode_list` — an unmapped mode fails the battery loudly). Verify with `bash .github/scripts/assemble-prompt.sh --list`.
 **New shared script:** `.github/scripts/<kebab-name>.sh`, start from an existing script's contract header (env in/out, files, exit semantics); never interpolate untrusted text into the shell except via `env:`.
 **New workflow:** `.github/workflows/<name>.yml`; dispatch-only agent workflows must declare the phantom-suppressing never-matching `push` trigger and runtime input validation (see `pr-review.yml`); anything `pull_request`-triggered must stay zero-secret with no checkout. Never add `pull_request*` triggers to agent workflows. For sessions that run in **foreign** repositories, model the lane on `bot-reply-guest.yml`: natively guest (no home conditionals), its own security brief + manifest, `KIT_REPO` for the kit, a foreign checkout pinned to an API-recorded SHA, and the scrub in `--foreign` mode.

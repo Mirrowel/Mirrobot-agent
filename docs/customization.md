@@ -4,17 +4,32 @@ Everything that's *yours* (behavior prose, watch-lists, permissions, identities,
 
 ## Prompts
 
-All agent behavior prose lives in `.github/prompts/parts/*.md`, there is no prompt text in the workflows. A **manifest** (`.github/prompts/manifests/<mode>.txt`) is an ordered list of part names, and a mode's full prompt is exactly those parts concatenated, then `envsubst`ed with the run's context variables.
+All agent behavior prose lives in `.github/prompts/parts/*.md`, there is no prompt text in the workflows. A **manifest** (`.github/prompts/manifests/<mode>.manifest`) is an ordered list of part names, and a mode's full prompt is exactly those parts concatenated, then `envsubst`ed with the run's context variables.
 
 ```
 parts/security-brief.md        ← every session starts here
 parts/on-topic-guardrail.md    ← off-topic deflection
 parts/severity.md              ← the 🔴🟠🟡🔵 ladder (every mode)
 parts/mission-review.md        ← the reviewer's identity and judgment rules
-manifests/pr-review-first.txt  ← = the FIRST-review assembly
+manifests/pr-review-first.manifest  ← = the FIRST-review assembly
 ```
 
-Workflows call `bash /tmp/assemble-prompt.sh <mode> | envsubst "$VARS"`. The assembler is fail-closed (a manifest naming a missing part kills the run) and `--verify`-able (no orphan parts, no duplicate headings).
+Workflows call `bash /tmp/assemble-prompt.sh <mode> | envsubst "$VARS"`. The assembler is fail-closed (a manifest naming a missing part kills the run), installs the skills the manifest declares, and is `--verify`-able (no missing parts or skills, no orphan parts, no duplicate headings).
+
+### Skills: content a run needs sometimes
+
+Some guidance belongs in a lane only when a particular moment comes up (a follow-up review that re-grades, a Discussion thread). That text lives as a **skill** under `.github/prompts/skills/<name>/`, installed for that run and routed from the top of the prompt:
+
+| File | Role |
+|---|---|
+| `meta.yml` | `name` (the installed skill name, e.g. `mirrobot-labels`) and a one-line `description` (the routing text the model sees) |
+| `framing-inline.md` | the duty preamble, used where the manifest injects the body always |
+| `framing-skill.md` | the "load this when..." preamble, used in the installed `SKILL.md` |
+| `body.md` | the shared content; one body, so the two deliveries cannot drift |
+
+A manifest declares `inline:<dir>` (inject the framing + body at that position, no install) or `skill:<dir>` (install `mirrobot-<name>/SKILL.md` into opencode's skills home and emit a routing line), with `!` on `skill:` marking it required for the load report. `SKILL_INSTALL_SKIP` (a comma list) drops a skill for a run, for example the Discussion skill outside Discussion threads.
+
+The rule of thumb: **always** needed in that lane goes in the parts; **sometimes** needed becomes a skill; **never** needed is deleted. Do not move always-needed text behind a skill just to shrink the prompt.
 
 ### What to edit
 
@@ -25,13 +40,15 @@ Workflows call `bash /tmp/assemble-prompt.sh <mode> | envsubst "$VARS"`. The ass
 | Compliance checklist scope (beyond FILE_GROUPS) | `parts/mission-compliance.md` |
 | Security posture / refusals | `parts/security-brief.md` (carefully, it's read first, every session) |
 | Severity ladder wording | `parts/severity.md` |
+| Grades, conclusions and how labels are applied | `skills/labels/body.md` (one body, delivered inline or as a skill) |
+| Discussion reply mechanics | `skills/discussions/body.md` |
 
 ### Rules of the road
 
 - **Shared parts are shared byte-for-byte.** If two modes need different rules, that's *two parts*, not one part with mode-dependent prose. This is what keeps duplicated guidance from drifting apart.
-- **Prompt prose is never pinned.** Edit any part's wording, rules, or formats freely — CI checks machine contracts only. After editing parts, run `bash .github/scripts/prompt-rule-fixtures.sh` (Windows: Git Bash or WSL): it verifies your parts still assemble, every `${VAR}` placeholder you use is in the renderer's envsubst list, and any workflow marker coupling still holds. A failure there means a mechanical break (an unlisted placeholder reaches the agent as a literal `${X}`), not a wording complaint.
-- **Render any mode's full prompt yourself** (`bash .github/scripts/assemble-prompt.sh <mode>`) to read exactly what the agent will read.
-- Envsubst variables are per-mode whitelists in the workflow (`VARS='...'`), a new `$SOMETHING` in a part needs the variable added to the mode's list, or it ships literally.
+- **Prompt prose is never pinned.** Edit any part's wording, rules, or formats freely — CI checks machine contracts only. After editing parts or skills, run `bash .github/scripts/prompt-rule-fixtures.sh` (Windows: Git Bash or WSL): it verifies your parts still assemble, every `${VAR}` placeholder you use is in the renderer's envsubst list, every skill resolves and installs, and any workflow marker coupling still holds. A failure there means a mechanical break (an unlisted placeholder reaches the agent as a literal `${X}`), not a wording complaint.
+- **Render any mode's full prompt yourself** (`bash .github/scripts/assemble-prompt.sh <mode>`) to read exactly what the agent will read. When the mode declares skills, the assembler installs them into `~/.config/opencode/skills`; set `SKILLS_DIR=/tmp/skills-preview` for a read-only look.
+- Envsubst variables are per-mode whitelists in the workflow (`VARS='...'`), a new `$SOMETHING` in a part or a skill needs the variable added to the mode's list (the assembler also renders skills with `SKILLS_ENVSUBST`), or it ships literally.
 
 ## The compliance watch-list
 

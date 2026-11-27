@@ -245,18 +245,22 @@ RVARS='${DIFF_FILE_PATH} ${INCREMENTAL_DIFF_PATH} ${LAST_REVIEWED_SHA} ${PR_HEAD
 # The review instruction sets are assembled for both lanes. At home the
 # workflow has exported the repository's live labels; a guest session has
 # none, and never labels a foreign repository.
+GUEST_SESSION=0
+if [ -z "${LABEL_PALETTE:-}" ]; then GUEST_SESSION=1; fi
 export LABEL_PALETTE="${LABEL_PALETTE:-(guest session: never label this repository)}"
+SKILL_SKIP=""
+[ "$GUEST_SESSION" = 1 ] && SKILL_SKIP=labels
 export THREAD_NUMBER="$PR"
 if [ -f /tmp/assemble-prompt.sh ]; then
   bash /tmp/assemble-prompt.sh review-memory-instructions \
     | PREVIOUS_BOT_REVIEWS="$PREVIOUS_BOT_REVIEWS" AGENT_REVIEW_HISTORY="$AGENT_REVIEW_HISTORY" \
       PR_NUMBER="$PR" GITHUB_REPOSITORY="$REPO" envsubst "$RVARS" > /tmp/instructions/review-memory.md
-  bash /tmp/assemble-prompt.sh review-first-instructions \
+  SKILLS_ENVSUBST="$RVARS" SKILL_INSTALL_SKIP="$SKILL_SKIP" bash /tmp/assemble-prompt.sh review-first-instructions \
     | REVIEW_TYPE=FIRST DIFF_FILE_PATH="$FULL_DIFF" INCREMENTAL_DIFF_PATH="" LAST_REVIEWED_SHA="" \
       PR_HEAD_SHA="$PR_HEAD_SHA" PREVIOUS_BOT_REVIEWS="$PREVIOUS_BOT_REVIEWS" AGENT_REVIEW_HISTORY="$AGENT_REVIEW_HISTORY" \
       PR_NUMBER="$PR" GITHUB_REPOSITORY="$REPO" PR_AUTHOR="$PR_AUTHOR" PULL_REQUEST_CONTEXT="$PULL_REQUEST_CONTEXT" \
       envsubst "$RVARS" > /tmp/instructions/review-first.md
-  bash /tmp/assemble-prompt.sh review-followup-instructions \
+  SKILLS_ENVSUBST="$RVARS" SKILL_INSTALL_SKIP="$SKILL_SKIP" bash /tmp/assemble-prompt.sh review-followup-instructions \
     | REVIEW_TYPE="FOLLOW-UP" DIFF_FILE_PATH="${INCREMENTAL_DIFF:-$FULL_DIFF}" INCREMENTAL_DIFF_PATH="${INCREMENTAL_DIFF:-}" LAST_REVIEWED_SHA="${LAST_REVIEWED_SHA:-}" \
       PR_HEAD_SHA="$PR_HEAD_SHA" PREVIOUS_BOT_REVIEWS="$PREVIOUS_BOT_REVIEWS" AGENT_REVIEW_HISTORY="$AGENT_REVIEW_HISTORY" \
       PR_NUMBER="$PR" GITHUB_REPOSITORY="$REPO" PR_AUTHOR="$PR_AUTHOR" PULL_REQUEST_CONTEXT="$PULL_REQUEST_CONTEXT" \

@@ -563,6 +563,7 @@ jobs:
           cp .github/prompts/security-brief.md /tmp/security-brief.md
           cp -r .github/prompts/parts /tmp/parts
           cp -r .github/prompts/manifests /tmp/manifests
+          cp -r .github/prompts/skills /tmp/skills
           cp .github/scripts/assemble-prompt.sh /tmp/assemble-prompt.sh
           cp .github/scripts/scrub-workspace.sh /tmp/scrub-workspace.sh
           cp .github/scripts/share-filter.sh /tmp/share-filter.sh
@@ -847,7 +848,7 @@ jobs:
             MODE=compliance-first
           fi
           # Prepend the security brief (with the verified requester + trust context lines)
-          { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $TRUST_CONTEXT_ERA $TRUSTED_PEOPLE' < /tmp/security-brief.md; bash /tmp/assemble-prompt.sh "$MODE" | envsubst "$VARS"; } > "$TMP_DIR/assembled_prompt.txt"
+          { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $TRUST_CONTEXT_ERA $TRUSTED_PEOPLE' < /tmp/security-brief.md; SKILLS_ENVSUBST="$VARS" bash /tmp/assemble-prompt.sh "$MODE" | envsubst "$VARS"; } > "$TMP_DIR/assembled_prompt.txt"
 
       # Execute the AI compliance check
       - name: React to trigger (lifecycle start)

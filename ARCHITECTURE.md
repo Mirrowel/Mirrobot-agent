@@ -44,8 +44,8 @@
 
 **Prompt Doctrine Layer:**
 - Purpose: The agent's behavior, as composable prose
-- Location: `.github/prompts/`, `parts/` (37 files), `manifests/` (14 files), `security-brief.md` (home), `security-brief-guest.md` (guest lane)
-- Contains: Markdown instruction parts; manifest files listing part names in assembly order
+- Location: `.github/prompts/`, `parts/` (36 files), `manifests/` (14 files), `skills/` (2 skill templates), `security-brief.md` (home), `security-brief-guest.md` (guest lane)
+- Contains: Markdown instruction parts; manifest files listing part and skill directives in assembly order; skill templates (one shared body, inline and skill framings)
 - Depends on: Nothing (pure content); resolved by `assemble-prompt.sh`
 - Used by: All five agent workflows; structurally checked by `prompt-rule-fixtures.sh` (machine contracts only — prose is never pinned)
 
@@ -105,9 +105,14 @@
 - Pattern: Plain markdown; referenced by name in manifests; a part edit propagates to every mode that uses it
 
 **Mode manifest:**
-- Purpose: The assembly order of parts for one agent mode (14 modes, e.g. `pr-review-first`, `bot-reply`, `bot-reply-guest`, `agentlib-investigate`)
+- Purpose: The assembly order of parts for one agent mode (14 modes, e.g. `pr-review-first`, `bot-reply`, `bot-reply-guest`, `agentlib-investigate`), plus the skills that mode receives
 - Location: `.github/prompts/manifests/*.manifest`
-- Pattern: One part name per line, `#` comments allowed; verified by `assemble-prompt.sh --verify` (no missing parts, no orphans, no duplicate headings outside code fences)
+- Pattern: One directive per line: `<part>`, `inline:<skill>` (content injected at that position), `skill:<skill>` (installed and routed; `!` marks it required for the load report). `#` comments allowed; verified by `assemble-prompt.sh --verify` (no missing parts or skills, no orphans, no duplicate headings outside code fences)
+
+**Skill template:**
+- Purpose: Content a lane needs only sometimes, in one body with two deliveries so it cannot drift
+- Location: `.github/prompts/skills/<skill>/` (`meta.yml`, `framing-inline.md`, `framing-skill.md`, `body.md`)
+- Pattern: `assemble-prompt.sh` renders the body with the lane's `SKILLS_ENVSUBST` list, emits the inline framing where the manifest says `inline:`, and otherwise installs `<name>/SKILL.md` into opencode's skills home with a generated frontmatter and a routing line at the top of the prompt. Unresolved placeholders, invalid meta and missing files fail the run before the session; `SKILL_INSTALL_SKIP` (comma list) drops a skill per run; the session exporter reports loaded skills and warns when a required one never loaded.
 
 **Split-trust scrub:**
 - Purpose: Keep PR content as data while still letting the agent read its own quarantined instructions

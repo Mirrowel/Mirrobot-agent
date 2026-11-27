@@ -15,4 +15,5 @@ context-intensive
 opinion-mode
 mission-agent
 severity
-grading
+skill:labels
+skill:discussions

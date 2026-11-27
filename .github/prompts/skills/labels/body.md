@@ -1,7 +1,3 @@
-# [GRADES AND LABELS]
-
-Every issue and pull request you work on gets grades, stated in your response, and labels, taken only from the labels this repository has:
-
 ${LABEL_PALETTE}
 
 ## The three grades
@@ -26,6 +22,6 @@ Which apply: a bug report gets severity; a proposal gets value; a PR gets severi
 ## Applying labels
 
 - The list above is the repository's whole label set for this run, grouped by the role each label plays in the ideas above; the unclassified group is the repository's own. Carry each grade and conclusion over to the label that expresses it here, choosing the level that matches, and apply that. Where the repository has no label for an idea, the grade still appears in your response and no label is applied. Never create a label.
-- Add with `gh issue edit <n> --add-label "<name>"` or `gh pr edit <n> --add-label "<name>"`.
-- Never apply or remove a maintainer label (the list marks them). A grade or conclusion label you applied earlier is yours to replace when the evidence changes; say why.
+- Apply with `/tmp/post/edit-labels.sh <n> --add "<name>"`; it validates names against the live set and refuses unknown ones. A grade or conclusion label you applied earlier is yours to replace when the evidence changes: remove the stale one and add the new one, saying why.
+- Never apply or remove a maintainer label (the list marks them).
 - As a guest in a foreign repository you never label.

@@ -591,6 +591,7 @@ jobs:
           cp -r .github/scripts/post /tmp/post
           cp -r .github/prompts/parts /tmp/parts
           cp -r .github/prompts/manifests /tmp/manifests
+          cp -r .github/prompts/skills /tmp/skills
           cp .github/prompts/security-brief-guest.md /tmp/security-brief-guest.md
           chmod +x /tmp/*.sh
           chmod +x /tmp/post/*.sh
@@ -873,7 +874,8 @@ jobs:
           # Guest brief + guest manifest. Untrusted thread content reaches
           # the prompt ONLY through envsubst'd environment variables.
           { envsubst '$REQUESTER_CONTEXT $TRUST_CONTEXT $TRUST_CONTEXT_WARNING $GUEST_SUMMONER_LINE $SCRUB_REMOVALS_SUMMARY' < /tmp/security-brief-guest.md; \
-            bash /tmp/assemble-prompt.sh bot-reply-guest | envsubst "$GVARS"; } | opencode run - 2>&1 | bash /tmp/share-filter.sh
+            SKILL_SKIP=""; [ -n "${DISCUSSION_NODE_ID:-}" ] || SKILL_SKIP=discussions; \
+            SKILLS_ENVSUBST="$GVARS" SKILL_INSTALL_SKIP="$SKILL_SKIP" bash /tmp/assemble-prompt.sh bot-reply-guest | envsubst "$GVARS"; } | opencode run - 2>&1 | bash /tmp/share-filter.sh
           kill "$ANNOUNCER" 2>/dev/null || true
 
       - name: Post-run cleanup and usage stats

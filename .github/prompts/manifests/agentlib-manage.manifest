@@ -1,4 +1,4 @@
 agentlib-manage
 severity
 scope-of-action
-grading
+inline:labels

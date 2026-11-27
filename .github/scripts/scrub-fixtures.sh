@@ -89,7 +89,7 @@ labels_section() {
   # the prompt: the agent never lists labels itself and never sees a label
   # that does not exist.
   local PALETTE="$SCRIPT_DIR/../labels.txt" RENDER="$SCRIPT_DIR/render-labels.sh"
-  local GRADING="$SCRIPT_DIR/../prompts/parts/grading.md" KIT="$SCRIPT_DIR/generate-review-kit.sh"
+  local KIT="$SCRIPT_DIR/generate-review-kit.sh"
   local rendered flat n w m got want slog all most r first last wf PY_L="" sb="$WORK/labels-stub" rt="$WORK/labels-rt"
   check "labels: render script passes bash -n" OK "$(bash -n "$RENDER" && echo OK || echo BAD)"
   check "labels: the committed palette validates" OK "$("$RENDER" "$PALETTE" >/dev/null 2>&1 && echo OK || echo BAD)"
@@ -106,7 +106,7 @@ labels_section() {
   # (backticked) in any prompt part breaks that.
   m=0
   while IFS= read -r n; do
-    grep -rFq -- "\`$n\`" "$SCRIPT_DIR"/../prompts/parts "$SCRIPT_DIR"/../prompts/security-brief.md "$SCRIPT_DIR"/../prompts/security-brief-guest.md && m=$((m+1))
+    grep -rFq -- "\`$n\`" "$SCRIPT_DIR"/../prompts/parts "$SCRIPT_DIR"/../prompts/skills "$SCRIPT_DIR"/../prompts/security-brief.md "$SCRIPT_DIR"/../prompts/security-brief-guest.md && m=$((m+1))
   done < <(awk -F'|' '/^[ \t]*#/ || /^[ \t]*$/ { next } NF == 5 { print $1 }' "$PALETTE")
   check "labels: no prompt part names a palette label" "0" "$m"
   # The review trigger gates on one exact label name: it must stay in the
@@ -118,10 +118,16 @@ labels_section() {
       "$(grep -q 'cp .github/scripts/render-labels.sh /tmp/render-labels.sh' "$SCRIPT_DIR/../workflows/$wf.yml" && grep -q 'gh label list -R "$GITHUB_REPOSITORY" --limit 200 --json name,description,color' "$SCRIPT_DIR/../workflows/$wf.yml" && grep -q 'bash /tmp/render-labels.sh .github/labels.txt "$RUNNER_TEMP/live-labels.json"' "$SCRIPT_DIR/../workflows/$wf.yml" && echo yes || echo no)"
   done
   check "labels: the review kit's instruction sets carry the label block" yes "$(grep -q 'LABEL_PALETTE' "$KIT" && echo yes || echo no)"
-  check "labels: the guest lane has no label machinery" no "$( { grep -q 'render-labels\|LABEL_PALETTE' "$SCRIPT_DIR/../workflows/bot-reply-guest.yml" || grep -qx grading "$SCRIPT_DIR/../prompts/manifests/bot-reply-guest.manifest"; } && echo yes || echo no)"
-  want="agentlib-manage bot-reply issue-comment pr-review-first pr-review-followup review-first-instructions review-followup-instructions "
-  got="$(grep -lx grading "$SCRIPT_DIR"/../prompts/manifests/*.manifest | sed 's#.*/##; s/\.manifest$//' | sort | tr '\n' ' ')"
-  check "labels: the grading part is in exactly the seven grading manifests" "$want" "$got"
+  check "labels: the guest lane has no label machinery" no "$( { grep -q 'render-labels\|LABEL_PALETTE' "$SCRIPT_DIR/../workflows/bot-reply-guest.yml" || grep -q 'labels' "$SCRIPT_DIR/../prompts/manifests/bot-reply-guest.manifest"; } && echo yes || echo no)"
+  want="agentlib-manage issue-comment pr-review-first review-first-instructions "
+  got="$(grep -lx 'inline:labels' "$SCRIPT_DIR"/../prompts/manifests/*.manifest | sed 's#.*/##; s/\.manifest$//' | sort | tr '\n' ' ')"
+  check "labels: inline where grades are always owed (four modes)" "$want" "$got"
+  want="bot-reply pr-review-followup review-followup-instructions "
+  got="$(grep -lx 'skill:labels' "$SCRIPT_DIR"/../prompts/manifests/*.manifest | sed 's#.*/##; s/\.manifest$//' | sort | tr '\n' ' ')"
+  check "labels: the skill where grades come up sometimes (three modes)" "$want" "$got"
+  check "labels: compliance declares no label machinery" "0" "$(grep -l 'labels' "$SCRIPT_DIR"/../prompts/manifests/compliance-*.manifest 2>/dev/null | wc -l | tr -d ' ')"
+  check "labels: the labels skill has one shared body, two framings" yes "$([ -f "$SCRIPT_DIR/../prompts/skills/labels/body.md" ] && [ -f "$SCRIPT_DIR/../prompts/skills/labels/framing-inline.md" ] && [ -f "$SCRIPT_DIR/../prompts/skills/labels/framing-skill.md" ] && echo yes || echo no)"
+  check "labels: the required palette placeholder lives in the skill body" "1" "$(grep -c '^${LABEL_PALETTE}$' "$SCRIPT_DIR/../prompts/skills/labels/body.md" || true)"
   check "labels: bootstrap carries no inline label list" no "$(grep -q 'LABELS_EOF' "$BOOT" && echo yes || echo no)"
   check "labels: bootstrap reads the palette from the default branch through the API" yes "$(grep -q 'contents/.github/labels.txt?ref=$DEFAULT_BRANCH' "$BOOT" && echo yes || echo no)"
   check "labels: bootstrap reports drift and never edits or deletes a live label" yes "$(grep -q 'Label palette drift' "$BOOT" && { grep -q 'gh label edit\|gh label delete' "$BOOT" && echo no || echo yes; })"
