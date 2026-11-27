@@ -84,6 +84,31 @@ A quality ask ("check this PR out", "is this a good solution?") and a review ask
 
 The separation is enforced at the artifact level: no amount of diligence converts an opinion into a review, opinions carry no review markers (so FIRST/FOLLOW-UP tracking only ever sees real reviews), and the review protocol's rigor clauses explicitly do not apply to opinions. The rules live in `parts/opinion-mode.md`, loaded by both conversational lanes.
 
+## Grades and labels
+
+One committed file, `.github/labels.txt`, is the whole palette. Agent Bootstrap seeds GitHub labels from it, and before each session the workflow fetches the repository's live labels once and renders exactly those into the prompt, classified by the file. The agent therefore applies only labels that exist, never lists them itself, and never creates one. No file means labeling is off.
+
+The palette answers three questions with three grades. Each is mandatory where it applies, and each comes with its reason in the response:
+
+| Question | Grade | Applies to |
+|---|---|---|
+| How bad is the problem? | `severity: critical` / `major` / `minor` / `info` | bug reports, bug-fix PRs |
+| How good would it be if done? | `value: high` / `medium` / `low` | proposals and wishes, behavior-changing PRs |
+| How dangerous is doing it? | `risk: high` / `medium` / `low` | every PR; an issue that proposes an approach |
+
+Around the grades:
+
+- **What the thread is:** `bug`, `enhancement` (a researched proposal), `wish` (a bare idea, issues only), `question`, `documentation`, `chore`, plus the `regression` and `external` flags.
+- **The agent's own conclusions**, prefixed `ai:` because they are its judgment and not a maintainer's: `ai: confirmed`, `ai: plausible`, `ai: recommended`, `ai: discouraged`.
+- **What a blocked thread waits on:** `needs-info`, `needs-repro`, `needs-discussion`.
+- **The maintainer's labels**, which the agent never applies or removes: `accepted`, `Priority`, `help wanted`, `good first issue`, `Agent Monitored`.
+
+The agent grades and recommends; it does not decide. A decision (`accepted`, `Priority`) is the maintainer's, nobody's request changes a grade (only evidence does), and the agent may replace only its own grades (`severity:`, `value:`, `risk:`, `ai:`).
+
+Merging is the maintainers' decision alone. The agent may bring a pull request as close to mergeable as the work allows, but it never merges unless a maintainer explicitly tells it to; an author's, contributor's or outsider's ask, a passing mention, or its own initiative never count. Given that explicit order, the merge is a job like any other: the agent does the work it needs instead of answering yes or no.
+
+Where it runs: Issue Analysis and a first PR Review grade deliberately, a follow-up review re-checks lightly, Bot Reply may update a grade when a conversation settles one, and guest sessions never label. The rules live in the shared `parts/grading.md`, which explains ideas and levels and never names a label (the fixtures check that no prompt part does). A repository with a different label set therefore works unchanged: the agent maps each idea to the label that carries it there, and states the grade in its response even where no label exists for it.
+
 ## The prompt system
 
 A mode's prompt is an *assembly*, built at run time. `.github/prompts/parts/` holds every block of prose (shared rules, per-mode missions, protocols); `.github/prompts/manifests/` holds ordered part-name lists; a manifest **is** a mode (`pr-review-first`, `bot-reply`, `compliance-followup`, ...). At run time, `assemble-prompt.sh` concatenates the manifest's parts and `envsubst` injects the run's context variables (thread context, diffs, trust warnings). Modes that share a part share it byte-identically by construction, so duplicated guidance cannot drift.

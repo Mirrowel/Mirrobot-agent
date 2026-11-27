@@ -43,7 +43,7 @@ The **[Ask Mirrobot](#landing-page--badge)** badge in the row above is this proj
 
 | | The agent will... |
 |---|---|
-| 🔍 **Analyze every new issue** | Assess the problem, hunt duplicates, trace the root cause through your code, suggest a fix and labels |
+| 🔍 **Analyze every new issue** | Assess the problem, hunt duplicates, trace the root cause through your code, then grade it (how bad, how good if done, how risky) and label it |
 | 🧠 **Review every pull request** | Severity-graded findings (🔴 🟠 🟡 🔵), inline on the exact lines, with a justified verdict in plain words |
 | ✅ **Audit merge readiness** | On `/mirrobot-check`: documentation, consistency, good practices, gating the merge via a real status check |
 | 💬 **Answer anywhere** | `@mirrobot-agent` in any issue or PR: questions answered, code investigated, other PRs reviewed on demand |
@@ -257,8 +257,8 @@ Enable (account mode only): add `notifications` scope to the PAT, set `FOREIGN_M
 |---|---|---|---|
 | **Agent Router** | any comment | main | Parses once, dispatches exactly one target by comment id, one visible run per comment, no fan-out |
 | **PR Review Trigger** | PR events | **PR's base branch** | Zero-secret stub (no checkout, no secrets): decides if a review is wanted, posts the pending merge-blocker status, dispatches PR Review, declined events dispatch nothing |
-| **PR Review** | dispatch only | main | The reviewer: FIRST/FOLLOW-UP protocols, severity-graded findings, verdicts, footer verification and repair |
-| **Issue Analysis** | issue opened | main | Duplicate hunt, root cause, labels, suggested fix |
+| **PR Review** | dispatch only | main | The reviewer: FIRST/FOLLOW-UP protocols, severity-graded findings, a graded PR (severity or value, plus risk), verdicts, footer verification and repair |
+| **Issue Analysis** | issue opened | main | Duplicate hunt, root cause, grades, labels, suggested fix |
 | **Compliance Check** | `/mirrobot-check` | main | End-of-life merge audit; posts the compliance status + report |
 | **Compliance Gate** | PR events | **PR's base branch** | Redundant poster of the pending status; goes red rather than letting a transient error make a PR look mergeable |
 | **Bot Reply on Mention** | dispatch only | main | The general agent: conversations, investigations, on-demand reviews, contributions |

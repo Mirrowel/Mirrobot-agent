@@ -45,6 +45,7 @@ export TRIGGER_MESSAGE='<tm>' PREVIOUS_BOT_REVIEWS='<pbr>' AGENT_REVIEW_HISTORY=
 export REBASE_CONTEXT='<rc>'
 export REVIEW_KIT_SUMMARY='PR #42: Review type: FOLLOW-UP | Instructions: /tmp/instructions/review-followup.md | Incremental diff: /tmp/kit/42/incremental_diff.patch (120 lines)'
 export BOT_IDENTITY_LIST='mirrobot-agent,mirrobot-agent[bot]' BOT_IDENTITY_PRIMARY='mirrobot-agent'
+export LABEL_PALETTE='<lp>'
 
 # ---- renderer lists, extracted from their single sources ----------------
 # list_of <file> <VARNAME> -> sorted unique bare names on one line

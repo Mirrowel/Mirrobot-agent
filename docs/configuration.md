@@ -267,6 +267,10 @@ Override for where the OpenShare plugin bundle **and** the passive snapshot tool
 
 Migrate to this rule when you install the platform on another repo: add that repo to the deny list (or deny `Owner/*` once), or mentions there will be handled twice — once by the local instance, once by guest mode.
 
+## The label palette
+
+Not a variable. One committed file, `.github/labels.txt`, one line per label (`name|color|class|who|description`), is the whole label system's source: [Agent Bootstrap](workflows/agent-bootstrap.md) seeds GitHub labels from it, and before each session the workflow fetches the repository's live labels and renders exactly those into the prompt, so the agent applies only what exists and never creates a label. No file means labeling is off. The format, the classes and how to change it: [customization.md](customization.md#the-label-palette).
+
 ## Secrets
 
 `Settings → Secrets and variables → Actions → Secrets`. Minimal set: `OPENCODE_CONFIG_JSON` (carrying a `model` field, or with the separate `OPENCODE_MODEL` below) + one identity pair.

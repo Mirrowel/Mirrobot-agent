@@ -44,7 +44,7 @@
 
 **Prompt Doctrine Layer:**
 - Purpose: The agent's behavior, as composable prose
-- Location: `.github/prompts/`, `parts/` (36 files), `manifests/` (14 files), `security-brief.md` (home), `security-brief-guest.md` (guest lane)
+- Location: `.github/prompts/`, `parts/` (37 files), `manifests/` (14 files), `security-brief.md` (home), `security-brief-guest.md` (guest lane)
 - Contains: Markdown instruction parts; manifest files listing part names in assembly order
 - Depends on: Nothing (pure content); resolved by `assemble-prompt.sh`
 - Used by: All five agent workflows; structurally checked by `prompt-rule-fixtures.sh` (machine contracts only — prose is never pinned)
@@ -164,7 +164,7 @@
 **Issue Analysis:**
 - Location: `.github/workflows/issue-comment.yml`
 - Triggers: `issues[opened]` (plus manual `workflow_dispatch`)
-- Responsibilities: Open-ended triage (classify, fast duplicate pass with linked-PR harvesting, root-cause trace, neutral judgment, feature-worth gate); labels applied directly — the seeded vocabulary is the default palette and repo customs always win; no fixed report shape
+- Responsibilities: Open-ended triage (classify, fast duplicate pass with linked-PR harvesting, root-cause trace, neutral judgment, the six-step worth-it analysis ending in a worth-it verdict); grades every issue (severity, value, risk, each with its reason) and applies labels only from the repository's live set, rendered into the prompt by `render-labels.sh` and grouped by the `.github/labels.txt` classes; the prompt explains ideas and never names a label, so another label set works unchanged; never creates a label; no fixed report shape
 
 **Compliance Check / Compliance Gate:**
 - Location: `.github/workflows/compliance-check.yml`, `.github/workflows/compliance-gate.yml`
@@ -179,7 +179,7 @@
 **Agent Bootstrap:**
 - Location: `.github/workflows/agent-bootstrap.yml`
 - Triggers: `workflow_dispatch` (write access) only
-- Responsibilities: One-time setup, seeds every variable with safe defaults/templates (never overwrites), including the identity/trigger defaults derived from the repo's own bot identity and the built-in noise-filter pattern list (an empty array would disable filtering, so bootstrap seeds the real list instead); seeds the triage label vocabulary create-if-missing (existing labels are never touched — a repo's own customs win); prints the secrets checklist into the run summary; state-silent (logs can never reveal which variables or secrets exist)
+- Responsibilities: One-time setup, seeds every variable with safe defaults/templates (never overwrites), including the identity/trigger defaults derived from the repo's own bot identity and the built-in noise-filter pattern list (an empty array would disable filtering, so bootstrap seeds the real list instead); seeds the label palette from `.github/labels.txt` on the default branch, read through the API (create-if-missing; a live label that differs in color or description is reported and never overwritten; no file = labeling off); prints the secrets checklist and the palette's label table into the run summary; state-silent (logs can never reveal which variables or secrets exist)
 
 **Scrub Fixture Suite:**
 - Location: `.github/workflows/scrub-fixtures.yml`

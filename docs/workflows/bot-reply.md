@@ -24,6 +24,8 @@ A mention in an issue or PR thread (`@mirrobot`, `@mirrobot-agent`) → router d
 
 What it can do in one session: answer, investigate (read-only anywhere), run the review kit on any home PR, contribute code (branch → commits → PR, within scope-of-action rules), and post its deliverable as a top-level comment with the standard footer.
 
+It may also update a grade or conclusion label when a conversation settles one (the same shared grade rules as Issue Analysis and PR Review); otherwise it leaves labels alone. Guest sessions never label.
+
 ## Guest mode (cross-repo)
 
 When dispatched by the Mention Poller, the same machinery runs pointed at a **foreign repository**:

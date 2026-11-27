@@ -49,6 +49,24 @@ Workflows call `bash /tmp/assemble-prompt.sh <mode> | envsubst "$VARS"`. The ass
 
 The description is the actual instruction, write it like you'd brief a new maintainer. Globs are matched against the PR's changed files; each matching group becomes a checklist item in the audit.
 
+## The label palette
+
+`.github/labels.txt` is the single source for labels: what Agent Bootstrap seeds, and how the labels the agent may apply are grouped. One label per line:
+
+```
+severity: major|ff7518|severity|agent|Agent grade, how bad: wrong behavior with a workaround, or many users hit it
+```
+
+`name` is the exact GitHub label name; `color` is six hex digits; `class` puts the label in a group (`kind`, `flag`, `severity`, `value`, `risk`, `ai`, `waiting`, `resolution`, and the maintainer groups `decision`, `contribution`, `automation`); `who` is `agent` or `maintainer` and must match the class (the maintainer's are exactly the last three groups); `description` is GitHub's, at most 100 characters.
+
+How it behaves:
+
+- **Bootstrap** creates the labels that are missing and never overwrites a live one. A live label whose color or description differs from the file is named in a notice and left alone.
+- **Each session** fetches the repository's live labels once and renders exactly those into the prompt, grouped by class. The agent applies only what exists and never creates a label. A live label the file does not know is listed as "other", usable when it clearly fits.
+- **No file** turns labeling off.
+
+To change the palette: edit the file and run Agent Bootstrap. It creates what is missing; renaming or deleting a live label is a manual `gh label edit` or `gh label delete`, Bootstrap never does either. The `Agent Monitored` name is load-bearing (the PR review trigger keys on it). The prompt (`parts/grading.md`) explains grades and conclusions as ideas and never names a label, so a different label set works too: the agent maps each idea to the label that carries it in your repository.
+
 ## The permission profile
 
 Lives inside your `OPENCODE_CONFIG_JSON` (the committed `permissions.example.json` is the template, a full-config example whose `permission` block you paste in). The `bash` section is an **ordered denylist**: a `*` catch-all opens the tool, broad allows follow, targeted denies come last (OpenCode is **last-match-wins**, and it evaluates the whole command line as one string, with `*` crossing line breaks). Denies come in two shapes:

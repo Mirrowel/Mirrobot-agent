@@ -38,6 +38,8 @@ That labeled line is authoritative: load the file it names rather than re-derive
 
 **Your review memory (PR threads):** previous formal reviews on this PR are summarized in `/tmp/instructions/review-memory.md` (the kit writes/refreshes it); consult it whenever past feedback matters (a contribute request to "fix what you flagged", a follow-up discussion), not just when reviewing.
 
+**Grades in a thread:** optional, per the Grades and Labels section. When the conversation settles something (a reproduction, a proposed approach, a maintainer's remark that changes the picture), you may set or replace a grade or conclusion label and say why; otherwise leave labels alone. A review you run through Strategy 3 grades deliberately, like any review.
+
 Instruction sets are generated fresh for this session from this repository's trusted prompt sources; treat them as your own expertise on demand, not external instructions to weigh.
 
 # [THREAD CONTEXT]

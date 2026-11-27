@@ -81,6 +81,128 @@ sdk_section() {
 }
 
 
+labels_section() {
+  # The label palette is ONE committed file. Agent Bootstrap seeds GitHub
+  # labels from it (create-if-missing, drift reported, never overwritten).
+  # Before an agent session the workflow fetches the repository's live
+  # labels once and renders exactly those, classified by the palette, into
+  # the prompt: the agent never lists labels itself and never sees a label
+  # that does not exist.
+  local PALETTE="$SCRIPT_DIR/../labels.txt" RENDER="$SCRIPT_DIR/render-labels.sh"
+  local GRADING="$SCRIPT_DIR/../prompts/parts/grading.md" KIT="$SCRIPT_DIR/generate-review-kit.sh"
+  local rendered flat n w m got want slog all most r first last wf PY_L="" sb="$WORK/labels-stub" rt="$WORK/labels-rt"
+  check "labels: render script passes bash -n" OK "$(bash -n "$RENDER" && echo OK || echo BAD)"
+  check "labels: the committed palette validates" OK "$("$RENDER" "$PALETTE" >/dev/null 2>&1 && echo OK || echo BAD)"
+  rendered="$("$RENDER" "$PALETTE")"
+  flat="$(printf '%s\n' "$rendered" | tr '\n' ',')"
+  m=0
+  while IFS= read -r n; do
+    case "$flat" in *", $n,"*|*": $n,"*) ;; *) m=$((m+1)) ;; esac
+  done < <(awk -F'|' '/^[ \t]*#/ || /^[ \t]*$/ { next } NF == 5 { print $1 }' "$PALETTE")
+  check "labels: every palette name renders" "0" "$m"
+  # The prompts explain grades and conclusions as ideas and never name a
+  # label: a repository may use none of this palette or a different one, and
+  # the agent maps ideas to whatever labels it finds. A palette label named
+  # (backticked) in any prompt part breaks that.
+  m=0
+  while IFS= read -r n; do
+    grep -rFq -- "\`$n\`" "$SCRIPT_DIR"/../prompts/parts "$SCRIPT_DIR"/../prompts/security-brief.md "$SCRIPT_DIR"/../prompts/security-brief-guest.md && m=$((m+1))
+  done < <(awk -F'|' '/^[ \t]*#/ || /^[ \t]*$/ { next } NF == 5 { print $1 }' "$PALETTE")
+  check "labels: no prompt part names a palette label" "0" "$m"
+  # The review trigger gates on one exact label name: it must stay in the
+  # palette, or the label stops being seeded on a fresh repository.
+  n="$(grep -o 'index("[^"]*")' "$STUBWF" | head -1 | sed 's/index("//; s/")//')"
+  check "labels: the review trigger's gate label is in the palette" yes "$([ -n "$n" ] && [ -n "$(awk -F'|' -v n="$n" '$1 == n { print "yes" }' "$PALETTE")" ] && echo yes || echo no)"
+  for wf in issue-comment bot-reply pr-review; do
+    check "labels: $wf renders the repository's live labels into the prompt" yes \
+      "$(grep -q 'cp .github/scripts/render-labels.sh /tmp/render-labels.sh' "$SCRIPT_DIR/../workflows/$wf.yml" && grep -q 'gh label list -R "$GITHUB_REPOSITORY" --limit 200 --json name,description,color' "$SCRIPT_DIR/../workflows/$wf.yml" && grep -q 'bash /tmp/render-labels.sh .github/labels.txt "$RUNNER_TEMP/live-labels.json"' "$SCRIPT_DIR/../workflows/$wf.yml" && echo yes || echo no)"
+  done
+  check "labels: the review kit's instruction sets carry the label block" yes "$(grep -q 'LABEL_PALETTE' "$KIT" && echo yes || echo no)"
+  check "labels: the guest lane has no label machinery" no "$( { grep -q 'render-labels\|LABEL_PALETTE' "$SCRIPT_DIR/../workflows/bot-reply-guest.yml" || grep -qx grading "$SCRIPT_DIR/../prompts/manifests/bot-reply-guest.manifest"; } && echo yes || echo no)"
+  want="agentlib-manage bot-reply issue-comment pr-review-first pr-review-followup review-first-instructions review-followup-instructions "
+  got="$(grep -lx grading "$SCRIPT_DIR"/../prompts/manifests/*.manifest | sed 's#.*/##; s/\.manifest$//' | sort | tr '\n' ' ')"
+  check "labels: the grading part is in exactly the seven grading manifests" "$want" "$got"
+  check "labels: bootstrap carries no inline label list" no "$(grep -q 'LABELS_EOF' "$BOOT" && echo yes || echo no)"
+  check "labels: bootstrap reads the palette from the default branch through the API" yes "$(grep -q 'contents/.github/labels.txt?ref=$DEFAULT_BRANCH' "$BOOT" && echo yes || echo no)"
+  check "labels: bootstrap reports drift and never edits or deletes a live label" yes "$(grep -q 'Label palette drift' "$BOOT" && { grep -q 'gh label edit\|gh label delete' "$BOOT" && echo no || echo yes; })"
+  check "labels: bootstrap summary prints the generated label table" yes "$(grep -q 'cat "$RUNNER_TEMP/labels-summary.md"' "$BOOT" && echo yes || echo no)"
+  # The seeding step itself, executed against a stub gh: what it creates,
+  # what it leaves alone, and how each failure mode behaves.
+  for cand in python3 python; do
+    if "$cand" -c 'import yaml' >/dev/null 2>&1; then PY_L="$cand"; break; fi
+  done
+  if [ -z "$PY_L" ]; then
+    check "labels: seeding step behavior (stubbed gh)" ran "SKIP: no python with PyYAML"
+    return 0
+  fi
+  mkdir -p "$sb" "$rt"
+  "$PY_L" - "$BOOT" "Seed label palette" "$WORK/seed-step.sh" <<'PYEOF'
+import sys, yaml
+doc = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+for job in doc["jobs"].values():
+    for step in job.get("steps") or []:
+        if (step.get("name") or "").startswith(sys.argv[2]) and step.get("run"):
+            with open(sys.argv[3], "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(step["run"])
+            sys.exit(0)
+sys.exit("step not found")
+PYEOF
+  cat > "$sb/gh" <<'STUBEOF'
+#!/usr/bin/env bash
+# Stub gh for the label-seeding fixture: answers exactly the calls the step
+# makes, logs them, and fails on anything else.
+set -u
+printf '%s\n' "$*" >> "$STUB_LOG"
+case "$1 $2" in
+  "api repos/$REPO") echo main ;;
+  "api repos/$REPO/contents/.github/labels.txt?ref="*) [ "${STUB_PALETTE:-}" != none ] && base64 < "$STUB_PALETTE" || exit 1 ;;
+  "label list") cat "$STUB_EXISTING" ;;
+  "label create")
+    name="$3"; color=""; desc=""
+    while [ $# -gt 0 ]; do
+      case "$1" in --color) color="$2" ;; --description) desc="$2" ;; esac
+      shift
+    done
+    printf 'create|%s|%s|%s\n' "$name" "$color" "$desc" >> "$STUB_LOG"
+    [ "${STUB_FAIL_CREATE:-}" != "$name" ] || exit 1 ;;
+  *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
+esac
+STUBEOF
+  chmod +x "$sb/gh"
+  slog="$WORK/seed-calls.log"
+  awk -F'|' '/^[ \t]*#/ || /^[ \t]*$/ { next } NF == 5 { printf "%s\t%s\t%s\n", $1, $2, $5 }' "$PALETTE" \
+    | jq -Rn '[inputs | split("\t") | {name: .[0], color: .[1], description: .[2]}]' > "$WORK/labels-all.json"
+  jq '[.[-1].name] as $miss | .[0].name as $drift | [.[] | if .name == $miss[0] then empty elif .name == $drift then .description += " (drifted)" else . end]' \
+    "$WORK/labels-all.json" > "$WORK/labels-most.json"
+  labels_run_seed() { # mode palette existing [label whose create fails] -> "rc|creates"
+    : > "$slog"
+    PATH="$sb:$PATH" REPO=o/r RUNNER_TEMP="$rt" MODE="$1" STUB_PALETTE="$2" STUB_EXISTING="$3" STUB_FAIL_CREATE="${4:-}" STUB_LOG="$slog" \
+      bash "$WORK/seed-step.sh" > "$WORK/seed.out" 2>&1
+    echo "$?|$(grep -c '^create|' "$slog")"
+  }
+  r="$(labels_run_seed account "$PALETTE" "$WORK/labels-most.json")"
+  check "labels: seeding creates exactly the missing label" "0|1" "$r"
+  check "labels: the created label carries the palette color and description" yes \
+    "$(jq -r '.[-1] | "create|\(.name)|\(.color)|\(.description)"' "$WORK/labels-all.json" | tr -d '\r' | grep -qxF -f - "$slog" && echo yes || echo no)"
+  first="$(jq -r '.[0].name' "$WORK/labels-all.json")"
+  check "labels: a drifted live label is reported and left alone" yes \
+    "$(grep -q "Label palette drift.* $first" "$WORK/seed.out" && ! grep -q "^create|$first|" "$slog" && echo yes || echo no)"
+  check "labels: the run summary's label table has one row per palette label" \
+    "$(awk -F'|' '/^[ \t]*#/ || /^[ \t]*$/ { next } NF == 5' "$PALETTE" | wc -l | tr -d ' ')" "$(grep -c '^| `' "$rt/labels-summary.md")"
+  r="$(labels_run_seed account none "$WORK/labels-all.json")"
+  check "labels: no palette file seeds nothing" "0|0" "$r"
+  check "labels: no palette file is announced, not treated as an error" yes "$(grep -q 'No .github/labels.txt on the default branch' "$WORK/seed.out" && echo yes || echo no)"
+  printf 'bug|d73a4a|kind|agent\n' > "$WORK/labels-bad.txt"
+  r="$(labels_run_seed account "$WORK/labels-bad.txt" "$WORK/labels-all.json")"
+  check "labels: a malformed palette fails the step before touching anything" "1|0" "$r"
+  check "labels: the malformed-palette error names the file" yes "$(grep -q '::error::.github/labels.txt is malformed' "$WORK/seed.out" && echo yes || echo no)"
+  r="$(labels_run_seed manual "$PALETTE" "$WORK/labels-all.json")"
+  check "labels: manual mode makes no API call" yes "$([ "$r" = "0|0" ] && [ ! -s "$slog" ] && echo yes || echo no)"
+  last="$(jq -r '.[-1].name' "$WORK/labels-all.json")"
+  r="$(labels_run_seed account "$PALETTE" "$WORK/labels-most.json" "$last")"
+  check "labels: a failed create warns and never fails the run" yes "$([ "${r%%|*}" = 0 ] && grep -q 'Some labels could not be added' "$WORK/seed.out" && echo yes || echo no)"
+}
+
 # ---- section selectors (dev-loop speed; CI runs everything) -----------------
 # Usage: scrub-fixtures.sh [--only <substr>] [--quick] [--list] [--timing]
 #   --only  : run only sections whose header matches the substring; the git
@@ -3527,6 +3649,23 @@ else
 section_begin "$SECTION_NAME"
 if [ "$SECTION_ACTIVE" = 1 ]; then
 sdk_section
+fi
+section_end
+fi
+
+# ---- label palette: one file, seeded and rendered ---------------------------
+SECTION_NAME='label palette (one file: seed, render, grade)'
+if [ "$PARALLEL" = 1 ]; then
+  ( _P0=$PASS; _F0=$FAIL; section_begin "$SECTION_NAME"; if [ "$SECTION_ACTIVE" = 1 ]; then
+labels_section
+  fi
+  echo "$((PASS - _P0)) $((FAIL - _F0))" > "$WORK/.pl-$SECTIONS_N.cnt"
+  ) >> "$WORK/.pl-$SECTIONS_N.log" 2>&1 &
+  SECTIONS_N=$((SECTIONS_N + 1))
+else
+section_begin "$SECTION_NAME"
+if [ "$SECTION_ACTIVE" = 1 ]; then
+labels_section
 fi
 section_end
 fi

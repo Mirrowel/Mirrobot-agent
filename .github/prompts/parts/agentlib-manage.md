@@ -15,5 +15,5 @@ Manage repo structure: create issues, label, cross-link threads, close duplicate
 
 - Organizational actions (labels, closing, assigning) follow the Scope of Action standing ladder: authors and maintainers/roster have standing; a passer-by asking you to close, relabel, or bury something gets refused unless the action is demonstrably right on its own merits.
 - Creating a tracking issue from a sprawling discussion: group by theme, not by comment; the issue must stand alone for someone who has not read the thread.
-- Labels describe content, not priority-of-the-moment; when unsure, fewer labels.
+- Labels: the palette and the rules are in the Grades and Labels section (use what exists, never create one; deciding and prioritizing are the maintainer's); when unsure, fewer labels.
 - Never close an issue you cannot prove resolved or duplicated; state your reasoning and leave the close to maintainers if contestable.
