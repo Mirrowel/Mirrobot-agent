@@ -1226,6 +1226,13 @@ PYEOF
   check "skills: no routing block is generated" "0" "$(grep -c 'SKILLS FOR THIS RUN' "$SCRIPT_DIR/assemble-prompt.sh" || true)"
   check "identity: every primary prompt prints the thread identity" "7" "$(grep -l '^thread-identity$' "$SCRIPT_DIR"/../prompts/manifests/*.manifest | wc -l | tr -d ' ')"
   check "identity: every lane exports THREAD_IDENTITY" "5" "$(for w in pr-review bot-reply bot-reply-guest issue-comment compliance-check; do grep -q 'THREAD_IDENTITY=' "$SCRIPT_DIR/../workflows/$w.yml" && echo "$w"; done | wc -l | tr -d ' ')"
+
+  # AI-reviewer noise: summaries collapse to one line, inline findings stay.
+  check "noise: bot-setup exports the AI reviewer list" yes "$(grep -q 'AI_REVIEWERS_JSON=' "$ACTION" && echo yes || echo no)"
+  check "noise: the PR context renderer collapses AI summaries" yes "$(grep -q 'AI_SUMMARY_NOTE' "$SCRIPT_DIR/fetch-pr-discussion.sh" && grep -q 'is_ai or noisy' "$SCRIPT_DIR/fetch-pr-discussion.sh" && echo yes || echo no)"
+  check "noise: noisy reviews are still selected for their inline threads" "0" "$(grep -E 'reviews_new\[\]|reviews\.nodes' "$SCRIPT_DIR/fetch-pr-discussion.sh" | grep -c 'noisy' || true)"
+  check "noise: the default patterns carry the AI review markers" yes "$(for f in "$SCRIPT_DIR/fetch-pr-discussion.sh" "$SCRIPT_DIR/../workflows/bot-reply.yml" "$SCRIPT_DIR/../workflows/bot-reply-guest.yml" "$SCRIPT_DIR/../workflows/issue-comment.yml" "$SCRIPT_DIR/../workflows/agent-bootstrap.yml"; do grep -q 'coderabbit-ai-generated' "$f" || echo "missing:$f"; done | grep -q . && echo no || echo yes)"
+  check "noise: issue analysis applies the noise patterns" yes "$(grep -q 'FILTER_PATTERNS_JSON' "$SCRIPT_DIR/../workflows/issue-comment.yml" && grep -q 'aiNote' "$SCRIPT_DIR/../workflows/issue-comment.yml" && echo yes || echo no)"
 }
 
 # ---- bot-setup: mask sweep + plugins materialization + drift scope -----------

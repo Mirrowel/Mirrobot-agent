@@ -408,7 +408,7 @@ jobs:
           # home issue mode — filter-before-cap (ignored authors + noise
           # patterns), addressable [id N] lines, per-body clip.
           if ! printf '%s' "${CONTEXT_FILTER_PATTERNS_JSON:-}" | jq -e 'type == "array"' >/dev/null 2>&1; then
-            FILTER_PATTERNS_JSON='["rate limited by coderabbit\\.ai","No actionable comments were generated","Review skipped","Too many files","<!-- greptile-status -->","Too many files changed for review"]'
+            FILTER_PATTERNS_JSON='["rate limited by coderabbit\\.ai","No actionable comments","Review skipped","Too many files","couldn'"'"'t start because sufficient usage credits","<!-- greptile-status -->","Too many files changed for review","<!-- coderabbit-ai-generated","This is an auto-generated comment","actionable comments posted","review in progress by","\\[vc\\]: #","<!-- linear-linkback"]'
           else
             FILTER_PATTERNS_JSON="$CONTEXT_FILTER_PATTERNS_JSON"
           fi
@@ -423,15 +423,18 @@ jobs:
           comments_rendered=$(printf '%s' "$comments_json" | jq -r \
             --arg ig "${CONTEXT_IGNORE_AUTHORS:-}" \
             --argjson pats "$FILTER_PATTERNS_JSON" \
+            --argjson ai "${AI_REVIEWERS_JSON:-[]}" \
+            --arg aiNote "[automated code-reviewer summary suppressed; its inline comments are kept - fetch the body only if it matters]" \
             --argjson lim "$LIM_C" \
             --argjson bc "$LIM_BC" '
             def noise($b): ($b | ascii_downcase) as $lb | [($pats[] | ascii_downcase) as $p | select($lb | test("(?i)" + $p))] | length > 0;
             def clip($s): if ($s | length) > $bc then ($s[0:$bc] + "\n[body truncated]") else $s end;
             def kept($u): ($u | ascii_downcase) as $l | ($ig | ascii_downcase | split(",") | map(select(length > 0))) | index($l) | not;
+            def is_ai: ((.user.login? // "" | ascii_downcase | sub("\\[bot\\]$"; "")) as $l | $ai | index($l)) != null;
             [ .[] | select(.isMinimized != true) ]
             | map(select(kept(.user.login // "") and (((.body // "") | noise(.)) | not)))
             | sort_by(.created_at) | reverse | .[0:$lim] | sort_by(.created_at)
-            | if length > 0 then map("- [id " + ((.id // "?") | tostring) + "] " + (.user.login // "unknown") + " at " + (.created_at // "N/A") + ":\n" + clip((.body // "") | tostring) + "\n") | join("") else "No comments have been posted yet." end' 2>/dev/null || true)
+            | if length > 0 then map("- [id " + ((.id // "?") | tostring) + "] " + (.user.login // "unknown") + " at " + (.created_at // "N/A") + ":\n" + (if is_ai then $aiNote else clip((.body // "") | tostring) end) + "\n") | join("") else "No comments have been posted yet." end' 2>/dev/null || true)
           SUBJECT_BODY=$(printf '%s' "$body" | head -c "$LIM_BC")
           # Issue-thread header (parity with home issue mode): title/state/
           # author/created + timeline cross-references. One fetch, one call.

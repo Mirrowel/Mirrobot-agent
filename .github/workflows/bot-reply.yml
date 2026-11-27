@@ -795,24 +795,27 @@ jobs:
             # clip. gh's --json comments window is ~100; N comes from
             # CONTEXT_LIMITS_JSON .comments.
             if ! printf '%s' "${CONTEXT_FILTER_PATTERNS_JSON:-}" | jq -e 'type == "array"' >/dev/null 2>&1; then
-              FILTER_PATTERNS_JSON='["rate limited by coderabbit\\.ai","No actionable comments were generated","Review skipped","Too many files","<!-- greptile-status -->","Too many files changed for review"]'
+              FILTER_PATTERNS_JSON='["rate limited by coderabbit\\.ai","No actionable comments","Review skipped","Too many files","couldn'"'"'t start because sufficient usage credits","<!-- greptile-status -->","Too many files changed for review","<!-- coderabbit-ai-generated","This is an auto-generated comment","actionable comments posted","review in progress by","\\[vc\\]: #","<!-- linear-linkback"]'
             else
               FILTER_PATTERNS_JSON="$CONTEXT_FILTER_PATTERNS_JSON"
             fi
             comments=$(echo "$issue_data" | jq -r \
               --arg ignore_authors "$(printf '%s' "$CONTEXT_IGNORE_AUTHORS" | tr '[:upper:]' '[:lower:]')" \
               --argjson patterns "$FILTER_PATTERNS_JSON" \
+              --argjson ai "${AI_REVIEWERS_JSON:-[]}" \
+              --arg aiNote "[automated code-reviewer summary suppressed; its inline comments are kept - fetch the body only if it matters]" \
               --argjson limComments "$(printf '%s' "$CLJ" | jq -r '.comments // 30')" \
               --argjson bodyChars "$(printf '%s' "$CLJ" | jq -r '."body-chars" // 4000')" '
               ($ignore_authors | split(",") | map(select(length > 0))) as $ignored |
               def noisy: ((.body // "") as $b | [ $patterns[] | . as $p | select($b | test("(?i)" + $p)) ] | length > 0);
+              def is_ai: ((.author.login? // "" | ascii_downcase | sub("\\[bot\\]$"; "")) as $l | $ai | index($l)) != null;
               def clip($s): if ($s | length) > $bodyChars then ($s[0:$bodyChars] + "\n[body truncated]") else $s end;
               (.comments // [])
               | map(select(((.author.login // "" | ascii_downcase) as $login | ($ignored | index($login)) | not) and (noisy | not)))
               | map(select(.isMinimized != true))
               | if length > $limComments then .[($limComments * -1):] else . end
               | if length > 0 then
-                  map("- [id " + ((.id // "?") | tostring) + "] " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + clip((.body // "") | tostring) + "\n") | join("")
+                  map("- [id " + ((.id // "?") | tostring) + "] " + (.author.login // "unknown") + " at " + (.createdAt // "N/A") + ":\n" + (if is_ai then $aiNote else clip((.body // "") | tostring) end) + "\n") | join("")
                 else "No comments have been posted yet."
                 end')
 

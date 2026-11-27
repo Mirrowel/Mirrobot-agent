@@ -217,7 +217,9 @@ Posts from these logins never enter the agent's thread context at all; use this 
 ### `CONTEXT_FILTER_PATTERNS_JSON`
 **Default:** baked AI-reviewer noise defaults. **Type:** JSON array of case-insensitive regexes.
 
-Any match on a post's **body** drops that post from thread context. Setting the variable **replaces** the baked defaults (which target only known noise classes: CodeRabbit rate-limit/skip/too-many-files posts, "No actionable comments" notices, Greptile's status channel, substantive reviews from those same tools survive).
+Any match on a post's **body** drops that post from thread context. Setting the variable **replaces** the baked defaults (which target known noise classes: CodeRabbit rate-limit, skip, in-progress and too-many-files posts, "No actionable comments" notices, Greptile's status channel, Vercel deployment linkbacks, Linear linkbacks).
+
+AI code reviewers get a second, separate rule: their top-level summary comments and formal review bodies are **collapsed to one line** (with their id, so the body can be fetched on demand) while their **inline review comments are kept**, because that is where the findings are. The recognized reviewers are CodeRabbit, Codex, Copilot, Greptile, Cursor/Bugbot, Claude, Sourcery, Qodo, cubic and Gemini Code Assist; the list ships in the setup action, ignores a trailing `[bot]`, and needs no variable of its own.
 
 ```json
 ["skip rationale I never want", "^<!-- deploy-status -->", "stale-bot marker [0-9]+"]
