@@ -8,11 +8,9 @@
 
 set -euo pipefail
 
-# Git Bash (MSYS) rewrites leading-slash arguments passed to native binaries
-# such as gh into Windows paths, which breaks every `gh api /repos/...` call.
-# Both switches are no-ops on the Linux runners.
-export MSYS_NO_PATHCONV=1
-export MSYS2_ARG_CONV_EXCL='*'
+# gh api takes endpoints relative to the API root (no leading slash): Git Bash
+# rewrites a leading-slash argument into a Windows path, which is exactly what
+# a local operator would hit; the Linux runners accept both forms.
 
 REVIEW_TAG='<!-- mirrobot:review -->'
 COMPLIANCE_TAG='<!-- mirrobot:compliance -->'

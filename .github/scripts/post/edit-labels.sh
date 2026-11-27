@@ -94,7 +94,7 @@ if [ ${#ADD_CANON[@]} -gt 0 ]; then
     printf 'POST /repos/%s/issues/%s/labels\n' "$REPO" "$NUM"
     cat "$PLAN"
   else
-    gh api --method POST "/repos/$REPO/issues/$NUM/labels" --input "$PLAN" >/dev/null
+    gh api --method POST "repos/$REPO/issues/$NUM/labels" --input "$PLAN" >/dev/null
   fi
 fi
 for name in "${RM_CANON[@]}"; do
@@ -102,10 +102,10 @@ for name in "${RM_CANON[@]}"; do
   if [ "$DRY" = 1 ]; then
     printf 'DELETE /repos/%s/issues/%s/labels/%s\n' "$REPO" "$NUM" "$enc"
   else
-    gh api --method DELETE "/repos/$REPO/issues/$NUM/labels/$enc" >/dev/null
+    gh api --method DELETE "repos/$REPO/issues/$NUM/labels/$enc" >/dev/null
   fi
 done
 
 if [ "$DRY" = 1 ]; then exit 0; fi
 printf 'labels on #%s: ' "$NUM"
-gh api "/repos/$REPO/issues/$NUM/labels" --jq '[.[].name] | join(", ")'
+gh api "repos/$REPO/issues/$NUM/labels" --jq '[.[].name] | join(", ")'

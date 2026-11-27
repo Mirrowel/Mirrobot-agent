@@ -72,7 +72,7 @@ fi
 
 note "Posting $EVENT review on $REPO#$PR at $SHA ($COUNT inline comment(s))"
 resp=$(gh api --method POST -H "Accept: application/vnd.github+json" \
-  "/repos/$REPO/pulls/$PR/reviews" --input "$PAYLOAD")
+  "repos/$REPO/pulls/$PR/reviews" --input "$PAYLOAD")
 printf 'review_id=%s url=%s\n' \
   "$(printf '%s' "$resp" | jq -r '.id')" \
   "$(printf '%s' "$resp" | jq -r '.html_url // empty')"

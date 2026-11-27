@@ -44,5 +44,5 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
-gh api --method PATCH "/repos/$REPO/issues/comments/$ID" -F body=@"$OUT" >/dev/null
+gh api --method PATCH "repos/$REPO/issues/comments/$ID" -F body=@"$OUT" >/dev/null
 printf 'edited comment_id=%s\n' "$ID"

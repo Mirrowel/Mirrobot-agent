@@ -46,7 +46,7 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
-ARGS=(--method POST "/repos/$REPO/statuses/$SHA" -f state="$STATE" -f context="$CTX" -f description="$DESC")
+ARGS=(--method POST "repos/$REPO/statuses/$SHA" -f state="$STATE" -f context="$CTX" -f description="$DESC")
 [ -n "$TARGET" ] && ARGS+=(-f target_url="$TARGET")
 resp=$(gh api "${ARGS[@]}")
 printf 'status=%s url=%s\n' "$STATE" "$(printf '%s' "$resp" | jq -r '.url // empty')"

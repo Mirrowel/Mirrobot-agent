@@ -92,7 +92,7 @@ fi
 
 note "Posting inline comment on $REPO#$PR ($PATH_ARG${LINE:+:$LINE})"
 resp=$(gh api --method POST -H "Accept: application/vnd.github+json" \
-  "/repos/$REPO/pulls/$PR/comments" --input "$PAYLOAD")
+  "repos/$REPO/pulls/$PR/comments" --input "$PAYLOAD")
 printf 'comment_id=%s url=%s\n' \
   "$(printf '%s' "$resp" | jq -r '.id')" \
   "$(printf '%s' "$resp" | jq -r '.html_url // empty')"
