@@ -371,6 +371,13 @@ runs:
         # jq . ~/.config/opencode/opencode.json
         # echo "----------------------------------------"
         echo "Successfully generated OpenCode configuration."
+        # Prompt assembly installs the skills its manifests declare. It is
+        # opt-in (a local preview must never write into a real config), and
+        # the target is the standard global config dir opencode scans.
+        {
+          echo "SKILLS_INSTALL=1"
+          echo "SKILLS_DIR=$HOME/.config/opencode/skills"
+        } >> "$GITHUB_ENV"
 
     - name: Install content packs and mask credential leaves
       shell: bash

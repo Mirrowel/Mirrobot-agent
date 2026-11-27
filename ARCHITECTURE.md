@@ -112,7 +112,7 @@
 **Skill template:**
 - Purpose: Content a lane needs only sometimes, in one body with two deliveries so it cannot drift
 - Location: `.github/prompts/skills/<skill>/` (`meta.yml`, `framing-inline.md`, `framing-skill.md`, `body.md`)
-- Pattern: `assemble-prompt.sh` renders the body with the lane's `SKILLS_ENVSUBST` list, emits the inline framing where the manifest says `inline:`, and otherwise installs `<name>/SKILL.md` into opencode's skills home with a generated frontmatter and a routing line at the top of the prompt. Unresolved placeholders, invalid meta and missing files fail the run before the session; `SKILL_INSTALL_SKIP` (comma list) drops a skill per run; the session exporter reports loaded skills and warns when a required one never loaded.
+- Pattern: `assemble-prompt.sh` renders the body with the lane's `SKILLS_ENVSUBST` list and emits the inline framing where the manifest says `inline:`; only with `SKILLS_INSTALL=1` (Bot Setup sets it) does it install `<name>/SKILL.md` into the global config dir, with the frontmatter description as the trigger (opencode lists installed skills itself, so no routing block is injected). A bare local assembly touches no disk. Unresolved placeholders in an install, invalid meta and missing files fail the run before the session; `SKILL_INSTALL_SKIP` (comma list) drops a skill per run; the session exporter reports loaded skills and warns when a required one never loaded.
 
 **Posting toolkit:**
 - Purpose: The one place that writes a GitHub artifact's identity tag, signature and coverage marker, and the only path that validates inline anchors before the API sees them

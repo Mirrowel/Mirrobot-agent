@@ -1217,6 +1217,15 @@ PYEOF
   : > "$T/a/content-packs.exclude.txt"
   got=$(plan_run "$T/state3" "$T/ws" "$T/a")
   check "packs: an empty pack list is authoritative and stops the fallback" "browse,keep-a" "$got"
+
+  # Prompt-assembly skill installs are opt-in and target the standard global
+  # config dir; a bare local assembly must never write into a real config.
+  check "skills: bot-setup opts prompt assembly into installing" yes "$(grep -q 'SKILLS_INSTALL=1' "$ACTION" && echo yes || echo no)"
+  check "skills: bot-setup targets the global config dir" yes "$(grep -q 'SKILLS_DIR=\$HOME/.config/opencode/skills' "$ACTION" && echo yes || echo no)"
+  check "skills: the assembler installs only on request" yes "$(grep -q 'SKILLS_INSTALL:-0' "$SCRIPT_DIR/assemble-prompt.sh" && echo yes || echo no)"
+  check "skills: no routing block is generated" "0" "$(grep -c 'SKILLS FOR THIS RUN' "$SCRIPT_DIR/assemble-prompt.sh" || true)"
+  check "identity: every primary prompt prints the thread identity" "7" "$(grep -l '^thread-identity$' "$SCRIPT_DIR"/../prompts/manifests/*.manifest | wc -l | tr -d ' ')"
+  check "identity: every lane exports THREAD_IDENTITY" "5" "$(for w in pr-review bot-reply bot-reply-guest issue-comment compliance-check; do grep -q 'THREAD_IDENTITY=' "$SCRIPT_DIR/../workflows/$w.yml" && echo "$w"; done | wc -l | tr -d ' ')"
 }
 
 # ---- bot-setup: mask sweep + plugins materialization + drift scope -----------

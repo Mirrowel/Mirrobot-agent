@@ -42,7 +42,7 @@ Pipeline: bot-setup → metadata fetch (fail-closed on bogus numbers before any 
 
 - Navigates the diff at its own pace (never mandated to ingest it whole).
 - Grades findings 🔴 Critical / 🟠 Major / 🟡 Minor / 🔵 Info; criticals and majors land as inline comments; the rest go in grouped summaries. Nothing found is ever silently dropped, everything is placed.
-- Grades the PR itself on the shared scale: `severity:` (a bug fix) or `value:` (a change in behavior), plus `risk:`, each with its reason in the review summary, and applies those labels and any flag labels to the PR. A follow-up review re-checks them and changes one only if the new commits moved it.
+- Grades the PR itself on the shared scale: `severity:` (a bug fix) or `value:` (a change in behavior), plus `risk:`, each with its reason in the review summary, and applies those labels and any flag labels to the PR. The kind label (`documentation`, `chore`, `bug`, `enhancement`) is applied too when one describes the change. A follow-up review re-checks them and changes one only if the new commits moved it.
 - Ends in a verdict: **changes requested** (hard no, must-fix), **comment** (advisory, still blocks via dismissal semantics), or **approve**: approval requires a *positive* repository purpose (rank-blind: an admin's pointless PR gets no approval either).
 - First reviews post a living ack (progress-edited); follow-ups post only the review (no announcement noise).
 - Every posted review ends with footer markers carrying the reviewed head SHA; follow-up runs and the verify step both key off them.

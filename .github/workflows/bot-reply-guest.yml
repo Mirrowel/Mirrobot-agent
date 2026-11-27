@@ -308,6 +308,7 @@ jobs:
             echo "REACTION_SUBJECT_NODE=${trig_node}" >> "$GITHUB_ENV"
             echo "DISCUSSION_NODE_ID=$(printf '%s' "$disc_json" | jq -r '.id')" >> "$GITHUB_ENV"
             echo "DISCUSSION_TITLE=$(printf '%s' "$disc_json" | jq -r '.title')" >> "$GITHUB_ENV"
+            echo "THREAD_IDENTITY=Discussion #$(printf '%s' "$disc_json" | jq -r '.number') \"$(printf '%s' "$disc_json" | jq -r '.title' | tr -d '\r\n')\" by @$(printf '%s' "$disc_json" | jq -r '.author.login // "?"') in ${TARGET_REPO}." >> "$GITHUB_ENV"
             RCB_DELIM="RESOLVED_BODY_EOF_$(openssl rand -hex 8)"
             { printf 'RESOLVED_COMMENT_BODY<<%s\n' "$RCB_DELIM"; printf '%s\n' "$trig_body"; printf '%s\n' "$RCB_DELIM"; } >> "$GITHUB_ENV"
             TM_DELIM="GH_TRIGGER_MSG_$(openssl rand -hex 8)"
@@ -467,6 +468,8 @@ jobs:
             printf '%s\n' "$def_sha" > /tmp/head_sha.txt
           fi
           echo "RESOLVED_IS_PR=${is_pr}" >> "$GITHUB_ENV"
+          kind_label="Issue"; [ "$is_pr" = "true" ] && kind_label="PR"
+          echo "THREAD_IDENTITY=${kind_label} #${THREAD_NUM_INPUT} \"$(printf '%s' "${i_title:-untitled}" | tr -d '\r\n')\" by @${i_author:-$author} in ${TARGET_REPO}." >> "$GITHUB_ENV"
           echo "THREAD_AUTHOR=${i_author:-$author}" >> "$GITHUB_ENV"
           echo "RESOLVED_COMMENT_ID=${comment_id}" >> "$GITHUB_ENV"
           echo "RESOLVED_COMMENT_AUTHOR=${trigger_author}" >> "$GITHUB_ENV"
@@ -611,7 +614,7 @@ jobs:
           printf 'TRUST_CONTEXT_WARNING=\n' >> "$GITHUB_ENV"
 
           mkdir -p /tmp/instructions
-          GVARS='$TRIGGER_MESSAGE $THREAD_CONTEXT $NEW_COMMENT_BODY $NEW_COMMENT_AUTHOR $GUEST_SUMMONER_LINE $SCRUB_REMOVALS_SUMMARY $TARGET_REPO $THREAD_NUMBER $BOT_IDENTITY_LIST $BOT_IDENTITY_PRIMARY $DISCUSSION_NODE_ID $DISCUSSION_REPLY_TO_NODE $LAST_REVIEWED_SHA $PR_HEAD_SHA $PREVIOUS_BOT_REVIEWS $AGENT_REVIEW_HISTORY $REVIEW_KIT_SUMMARY'
+          GVARS='$TRIGGER_MESSAGE $THREAD_CONTEXT $NEW_COMMENT_BODY $NEW_COMMENT_AUTHOR $GUEST_SUMMONER_LINE $SCRUB_REMOVALS_SUMMARY $TARGET_REPO $THREAD_NUMBER $BOT_IDENTITY_LIST $BOT_IDENTITY_PRIMARY $DISCUSSION_NODE_ID $DISCUSSION_REPLY_TO_NODE $LAST_REVIEWED_SHA $PR_HEAD_SHA $PREVIOUS_BOT_REVIEWS $AGENT_REVIEW_HISTORY $REVIEW_KIT_SUMMARY $THREAD_IDENTITY'
           printf 'GVARS=%s\n' "$GVARS" >> "$GITHUB_ENV"
 
       # ======================================================================

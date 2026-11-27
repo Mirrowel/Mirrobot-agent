@@ -427,6 +427,9 @@ jobs:
             echo "REACTION_SUBJECT_NODE=${trig_node}" >> "$GITHUB_ENV"
             echo "DISCUSSION_NODE_ID=$(printf '%s' "$disc_json" | jq -r '.id')" >> "$GITHUB_ENV"
             echo "DISCUSSION_TITLE=$(printf '%s' "$disc_json" | jq -r '.title')" >> "$GITHUB_ENV"
+            disc_title=$(printf '%s' "$disc_json" | jq -r '.title' | tr -d '\r\n')
+            disc_author=$(printf '%s' "$disc_json" | jq -r '.author.login // "?"')
+            echo "THREAD_IDENTITY=Discussion #$(printf '%s' "$disc_json" | jq -r '.number') \"$disc_title\" by @$disc_author in $GITHUB_REPOSITORY." >> "$GITHUB_ENV"
             if [ "$THREAD_TYPE" = "discussion" ] && [ -n "${COMMENT_ID_INPUT:-}" ]; then
               echo "RESOLVED_COMMENT_ID=${COMMENT_ID_INPUT}" >> "$GITHUB_ENV"
             else
@@ -748,6 +751,11 @@ jobs:
             references=$(echo "$timeline_data" | jq -r '.[] | select(.event == "cross-referenced") | .source.issue | "- Mentioned in \(.html_url | if contains("/pull/") then "PR" else "Issue" end): #\(.number) - \(.title)"')
             if [ -z "$references" ]; then references="This PR has not been mentioned in other issues or PRs."; fi
 
+            # Thread identity: the one fact every prompt needs and the agent
+            # must never spend a call rediscovering.
+            identity_title=$(printf '%s' "$title" | tr -d '\r\n')
+            echo "THREAD_IDENTITY=PR #$THREAD_NUMBER \"$identity_title\" by @$author in $GITHUB_REPOSITORY." >> "$GITHUB_ENV"
+
             # Metadata/body prefix handed to the shared script; it prepends
             # this verbatim to THREAD_CONTEXT.
             PREFIX_TEXT=$(printf 'Type: Pull Request\nPR Number: #%s\nTitle: %s\nAuthor: %s\nCreated At: %s\nBase Branch (target): %s\nHead Branch (source): %s\nState: %s\nAdditions: %s\nDeletions: %s\nTotal Commits: %s\nChanged Files: %s %s - per-file compact list: /tmp/kit/%s/changed-files.txt\n<pull_request_body>\n%s\n---\n%s\n</pull_request_body>\n<linked_issues>\n%s\n</linked_issues>\n<cross_references>\n%s\n</cross_references>' \
@@ -779,6 +787,7 @@ jobs:
             created_at=$(echo "$issue_data" | jq -r .createdAt)
             state=$(echo "$issue_data" | jq -r .state)
             title=$(echo "$issue_data" | jq -r .title)
+            echo "THREAD_IDENTITY=Issue #$THREAD_NUMBER \"$(printf '%s' "$title" | tr -d '\r\n')\" by @$author in $GITHUB_REPOSITORY." >> "$GITHUB_ENV"
             body=$(echo "$issue_data" | jq -r --argjson bc "$(printf '%s' "$CLJ" | jq -r '."body-chars" // 4000')" '(.body // "(No description provided)") | if length > $bc then .[0:$bc] + "\n[body truncated]" else . end')
             # Prepare comments - SAME discipline as fetch-pr-discussion.sh:
             # filter-before-cap (ignored authors + AI-reviewer noise patterns
@@ -1226,7 +1235,7 @@ jobs:
               INCREMENTAL_DIFF_PATH=""
               LAST_REVIEWED_SHA=""
             fi
-            VARS='$THREAD_CONTEXT $NEW_COMMENT_AUTHOR $NEW_COMMENT_BODY $TRIGGER_MESSAGE $THREAD_NUMBER $GITHUB_REPOSITORY $THREAD_AUTHOR $PR_HEAD_SHA $IS_FIRST_REVIEW $FULL_DIFF_PATH $INCREMENTAL_DIFF_PATH $LAST_REVIEWED_SHA $PR_NUMBER $PREVIOUS_BOT_REVIEWS $AGENT_REVIEW_HISTORY $REVIEW_KIT_SUMMARY $BOT_IDENTITY_LIST $BOT_IDENTITY_PRIMARY $DISCUSSION_NODE_ID $DISCUSSION_REPLY_TO_NODE $DISCUSSION_TITLE $LABEL_PALETTE'
+            VARS='$THREAD_CONTEXT $NEW_COMMENT_AUTHOR $NEW_COMMENT_BODY $TRIGGER_MESSAGE $THREAD_NUMBER $GITHUB_REPOSITORY $THREAD_AUTHOR $PR_HEAD_SHA $IS_FIRST_REVIEW $FULL_DIFF_PATH $INCREMENTAL_DIFF_PATH $LAST_REVIEWED_SHA $PR_NUMBER $PREVIOUS_BOT_REVIEWS $AGENT_REVIEW_HISTORY $REVIEW_KIT_SUMMARY $BOT_IDENTITY_LIST $BOT_IDENTITY_PRIMARY $DISCUSSION_NODE_ID $DISCUSSION_REPLY_TO_NODE $DISCUSSION_TITLE $LABEL_PALETTE $THREAD_IDENTITY'
             # Prepend the security brief (with the verified requester and trust context lines);
             ( bash /tmp/opencode-cleanup.sh waiter ) &
             bash /tmp/live-share-announce.sh & ANNOUNCER=$!

@@ -27,7 +27,7 @@ Some guidance belongs in a lane only when a particular moment comes up (a follow
 | `framing-skill.md` | the "load this when..." preamble, used in the installed `SKILL.md` |
 | `body.md` | the shared content; one body, so the two deliveries cannot drift |
 
-A manifest declares `inline:<dir>` (inject the framing + body at that position, no install) or `skill:<dir>` (install `mirrobot-<name>/SKILL.md` into opencode's skills home and emit a routing line), with `!` on `skill:` marking it required for the load report. `SKILL_INSTALL_SKIP` (a comma list) drops a skill for a run, for example the Discussion skill outside Discussion threads.
+A manifest declares `inline:<dir>` (inject the framing + body at that position, no install) or `skill:<dir>` (install `mirrobot-<name>/SKILL.md` into opencode's skills home; installation happens only when the lane sets `SKILLS_INSTALL=1`, so a bare local assembly touches nothing), with `!` on `skill:` marking it required for the load report. The installed frontmatter description is the skill's trigger; opencode lists it in the system prompt itself, so no routing block is injected. `SKILL_INSTALL_SKIP` (a comma list) drops a skill for a run, for example the Discussion skill outside Discussion threads.
 
 The rule of thumb: **always** needed in that lane goes in the parts; **sometimes** needed becomes a skill; **never** needed is deleted. Do not move always-needed text behind a skill just to shrink the prompt.
 

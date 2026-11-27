@@ -294,6 +294,7 @@ jobs:
           echo "$CONTEXT_DELIMITER" >> "$GITHUB_ENV"
           # Also export author for the acknowledgment comment
           echo "ISSUE_AUTHOR=$author" >> $GITHUB_ENV
+          echo "THREAD_IDENTITY=Issue #$ISSUE_NUMBER \"$(printf '%s' "$title" | tr -d '\r\n')\" by @$author in $GITHUB_REPOSITORY." >> "$GITHUB_ENV"
 
       - name: React (lifecycle start)
         # Eyes on the ISSUE itself - issue targets keep eyes by design
@@ -327,7 +328,7 @@ jobs:
         run: |
             set -o pipefail
             # Only substitute the variables we intend; leave example $vars and secrets intact
-            VARS='${ISSUE_CONTEXT} ${ISSUE_NUMBER} ${ISSUE_AUTHOR} ${TRIGGER_MESSAGE} ${GITHUB_REPOSITORY} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY} ${LABEL_PALETTE}'
+            VARS='${ISSUE_CONTEXT} ${ISSUE_NUMBER} ${ISSUE_AUTHOR} ${TRIGGER_MESSAGE} ${GITHUB_REPOSITORY} ${BOT_IDENTITY_LIST} ${BOT_IDENTITY_PRIMARY} ${LABEL_PALETTE} ${THREAD_IDENTITY}'
             # Config lifecycle: opencode reads config + plugins once at boot.
             # The share filter touches /tmp/.oc-booted on the first output
             # line (= boot complete, config consumed); this waiter deletes
