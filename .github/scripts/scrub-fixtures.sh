@@ -388,6 +388,14 @@ POSTNOGH
   check "posting: compliance selection requires a tag, marker or signature" "2" "$(grep -c 'contains("<!-- mirrobot:compliance -->")' "$SCRIPT_DIR/../workflows/compliance-check.yml" || true)"
   check "posting: an untagged compliance report fails the gate" yes "$(grep -q '::error::No compliance report found from this run' "$SCRIPT_DIR/../workflows/compliance-check.yml" && echo yes || echo no)"
   check "posting: review detection has no prose-phrase fallback" "0" "$(grep -c 'latest_phrase\|has_phrase' "$SCRIPT_DIR/../workflows/bot-reply.yml" || true)"
+  # Compliance is a one-artifact lane: its verifier reads the tagged report,
+  # so the lane carries no posting or communication craft and no reactions.
+  check "posting: compliance carries no posting, communication or reaction machinery" "0" \
+    "$(cat "$SCRIPT_DIR"/../prompts/manifests/compliance-*.manifest | tr -d '\r' | grep -cE '^(posting|communication|reactions)$' || true)"
+  check "posting: the compliance mission names the report as the only comment" yes \
+    "$(grep -q 'The report is the only comment you post on this run' "$SCRIPT_DIR/../prompts/parts/mission-compliance.md" && echo yes || echo no)"
+  check "posting: review lanes carry no reaction section" "0" \
+    "$(cat "$SCRIPT_DIR"/../prompts/manifests/pr-review-*.manifest | tr -d '\r' | grep -c '^reactions$' || true)"
 }
 
 # ---- section selectors (dev-loop speed; CI runs everything) -----------------

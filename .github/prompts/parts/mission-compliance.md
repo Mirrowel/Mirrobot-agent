@@ -187,6 +187,8 @@ Copy the template from `${REPORT_TEMPLATE}` into `/tmp/compliance-report.md` wit
 ```
 The script appends the compliance tag, signature and `compliance-check-id` marker with the SHA it resolved. The template @mentions the author; the workflow prepends reviewer mentions after you post.
 
+**The report is the only comment you post on this run.** No acknowledgment, no closing summary: a second comment can become the report the next run reads as its previous audit.
+
 **Post the report BEFORE the status check** - the status links to it.
 
 ## Updating the Status Check
