@@ -175,6 +175,8 @@ What keeps a pack from becoming a side door:
 
 **Private sources.** Private archive links go in the `CONTENT_PACKS_PRIVATE` secret, in the same format; its entries follow the variable's. A private repository, or a link that needs authentication, also uses the `CONTENT_PACK_TOKEN` secret. To make a private archive, zip the pack folder and host it anywhere that serves a direct download.
 
+**What this installation excludes.** `.github/content-packs.exclude.txt` lists skill directory names that must not load here, one per line. The installer reads it from the base branch, so a pull request cannot change it, and it skips those skills in both pack copies and upstream lock fetches. The committed list keeps out what cannot work as an asynchronous GitHub agent: `browse` (needs the operator's logged-in browser), `grilling`, `grill-with-docs` and `improve-codebase-architecture` (they interview a human), `domain-modeling` and `security-audit` (their own workflows). Everything else in the shared library loads as-is; the boot report names what was discovered.
+
 #### Tested hosts for a private pack
 
 Two anonymous hosts were tested end to end on 2026-11-26 (upload, download, identical bytes, 20 to 40 downloads back to back, reachability from 57 other networks). Both give an unlisted link: anyone who has it can download the file, so keep the link in the `CONTENT_PACKS_PRIVATE` secret, or encrypt the archive.

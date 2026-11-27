@@ -1162,6 +1162,42 @@ fi
 section_end
 fi
 
+# ---- content-pack skill exclusions: this installation's lens ----------------
+# The library is shared with the operator's own sessions; mirrobot excludes the
+# skills that cannot work as an asynchronous GitHub agent (a logged-in browser,
+# a human to interview, a separate audit workflow).
+packs_exclude_checks() {
+  local EXCL="$SCRIPT_DIR/../content-packs.exclude.txt" PY="" got cand
+  local T="$WORK/pack-exclude"
+  check "packs: the exclusion file is committed" yes "$([ -f "$EXCL" ] && echo yes || echo no)"
+  check "packs: the exclusion list names the six skills that cannot run async" "browse domain-modeling grill-with-docs grilling improve-codebase-architecture security-audit " \
+    "$(grep -v '^[[:space:]]*#' "$EXCL" 2>/dev/null | grep -v '^[[:space:]]*$' | sort | tr '\n' ' ')"
+  check "packs: the installer reads the base-branch exclusion file" yes \
+    "$(grep -q 'content-packs.exclude.txt' "$PACKS" && echo yes || echo no)"
+  check "packs: excluded skills never enter the skill plan" yes \
+    "$(grep -q 'if name in excluded:' "$PACKS" && echo yes || echo no)"
+  check "packs: install removes an excluded skill from the home" yes \
+    "$(grep -q 'remove_tree(SKILLS_HOME / name)' "$PACKS" && echo yes || echo no)"
+  for cand in python3 python; do "$cand" -c 'import sys' >/dev/null 2>&1 && { PY=$cand; break; }; done
+  if [ -z "$PY" ]; then
+    check "packs: the exclusion plan is executed" ran "SKIP: no python"
+    return 0
+  fi
+  mkdir -p "$T/ws/.github" "$T/pack/.agents/skills/browse" "$T/pack/.agents/skills/keepme"
+  printf 'browse\n' > "$T/ws/.github/content-packs.exclude.txt"
+  printf -- '---\nname: browse\ndescription: x\n---\n' > "$T/pack/.agents/skills/browse/SKILL.md"
+  printf -- '---\nname: keepme\ndescription: y\n---\n' > "$T/pack/.agents/skills/keepme/SKILL.md"
+  got=$(GITHUB_WORKSPACE="$T/ws" "$PY" - "$PACKS" "$T/pack" <<'PYEOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("packs", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print(",".join(sorted(module.skill_plan([{"root": sys.argv[2]}]))))
+PYEOF
+)
+  check "packs: the plan keeps included skills and drops excluded ones" "keepme" "$got"
+}
+
 # ---- bot-setup: mask sweep + plugins materialization + drift scope -----------
 SECTION_NAME='bot-setup: mask sweep + plugins materialization + drift scope'
 if [ "$PARALLEL" = 1 ]; then
@@ -1186,6 +1222,7 @@ check "setup: lanes grant actions: write for the SDK cache" yes "$(all=yes; for 
 check "openshare: export streams opencode output to a file" yes "$(grep -q 'stdout=fh' "$SCRIPT_DIR/../scripts/export-session.py" && echo yes || echo no)"
 check "setup: private pack links arrive through a secret input" yes "$(grep -q '^  private-content-packs:' "$ACTION" && grep -q 'PRIVATE_CONTENT_PACKS: \${{ inputs.private-content-packs }}' "$ACTION" && grep -q 'PRIVATE_CONTENT_PACKS' "$PACKS" && echo yes || echo no)"
 check "setup: no masking helper survives (the runner echoes action inputs too)" no "$(test -e "$SCRIPT_DIR/../actions/mask-values" && echo yes || echo no)"
+packs_exclude_checks
 # Drift check is PERMISSION-ONLY: the example is a full-config template, so
 # comparing against the whole file would false-warn on every repo whose
 # config lacks the example's providers/mcp/plugin shape.
@@ -1234,6 +1271,7 @@ check "setup: lanes grant actions: write for the SDK cache" yes "$(all=yes; for 
 check "openshare: export streams opencode output to a file" yes "$(grep -q 'stdout=fh' "$SCRIPT_DIR/../scripts/export-session.py" && echo yes || echo no)"
 check "setup: private pack links arrive through a secret input" yes "$(grep -q '^  private-content-packs:' "$ACTION" && grep -q 'PRIVATE_CONTENT_PACKS: \${{ inputs.private-content-packs }}' "$ACTION" && grep -q 'PRIVATE_CONTENT_PACKS' "$PACKS" && echo yes || echo no)"
 check "setup: no masking helper survives (the runner echoes action inputs too)" no "$(test -e "$SCRIPT_DIR/../actions/mask-values" && echo yes || echo no)"
+packs_exclude_checks
 # Drift check is PERMISSION-ONLY: the example is a full-config template, so
 # comparing against the whole file would false-warn on every repo whose
 # config lacks the example's providers/mcp/plugin shape.

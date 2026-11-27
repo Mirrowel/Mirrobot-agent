@@ -18,6 +18,7 @@
 │   │   ├── security-brief.md   # Read first in every home agent session
 │   │   └── security-brief-guest.md  # Read first in every guest session
 │   ├── labels.txt              # The label palette: ONE source for seeding and for the prompt's label block
+│   ├── content-packs.exclude.txt  # Skills the shared pack library must not load in this installation
 │   ├── scripts/                # 18 bash scripts + 1 Python exporter: all reusable logic
 │   ├── workflows/              # 12 GitHub Actions workflows
 │   └── pull_request_template.md  # PR form: gain/purpose + Closes # + redaction hint
