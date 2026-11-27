@@ -82,7 +82,7 @@ How it behaves:
 - **Each session** fetches the repository's live labels once and renders exactly those into the prompt, grouped by class. The agent applies only what exists and never creates a label. A live label the file does not know is listed as "other", usable when it clearly fits.
 - **No file** turns labeling off.
 
-To change the palette: edit the file and run Agent Bootstrap. It creates what is missing; renaming or deleting a live label is a manual `gh label edit` or `gh label delete`, Bootstrap never does either. The `Agent Monitored` name is load-bearing (the PR review trigger keys on it). The prompt (`parts/grading.md`) explains grades and conclusions as ideas and never names a label, so a different label set works too: the agent maps each idea to the label that carries it in your repository.
+To change the palette: edit the file and run Agent Bootstrap. It creates what is missing; renaming or deleting a live label is a manual `gh label edit` or `gh label delete`, Bootstrap never does either. The `Agent Monitored` name is load-bearing (the PR review trigger keys on it). The labels skill (`.github/prompts/skills/labels/`) explains grades and conclusions as ideas and never names a label, so a different label set works too: the agent maps each idea to the label that carries it in your repository.
 
 ## The permission profile
 
