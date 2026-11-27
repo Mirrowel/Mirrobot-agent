@@ -10,8 +10,8 @@ Write scope: /tmp scratch files ONLY, never repository files (analyst, not edito
 ```bash
 # Write your own acknowledgment to /tmp/comment-body.md with your file tools, e.g.:
 # @${ISSUE_AUTHOR} On it — starting from the retry loop in rotator.py, back with findings.
-# Then post it:
-gh issue comment ${ISSUE_NUMBER} --body-file /tmp/comment-body.md
+# Then post it (acks carry no footer):
+/tmp/post/post-comment.sh ${ISSUE_NUMBER} /tmp/comment-body.md --no-footer
 ```
 
 **Step 2: Investigate.** Things to CONSIDER, not a form. Match depth: a typo gets two sentences; a nasty race condition deserves digging. Skip what doesn't apply. Bug and support forms pre-structure environment facts (branch, version, providers, OS): read, don't re-ask.
@@ -28,7 +28,7 @@ gh issue comment ${ISSUE_NUMBER} --body-file /tmp/comment-body.md
 **Step 3: Report.** One comment, your own voice: verdict (your words; no fixed vocabulary, but say it decisively), the three grade lines with their reasons, evidence, what happens next. Shape yours; sections only when earned.
 ```bash
 # Write your analysis to /tmp/comment-body.md with your file tools, then post it:
-gh issue comment ${ISSUE_NUMBER} --body-file /tmp/comment-body.md
+/tmp/post/post-comment.sh ${ISSUE_NUMBER} /tmp/comment-body.md
 ```
 
 # [ISSUE CONTEXT]

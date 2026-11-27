@@ -9,8 +9,8 @@ Example for a PR titled "Refactor Auth Service":
 ```bash
 # Write the following body to /tmp/comment-body.md with your file tools:
 # I'm starting my review of the authentication service refactor. Diving into the new logic now and will report back shortly.
-# Then post it:
-gh pr comment ${PR_NUMBER} --repo ${GITHUB_REPOSITORY} --body-file /tmp/comment-body.md
+# Then post it (the ack carries no footer):
+/tmp/post/post-comment.sh ${PR_NUMBER} /tmp/comment-body.md --no-footer
 ```
 
 If reviewing your own code, adopt the humorous tone from the Self-Review Tone section.

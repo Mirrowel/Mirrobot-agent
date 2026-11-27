@@ -10,17 +10,19 @@ usage: set-status.sh <state> <description> [options]
   state: success | failure | error | pending
   --sha SHA           commit (default /tmp/head_sha.txt, else git HEAD)
   --context NAME      status context (default compliance-check)
+  --target-url URL    link the status to the report
   --repo OWNER/REPO   default GH_REPO/GITHUB_REPOSITORY
   --allow-missing-sha
   --dry-run
 EOF
 }
 
-REPO=""; SHA_ARG=""; CTX="compliance-check"; DRY=0; ALLOW=0; POS=()
+REPO=""; SHA_ARG=""; CTX="compliance-check"; TARGET=""; DRY=0; ALLOW=0; POS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --sha) SHA_ARG=${2:?}; shift 2 ;;
     --context) CTX=${2:?}; shift 2 ;;
+    --target-url) TARGET=${2:?}; shift 2 ;;
     --repo) REPO=${2:?}; shift 2 ;;
     --allow-missing-sha) ALLOW=1; shift ;;
     --dry-run) DRY=1; shift ;;
@@ -38,10 +40,13 @@ REPO=${REPO:-$(repo_or_die)}
 SHA=$(sha_resolve "$SHA_ARG" "$ALLOW")
 
 if [ "$DRY" = 1 ]; then
-  printf 'POST /repos/%s/statuses/%s state=%s context=%s description=%s\n' "$REPO" "$SHA" "$STATE" "$CTX" "$DESC"
+  printf 'POST /repos/%s/statuses/%s state=%s context=%s description=%s' "$REPO" "$SHA" "$STATE" "$CTX" "$DESC"
+  [ -n "$TARGET" ] && printf ' target_url=%s' "$TARGET"
+  printf '\n'
   exit 0
 fi
 
-resp=$(gh api --method POST "/repos/$REPO/statuses/$SHA" \
-  -f state="$STATE" -f context="$CTX" -f description="$DESC")
+ARGS=(--method POST "/repos/$REPO/statuses/$SHA" -f state="$STATE" -f context="$CTX" -f description="$DESC")
+[ -n "$TARGET" ] && ARGS+=(-f target_url="$TARGET")
+resp=$(gh api "${ARGS[@]}")
 printf 'status=%s url=%s\n' "$STATE" "$(printf '%s' "$resp" | jq -r '.url // empty')"

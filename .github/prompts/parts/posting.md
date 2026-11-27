@@ -1,36 +1,25 @@
 # [TOOLS NOTE]
-**IMPORTANT**: `gh`/`git` commands should run in `bash`; `gh` is a bash utility, not a standalone tool. If a plain `gh` command cannot achieve the desired effect, fall back to `gh api <endpoint>` with the GitHub REST API; `gh` authenticates with the session token for you.
 
-**CRITICAL COMMAND FORMAT REQUIREMENT**: For ALL `gh issue comment` and `gh pr comment` commands with any non-trivial body, you **MUST** write the body to a `/tmp` file with your file tools and post with `--body-file`, the only method safe from shell interpretation of special characters (`$`, `*`, `#`, `` ` ``, `@`, newlines); heredocs expand variables and have silently corrupted bodies in live runs, and `-F -` stdin forms have no stdin to read from.
+`gh` and `git` run in `bash`. Never pass a body inline and never use a heredoc: write the body to a file with your file tools, then let a posting script send it.
 
-**NEVER use `--body` with inline text** (quoting hazards) and **NEVER use heredocs** (they expand variables and corrupt bodies).
+**Posting toolkit** (`/tmp/post/`; every script takes `--help` and `--dry-run`):
 
-**Correct pattern (always):**
-```bash
-# 1. Write the full body (markdown, special characters, newlines — all safe) to a file with your file tool:
-#    /tmp/comment-body.md
-# 2. Post it (use the thread/PR number for <number>):
-gh issue comment <number> --body-file /tmp/comment-body.md
-```
+| Script | Use |
+|---|---|
+| `post-comment.sh <n> <body.md>` | comment on an issue or PR (`--no-footer` for acks and progress) |
+| `edit-comment.sh <comment-id> <body.md>` | rewrite a comment by id (`--footer` when the edit becomes the deliverable) |
+| `post-review.sh <body.md> <comments.json> --event <EVENT>` | submit a review: resolves and verifies the SHA, validates every inline anchor, appends the canonical footers |
+| `post-inline.sh <path> <line> <body.md>` | one standalone inline comment (`--file-level` for a whole-file remark); validates the line and names the nearest commentable one |
+| `post-discussion.sh <body.md>` | reply in a Discussion, anchored to the summon |
+| `post-compliance.sh`, `set-status.sh` | the compliance report and its commit status |
+| `edit-labels.sh`, `create-pr.sh`, `create-issue.sh` | labels, pull requests, issues |
+| `artifact-footer.sh <kind> [sha]` | the canonical footer for a hand-rolled post |
 
-The body file may contain anything (`$` signs, backticks, bullets, multi-line sections); none is interpreted by the shell.
-
-**INCORRECT Examples (DO NOT USE):**
-```bash
-# WRONG: heredoc/stdin form - expands variables and corrupts bodies
-gh issue comment <number> -F - <<'EOF'
-<user>, Starting work.
-EOF
-
-# WRONG: --body with inline text (quoting hazards with special characters)
-gh issue comment <number> --body "Starting work."
-```
-
-Failing to use the file-based form makes the shell misinterpret your message.
-
-**The same rule applies to EVERYTHING that carries a body**: `gh pr comment`, `gh issue comment`, `gh pr create` (`--body-file /tmp/pr-body.md`), `gh issue create`, and `gh api` payloads (`--input /tmp/payload.json`). Write the full content to a /tmp file with your file tools and pass it - this preserves markdown, code blocks, backticks, `$` signs, and newlines byte-perfectly. Never build bodies inline.
+These are defaults, not a cage. When a case does not fit (a different commit, an unusual anchor), hand-roll the call and take the footer from `artifact-footer.sh`. Do not guess a script's flags: `--help` is its interface, and a failure prints the fix. Never fall back to an inline body; if a script can do it, use the script.
 
 ## Discussion threads (GraphQL only)
+
+Default: `post-discussion.sh`, which anchors the reply to the comment that summoned you. The raw mutation below is for overrides (a different anchor, a top-level post).
 
 Discussions have NO REST endpoints; every read and write goes through `gh api graphql`. The file-based body mandate applies identically: the body variable is fed with `-F b=@/tmp/comment-body.md`; gh binds GraphQL variables **by key**, so the flag key must be the variable name (`b`, not `body`); only the typed `-F` flag reads `@file` (`-f` sends the literal string). Never inline the body.
 

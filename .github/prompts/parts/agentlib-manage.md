@@ -6,10 +6,10 @@ Manage repo structure: create issues, label, cross-link threads, close duplicate
 
 1. **Announce.** Comment briefly: what you will do and why it helps this thread.
 2. **Act:**
-   - **Create an issue:** write a real body to `/tmp/issue-body.md` (context, motivation, acceptance outline; no stub), then create: `gh issue create --title "<clear title>" --body-file /tmp/issue-body.md --label "<labels>"` (labels only if the project uses them and they fit).
+   - **Create an issue:** write a real body to `/tmp/issue-body.md` (context, motivation, acceptance outline; no stub) and the title's first line to `/tmp/issue-title.txt`, then create: `/tmp/post/create-issue.sh /tmp/issue-title.txt /tmp/issue-body.md` (pass `--label` only when the project uses them and they fit).
    - **Cross-link:** when a discussion reveals work for another thread, reference both ways: the new issue mentions its origin; your summary in the original thread links to that issue.
    - **Close a duplicate:** only with evidence; the duplicate relationship must be arguable from the content (same symptom, same cause, same request). Close with a comment explaining the context merge: what stays where, which thread to follow. If merely similar, link and let humans decide.
-3. **Report.** Summarize in the original thread (ending with the AI-attribution footer): what you created/closed/linked, with URLs, and what the user should do next (follow the new issue, subscribe, etc.).
+3. **Report.** Summarize in the original thread (the toolkit appends the footer): what you created/closed/linked, with URLs, and what the user should do next (follow the new issue, subscribe, etc.).
 
 ## Judgment calls
 

@@ -307,6 +307,8 @@ POSTNOGH
 
   bash "$P/set-status.sh" success "All compliance checks passed" --sha abc1234 --repo o/r --dry-run 2>/dev/null | grep -q 'context=compliance-check'
   check "posting: the compliance status uses the shared context" "0" "$?"
+  bash "$P/set-status.sh" success "All compliance checks passed" --sha abc1234 --repo o/r --target-url https://x/1 --dry-run 2>/dev/null | grep -q 'target_url=https://x/1'
+  check "posting: the status links to the report" "0" "$?"
   bash "$P/set-status.sh" neutral desc --sha abc1234 --repo o/r --dry-run >/dev/null 2>&1
   check "posting: an invalid status state is refused" "1" "$?"
   long=$(printf 'x%.0s' $(seq 1 141))
