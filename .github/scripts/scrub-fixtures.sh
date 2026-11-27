@@ -92,8 +92,10 @@ labels_section() {
   local KIT="$SCRIPT_DIR/generate-review-kit.sh"
   local rendered flat n w m got want slog all most r first last wf PY_L="" sb="$WORK/labels-stub" rt="$WORK/labels-rt"
   check "labels: render script passes bash -n" OK "$(bash -n "$RENDER" && echo OK || echo BAD)"
-  check "labels: the committed palette validates" OK "$(bash "$RENDER" "$PALETTE" >/dev/null 2>&1 && echo OK || echo BAD)"
-  rendered="$(bash "$RENDER" "$PALETTE")"
+  # The script exports to $GITHUB_ENV when that is set, which it is on a
+  # runner: drop it here so the fixture reads the rendered block from stdout.
+  check "labels: the committed palette validates" OK "$(env -u GITHUB_ENV bash "$RENDER" "$PALETTE" >/dev/null 2>&1 && echo OK || echo BAD)"
+  rendered="$(env -u GITHUB_ENV bash "$RENDER" "$PALETTE")"
   flat="$(printf '%s\n' "$rendered" | tr '\n' ',')"
   m=0
   while IFS= read -r n; do
