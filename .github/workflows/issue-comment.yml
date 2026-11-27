@@ -172,7 +172,8 @@ jobs:
           cp .github/scripts/render-labels.sh /tmp/render-labels.sh
           cp .github/scripts/react.sh /tmp/react.sh
           cp .github/scripts/opencode-cleanup.sh /tmp/opencode-cleanup.sh
-          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/react.sh /tmp/opencode-cleanup.sh /tmp/share-filter.sh
+          cp -r .github/scripts/post /tmp/post
+          chmod +x /tmp/scrub-workspace.sh /tmp/assemble-prompt.sh /tmp/react.sh /tmp/opencode-cleanup.sh /tmp/share-filter.sh /tmp/post/*.sh
           bash /tmp/assemble-prompt.sh --verify
           # Resolve identity + trigger stems (exports BOT_NAMES_JSON / BOT_TRIGGER_STEMS)
           bash /tmp/bot-config.sh

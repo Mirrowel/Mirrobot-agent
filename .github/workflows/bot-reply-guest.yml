@@ -588,10 +588,12 @@ jobs:
           cp .github/scripts/split-diff.sh /tmp/split-diff.sh
           cp .github/scripts/minimized-nodes.sh /tmp/minimized-nodes.sh
           cp .github/scripts/bot-config.sh /tmp/bot-config.sh
+          cp -r .github/scripts/post /tmp/post
           cp -r .github/prompts/parts /tmp/parts
           cp -r .github/prompts/manifests /tmp/manifests
           cp .github/prompts/security-brief-guest.md /tmp/security-brief-guest.md
           chmod +x /tmp/*.sh
+          chmod +x /tmp/post/*.sh
           bash /tmp/assemble-prompt.sh --verify
 
           # Identity + trigger stems (bot-config: identities ∪ account login).
