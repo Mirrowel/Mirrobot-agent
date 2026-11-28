@@ -5,8 +5,9 @@ Upstream opencode discontinued share links; the platform now produces
 encrypted session artifacts (MRB2) plus, optionally, live share URLs on
 our own worker. This tool decrypts both. Session payloads carry the raw
 `opencode export` family and a self-contained snapshot HTML (built by
-OpenShare's snapshot tools at export time) - decrypting writes them to
-the local library and opens the snapshot straight from disk (file://).
+OpenShare's snapshot tools at export time). Decrypting offers to save them
+to a sessions/ folder beside this script and opens the snapshot straight
+from disk (file://); nothing is downloaded or written without consent.
 No viewer server, no ports, no dist, no node needed locally.
 
 Wire formats:
@@ -23,7 +24,8 @@ Wire formats:
 Usage:
   python decrypt_share_link.py                 # interactive TUI
   python decrypt_share_link.py "<pasted text>" # one-shot decrypt
-  python decrypt_share_link.py "<blob>" --open # decrypt + open browser
+  python decrypt_share_link.py "<blob>" --open # decrypt, save, open browser
+  python decrypt_share_link.py "<blob>" --save # decrypt + save, no browser
   python decrypt_share_link.py --file <enc>    # decrypt an artifact file
   python decrypt_share_link.py setup           # keygen + push repo secret
   python decrypt_share_link.py library         # list cached sessions
@@ -34,12 +36,12 @@ Usage:
 Config: ~/.config/mirrobot/config.json
   private_key_path   (default ~/.config/mirrobot/share-link.pem, env
                       MIRROBOT_SHARE_KEY overrides)
-  persist            (default false - nothing written to disk until you
-                      explicitly enable it; created only on change)
+  persist            (default false - the decryption log stays off;
+                      created only on change)
   log_path           (default ~/.config/mirrobot/decryptions.jsonl)
   session_cache_days (default 30; library session directories older than
                       this are evicted on each run. 0 = keep forever)
-  library_dir        (default ~/.cache/mirrobot/sessions)
+  library_dir        (default ./sessions beside this script)
 
 Requires `openssl` on PATH (Git for Windows, macOS, Linux all ship it);
 `gh` only for the run browser / artifact auto-fetch.
@@ -79,7 +81,11 @@ CONFIG_DIR = Path.home() / ".config" / "mirrobot"
 CONFIG_PATH = CONFIG_DIR / "config.json"
 DEFAULT_KEY = CONFIG_DIR / "share-link.pem"
 DEFAULT_LOG = CONFIG_DIR / "decryptions.jsonl"
-DEFAULT_LIBRARY = Path.home() / ".cache" / "mirrobot" / "sessions"
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_LIBRARY = SCRIPT_DIR / "sessions"
+# Pre-2026-11 default; a config still carrying it migrates to the tool-local
+# folder so decrypted sessions stop landing in the global cache.
+LEGACY_GLOBAL_LIBRARY = Path.home() / ".cache" / "mirrobot" / "sessions"
 
 DEFAULTS = {
     "private_key_path": str(DEFAULT_KEY),
@@ -101,6 +107,8 @@ def load_config() -> dict:
             cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
         except (json.JSONDecodeError, OSError):
             pass
+    if str(cfg.get("library_dir", "")) == str(LEGACY_GLOBAL_LIBRARY):
+        cfg["library_dir"] = str(DEFAULT_LIBRARY)
     if os.environ.get("MIRROBOT_SHARE_KEY"):
         cfg["private_key_path"] = os.environ["MIRROBOT_SHARE_KEY"]
     return cfg
@@ -365,7 +373,18 @@ def show_result(url: str, ctx: str | None, opened: bool = False) -> None:
 # decrypt flows
 # ----------------------------------------------------------------------------
 
-def handle_mrb2(m: re.Match, cfg: dict, open_browser: bool) -> bool:
+def ask(question: str) -> bool:
+    """Yes/no on a terminal; piped or redirected input answers no."""
+    try:
+        if not sys.stdin.isatty():
+            return False
+        return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
+    except (EOFError, OSError):
+        return False
+
+
+def handle_mrb2(m: re.Match, cfg: dict, open_browser: bool,
+                assume_yes: bool = False) -> bool:
     key = Path(cfg["private_key_path"])
     if not key.exists():
         print(f"private key not found: {key}")
@@ -380,7 +399,6 @@ def handle_mrb2(m: re.Match, cfg: dict, open_browser: bool) -> bool:
     kind = payload.get("kind")
 
     if fmt == "osh-passive" or kind == "session":
-        entry, snapshot = library_write(cfg, payload)
         live = payload.get("live") or {}
         ctx_bits = [f"session {payload.get('session_id', '?')}",
                     str(payload.get("repo", "?")), f"run {payload.get('run_id', '?')}"]
@@ -388,6 +406,16 @@ def handle_mrb2(m: re.Match, cfg: dict, open_browser: bool) -> bool:
             ctx_bits.append(f"live share {live.get('status') or '?'}"
                             f" (gated {'yes' if live.get('gated') else 'no'})")
         ctx_bits.append(f"snapshot {payload.get('snapshot') or 'none'}")
+        lib = Path(cfg["library_dir"])
+        has_snapshot = bool(payload.get("snapshot_html"))
+        what = "offline snapshot + exports" if has_snapshot else "raw exports"
+        if not (assume_yes or ask(f"Save the {what} to {lib}?")):
+            print()
+            print("  decrypted: " + " | ".join(ctx_bits))
+            print("  not saved. Re-run with --save to write it, "
+                  "or --open to write and view.")
+            return True
+        entry, snapshot = library_write(cfg, payload)
         if snapshot:
             url = page_url(snapshot)
             if open_browser:
@@ -424,8 +452,14 @@ def handle_mrb2(m: re.Match, cfg: dict, open_browser: bool) -> bool:
             gh = find_gh()
             token = gh_token(gh) if gh else os.environ.get("GITHUB_TOKEN")
             if not token:
-                print("gh CLI/token needed to auto-fetch the artifact - "
+                print("gh CLI/token needed to fetch the artifact - "
                       "decrypt the artifact file manually")
+                return bool(live)
+            if not (assume_yes or ask(
+                    f"Download and decrypt the session artifact {artifact} "
+                    f"from {payload.get('repo')} run {payload.get('run_id')}?")):
+                print("artifact not downloaded. Re-run with --save to fetch and "
+                      "write it, --open to fetch and view it, or download it manually.")
                 return bool(live)
             print(f"fetching artifact {artifact} from "
                   f"{payload.get('repo')} run {payload.get('run_id')} ...")
@@ -441,17 +475,18 @@ def handle_mrb2(m: re.Match, cfg: dict, open_browser: bool) -> bool:
             if not m2:
                 print("artifact does not contain an MRB2 blob")
                 return bool(live)
-            return handle_mrb2(m2, cfg, open_browser)
+            return handle_mrb2(m2, cfg, open_browser, assume_yes=True)
         return bool(live)
 
     print(f"unknown MRB2 payload kind: {kind}")
     return False
 
 
-def decrypt_flow(text: str, cfg: dict, open_browser: bool) -> bool:
+def decrypt_flow(text: str, cfg: dict, open_browser: bool,
+                 assume_yes: bool = False) -> bool:
     m2 = BLOB2_RE.search(text)
     if m2:
-        return handle_mrb2(m2, cfg, open_browser)
+        return handle_mrb2(m2, cfg, open_browser, assume_yes)
     blob, ctx = parse_input(text)
     if blob:
         key = Path(cfg["private_key_path"])
@@ -860,11 +895,14 @@ def main(argv: list[str]) -> int:
         if not path.exists():
             print(f"file not found: {path}")
             return 1
+        want_open = "--open" in argv
         ok = decrypt_flow(path.read_text(encoding="utf-8", errors="replace"),
-                          load_config(), "--open" in argv)
+                          load_config(), want_open,
+                          want_open or "--save" in argv)
         return 0 if ok else 1
-    args = [a for a in argv[1:] if a != "--open"]
     want_open = "--open" in argv
+    want_save = "--save" in argv
+    args = [a for a in argv[1:] if a not in ("--open", "--save")]
     if args and args[0] == "setup":
         return cmd_setup()
     if args and args[0] == "library":
@@ -888,7 +926,8 @@ def main(argv: list[str]) -> int:
         print(json.dumps(cfg, indent=2))
         return 0
     if args:
-        ok = decrypt_flow(" ".join(args), load_config(), want_open)
+        ok = decrypt_flow(" ".join(args), load_config(), want_open,
+                          want_open or want_save)
         return 0 if ok else 1
     tui()
     return 0

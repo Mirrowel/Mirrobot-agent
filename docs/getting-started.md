@@ -22,7 +22,7 @@ Two optional companions, each enabling one feature:
 
 | Also copy | Enables |
 |---|---|
-| `decrypt_share_link.py` | Decrypting the agent's encrypted session artifacts locally: raw session exports + a self-contained snapshot page opened straight from disk (`file://`). Its `setup` mode also generates the keypair and sets the `SESSION_ARTIFACT_PUBKEY` secret. |
+| `decrypt_share_link.py` | Decrypting the agent's encrypted session artifacts locally: raw session exports + a self-contained snapshot page opened straight from disk (`file://`). It asks before downloading or writing; files land in `sessions/` beside the tool (`--save`/`--open` skip the prompt). Its `setup` mode also generates the keypair and sets the `SESSION_ARTIFACT_PUBKEY` secret. |
 | `tools/mention-worker/` | Cross-repo guest mode, the agent answering mentions in repos it's not installed in |
 
 > Forking the whole repository works too, but don't carry this repo's docs and plans into yours; you only need the paths above.

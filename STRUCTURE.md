@@ -37,7 +37,7 @@
 ├── tools/                      # External Cloudflare Workers (deployed separately)
 │   ├── mention-worker/         # Cross-repo mention relay (Durable Object alarm poll)
 │   └── cron-probe/             # Cron-outage canary (delete when crons heal)
-├── decrypt_share_link.py       # Share-link keygen/decrypt TUI (MRB2 artifacts -> local library + file:// snapshot)
+├── decrypt_share_link.py       # Share-link keygen/decrypt TUI (MRB2 -> ./sessions + file:// snapshot; asks, --save/--open)
 ├── minify_json_secret.py       # JSON → single-line secret string
 ├── "Opencode config schema.json"  # Schema reference for OPENCODE_CONFIG_JSON
 ```
