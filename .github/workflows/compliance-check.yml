@@ -961,8 +961,21 @@ jobs:
               echo "Decrypt locally: \`python decrypt_share_link.py\` and paste the block above."
             } >> "$GITHUB_STEP_SUMMARY"
             if [ -s "$TMP_DIR/session-meta.txt" ]; then
-              cat "$TMP_DIR/session-meta.txt"
+              cat "$TMP_DIR/session-meta.txt" >> "$GITHUB_STEP_SUMMARY"
             fi
+          fi
+          if [ ! -s "$TMP_DIR/session-meta.txt" ]; then
+            {
+              echo "### Session export failed"
+              echo
+              echo "No encrypted session artifact was produced this run. The passive export step did not finish; its log carries the error."
+              if [ -s "$TMP_DIR/session-export-error.txt" ]; then
+                echo
+                echo '```'
+                head -c 2000 "$TMP_DIR/session-export-error.txt"
+                echo '```'
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Lifecycle reaction (session success)

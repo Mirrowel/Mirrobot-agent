@@ -864,6 +864,11 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "share: $wf passes SESSION_ARTIFACT_PUBKEY env"  yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY: \${{ secrets.SESSION_ARTIFACT_PUBKEY }}' "$WFF" && echo yes || echo no)"
   check "share: $wf copies filter to /tmp"         yes "$(grep -q 'cp .github/scripts/share-filter.sh /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
   check "share: $wf has summary step"              yes "$(grep -q 'Share link summary' "$WFF" && echo yes || echo no)"
+  check "summary: $wf writes session meta to summary" yes "$(grep -q 'session-meta.txt" >> "$GITHUB_STEP_SUMMARY"' "$WFF" && echo yes || echo no)"
+  check "summary: $wf surfaces export failures"      yes "$(grep -q 'session-export-error.txt' "$WFF" && echo yes || echo no)"
+  if [ "$wf" = bot-reply-guest ]; then
+    check "summary: $wf uses RUNNER_TEMP (no unset TMP_DIR)" no "$(grep -q 'TMP_DIR' "$WFF" && echo yes || echo no)"
+  fi
   check "share: $wf no dead SHARE_CTX envs"        yes "$(grep -q 'SHARE_CTX' "$WFF" && echo no || echo yes)"
   check "share: filter has no dead capture path"   yes "$(grep -q 'opncd\|MRB1' "$SCRIPT_DIR/share-filter.sh" && echo no || echo yes)"
   check "share: filter keeps boot sentinel"        yes "$(grep -q 'oc-booted' "$SCRIPT_DIR/share-filter.sh" && echo yes || echo no)"
@@ -949,6 +954,16 @@ check "openshare: exporter offline tool fetch (ref)"   yes "$(grep -q 'TOOLS_OFF
 check "openshare: exporter dist from release asset"    yes "$(grep -q 'viewer-dist-' "$SCRIPT_DIR/export-session.py" && grep -q 'releases?per_page' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 check "openshare: exporter gate warning wired"         yes "$(grep -q '::warning::' "$SCRIPT_DIR/export-session.py" && grep -q 'NOT login-gated' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 check "openshare: exporter snapshot degrade note"      yes "$(grep -q 'raw exports intact' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
+# A failed export must leave the reason where the summary step reads it
+# (the silent-butchered-summary class, live-caught on the proxy run).
+OSH_ERRDIR="$(mktemp -d)"
+OSH_PYBIN=""
+for cand in python3 python; do "$cand" -c 'import sys' >/dev/null 2>&1 && { OSH_PYBIN="$cand"; break; }; done
+if [ -n "$OSH_PYBIN" ]; then
+  ( unset SESSION_ARTIFACT_PUBKEY; RUNNER_TEMP="$OSH_ERRDIR" "$OSH_PYBIN" "$SCRIPT_DIR/export-session.py" --out-dir "$OSH_ERRDIR" --run-id 1 --repo t/r >/dev/null 2>&1 ) || true
+  check "openshare: exporter records failure reason"   yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY' "$OSH_ERRDIR/session-export-error.txt" 2>/dev/null && echo yes || echo no)"
+fi
+rm -rf "$OSH_ERRDIR"
 if [ -f "$SCRIPT_DIR/../../decrypt_share_link.py" ]; then
   # the decrypt tool is agent-repo-only (consuming repos skip these pins)
   check "openshare: decrypt tool writes file:// library" yes "$(grep -q 'snapshot.html' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"
@@ -1015,6 +1030,11 @@ for wf in pr-review bot-reply bot-reply-guest compliance-check issue-comment; do
   check "share: $wf passes SESSION_ARTIFACT_PUBKEY env"  yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY: \${{ secrets.SESSION_ARTIFACT_PUBKEY }}' "$WFF" && echo yes || echo no)"
   check "share: $wf copies filter to /tmp"         yes "$(grep -q 'cp .github/scripts/share-filter.sh /tmp/share-filter.sh' "$WFF" && echo yes || echo no)"
   check "share: $wf has summary step"              yes "$(grep -q 'Share link summary' "$WFF" && echo yes || echo no)"
+  check "summary: $wf writes session meta to summary" yes "$(grep -q 'session-meta.txt" >> "$GITHUB_STEP_SUMMARY"' "$WFF" && echo yes || echo no)"
+  check "summary: $wf surfaces export failures"      yes "$(grep -q 'session-export-error.txt' "$WFF" && echo yes || echo no)"
+  if [ "$wf" = bot-reply-guest ]; then
+    check "summary: $wf uses RUNNER_TEMP (no unset TMP_DIR)" no "$(grep -q 'TMP_DIR' "$WFF" && echo yes || echo no)"
+  fi
   check "share: $wf no dead SHARE_CTX envs"        yes "$(grep -q 'SHARE_CTX' "$WFF" && echo no || echo yes)"
   check "share: filter has no dead capture path"   yes "$(grep -q 'opncd\|MRB1' "$SCRIPT_DIR/share-filter.sh" && echo no || echo yes)"
   check "share: filter keeps boot sentinel"        yes "$(grep -q 'oc-booted' "$SCRIPT_DIR/share-filter.sh" && echo yes || echo no)"
@@ -1100,6 +1120,16 @@ check "openshare: exporter offline tool fetch (ref)"   yes "$(grep -q 'TOOLS_OFF
 check "openshare: exporter dist from release asset"    yes "$(grep -q 'viewer-dist-' "$SCRIPT_DIR/export-session.py" && grep -q 'releases?per_page' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 check "openshare: exporter gate warning wired"         yes "$(grep -q '::warning::' "$SCRIPT_DIR/export-session.py" && grep -q 'NOT login-gated' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
 check "openshare: exporter snapshot degrade note"      yes "$(grep -q 'raw exports intact' "$SCRIPT_DIR/export-session.py" && echo yes || echo no)"
+# A failed export must leave the reason where the summary step reads it
+# (the silent-butchered-summary class, live-caught on the proxy run).
+OSH_ERRDIR="$(mktemp -d)"
+OSH_PYBIN=""
+for cand in python3 python; do "$cand" -c 'import sys' >/dev/null 2>&1 && { OSH_PYBIN="$cand"; break; }; done
+if [ -n "$OSH_PYBIN" ]; then
+  ( unset SESSION_ARTIFACT_PUBKEY; RUNNER_TEMP="$OSH_ERRDIR" "$OSH_PYBIN" "$SCRIPT_DIR/export-session.py" --out-dir "$OSH_ERRDIR" --run-id 1 --repo t/r >/dev/null 2>&1 ) || true
+  check "openshare: exporter records failure reason"   yes "$(grep -q 'SESSION_ARTIFACT_PUBKEY' "$OSH_ERRDIR/session-export-error.txt" 2>/dev/null && echo yes || echo no)"
+fi
+rm -rf "$OSH_ERRDIR"
 if [ -f "$SCRIPT_DIR/../../decrypt_share_link.py" ]; then
   # the decrypt tool is agent-repo-only (consuming repos skip these pins)
   check "openshare: decrypt tool writes file:// library" yes "$(grep -q 'snapshot.html' "$SCRIPT_DIR/../../decrypt_share_link.py" && echo yes || echo no)"

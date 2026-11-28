@@ -386,6 +386,11 @@ def _short(ident: str) -> str:
 
 
 def main(argv: list[str]) -> int:
+    # A previous attempt in the same job must not leave a stale failure note.
+    try:
+        _error_path().unlink(missing_ok=True)
+    except OSError:
+        pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default="/tmp")
     ap.add_argument("--run-id", default=os.environ.get("GITHUB_RUN_ID", "local"))
@@ -548,5 +553,31 @@ def main(argv: list[str]) -> int:
     return 0
 
 
+ERROR_MARKER = "session-export-error.txt"
+
+
+def _error_path() -> Path:
+    return Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()) / ERROR_MARKER
+
+
+def _record_failure(reason: str) -> None:
+    """Leave the reason where the run summary step can surface it: a failed
+    export must never degrade the summary to silence."""
+    try:
+        _error_path().write_text((reason or "session export failed").strip() + "\n",
+                                 encoding="utf-8")
+    except OSError:
+        pass
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    try:
+        sys.exit(main(sys.argv))
+    except SystemExit as e:
+        if e.code not in (0, None):
+            _record_failure(e.code if isinstance(e.code, str)
+                            else f"session export exited with code {e.code}")
+        raise
+    except Exception as e:  # noqa: BLE001 - the summary must carry the reason
+        _record_failure(f"unexpected error: {type(e).__name__}: {e}")
+        raise
